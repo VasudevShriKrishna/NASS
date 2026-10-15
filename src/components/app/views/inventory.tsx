@@ -216,7 +216,7 @@ export function InventoryView() {
                         <TableCell
                           className={
                             m.inTransit > 0
-                              ? "bg-violet-50/80 text-right font-semibold tabular-nums text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
+                              ? "bg-violet-50/80 text-right font-semibold tabular-nums text-violet-700 dark:bg-violet-400/10 dark:text-violet-300"
                               : "text-right tabular-nums text-violet-700/60 dark:text-violet-400/60"
                           }
                         >
@@ -344,7 +344,7 @@ export function InventoryView() {
           </SectionCard>
 
           {/* M12 callout */}
-          <Card className="border-amber-300/70 bg-amber-50/60 dark:border-amber-900/60 dark:bg-amber-950/20">
+          <Card className="border-amber-300/70 bg-amber-50/60 dark:border-amber-400/25 dark:bg-amber-400/10">
             <CardContent className="flex items-start gap-2 p-4">
               <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
               <p className="text-xs leading-relaxed text-amber-900 dark:text-amber-200">

@@ -67,18 +67,18 @@ function CountdownChip({ iso }: { iso: string }) {
   if (d === null) return <span className="text-[10px] text-muted-foreground">no date</span>;
   if (d < 0)
     return (
-      <span className="inline-flex items-center rounded-md border border-rose-300 bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
+      <span className="inline-flex items-center rounded-md border border-rose-300 bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300">
         overdue {Math.abs(d)}d
       </span>
     );
   if (d < 7)
     return (
-      <span className="inline-flex items-center rounded-md border border-amber-300 bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+      <span className="inline-flex items-center rounded-md border border-amber-300 bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-amber-800 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300">
         in {d}d
       </span>
     );
   return (
-    <span className="inline-flex items-center rounded-md border border-emerald-300 bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+    <span className="inline-flex items-center rounded-md border border-emerald-300 bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-emerald-800 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-300">
       in {d}d
     </span>
   );
@@ -88,9 +88,9 @@ function CountdownChip({ iso }: { iso: string }) {
 function DemandTypeBadge({ value }: { value: string }) {
   const cls =
     value === "APPROVED"
-      ? "bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950 dark:text-teal-300"
+      ? "bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-400/10 dark:text-teal-300"
       : value === "CONSUMED"
-        ? "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300"
+        ? "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-400/10 dark:text-emerald-300"
         : "bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-900 dark:text-zinc-300";
   return (
     <Tooltip>
@@ -112,19 +112,19 @@ function DemandTypeBadge({ value }: { value: string }) {
 function ReqStatusPill({ value }: { value: string }) {
   if (value === "AT_RISK" || value === "SHORT")
     return (
-      <span className="inline-flex items-center whitespace-nowrap rounded-md border border-rose-300 bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
+      <span className="inline-flex items-center whitespace-nowrap rounded-md border border-rose-300 bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300">
         {value.replaceAll("_", " ")}
       </span>
     );
   if (value === "ALLOCATED")
     return (
-      <span className="inline-flex items-center whitespace-nowrap rounded-md border border-amber-300 bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+      <span className="inline-flex items-center whitespace-nowrap rounded-md border border-amber-300 bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-amber-800 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300">
         ALLOCATED
       </span>
     );
   if (value === "SATISFIED")
     return (
-      <span className="inline-flex items-center whitespace-nowrap rounded-md border border-emerald-300 bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+      <span className="inline-flex items-center whitespace-nowrap rounded-md border border-emerald-300 bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-emerald-800 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-300">
         SATISFIED
       </span>
     );
@@ -134,12 +134,12 @@ function ReqStatusPill({ value }: { value: string }) {
 function GapChip({ gap, uom }: { gap: number; uom: string }) {
   if (gap < 0)
     return (
-      <span className="ml-1.5 inline-flex items-center rounded-md border border-rose-300 bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
+      <span className="ml-1.5 inline-flex items-center rounded-md border border-rose-300 bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300">
         shortfall {Math.abs(gap)} {uom}
       </span>
     );
   return (
-    <span className="ml-1.5 inline-flex items-center rounded-md border border-emerald-300 bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+    <span className="ml-1.5 inline-flex items-center rounded-md border border-emerald-300 bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-emerald-800 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-300">
       covered +{gap}
     </span>
   );
@@ -292,7 +292,7 @@ export function ProjectsView() {
                             <TableCell
                               className={
                                 r.inTransit > 0
-                                  ? "bg-violet-50/80 text-right tabular-nums dark:bg-violet-950/40"
+                                  ? "bg-violet-50/80 text-right tabular-nums dark:bg-violet-400/10"
                                   : "text-right tabular-nums"
                               }
                             >
@@ -337,7 +337,7 @@ export function ProjectsView() {
           })}
 
           {/* M14 callout */}
-          <Card className="border-teal-300/70 bg-teal-50/60 dark:border-teal-900/60 dark:bg-teal-950/20">
+          <Card className="border-teal-300/70 bg-teal-50/60 dark:border-teal-400/25 dark:bg-teal-400/10">
             <CardContent className="flex items-start gap-2 p-4">
               <Info className="mt-0.5 h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" />
               <p className="text-xs leading-relaxed text-teal-900 dark:text-teal-200">

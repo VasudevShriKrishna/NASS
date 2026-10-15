@@ -47,13 +47,13 @@ const money = (v: number) => v.toLocaleString("en-US", { maximumFractionDigits: 
 
 function PriorityChip({ value }: { value: string }) {
   const map: Record<string, string> = {
-    CRITICAL: "border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300",
-    HIGH: "border-orange-300 bg-orange-100 text-orange-800 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-300",
+    CRITICAL: "border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300",
+    HIGH: "border-orange-300 bg-orange-100 text-orange-800 dark:border-orange-400/25 dark:bg-orange-400/10 dark:text-orange-300",
   };
   return (
     <span
       className={`inline-flex items-center whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${
-        map[value] ?? "border-zinc-300 bg-zinc-100 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
+        map[value] ?? "border-zinc-300 bg-zinc-100 text-zinc-700 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-300"
       }`}
     >
       {value}
@@ -63,7 +63,7 @@ function PriorityChip({ value }: { value: string }) {
 
 function DeviationChip({ text }: { text: string }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-md border border-rose-300 bg-rose-100 px-1.5 py-0.5 text-[10px] font-medium text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
+    <span className="inline-flex items-center gap-1 rounded-md border border-rose-300 bg-rose-100 px-1.5 py-0.5 text-[10px] font-medium text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300">
       <CircleAlert className="h-3 w-3" /> {text}
     </span>
   );
@@ -188,7 +188,7 @@ function PurchaseRequestsTab() {
                       <div className="flex flex-col gap-1">
                         <span className="font-mono text-xs font-semibold">{p.ref}</span>
                         {p.duplicateOfId ? (
-                          <span className="inline-flex w-fit items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                          <span className="inline-flex w-fit items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300">
                             DUPLICATE of {p.duplicateOfId}
                           </span>
                         ) : null}
@@ -240,8 +240,8 @@ function PurchaseRequestsTab() {
                               <span
                                 className={`ml-1 rounded border px-1 text-[9px] font-bold uppercase ${
                                   l.material.criticality === "CRITICAL"
-                                    ? "border-rose-300 text-rose-700 dark:border-rose-800 dark:text-rose-300"
-                                    : "border-orange-300 text-orange-700 dark:border-orange-800 dark:text-orange-300"
+                                    ? "border-rose-300 text-rose-700 dark:border-rose-400/25 dark:text-rose-300"
+                                    : "border-orange-300 text-orange-700 dark:border-orange-400/25 dark:text-orange-300"
                                 }`}
                               >
                                 {l.material.criticality}
@@ -259,7 +259,7 @@ function PurchaseRequestsTab() {
                   </TableRow>
                   {p.status === "NEEDS_INFO" ? (
                     <TableRow key={`${p.id}-note`} className="hover:bg-transparent">
-                      <TableCell colSpan={8} className="bg-amber-50 py-2 dark:bg-amber-950/30">
+                      <TableCell colSpan={8} className="bg-amber-50 py-2 dark:bg-amber-400/10">
                         <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-amber-800 dark:text-amber-300">
                           <CircleAlert className="h-3.5 w-3.5" />
                           Returned for missing fields — incomplete request must not silently create a PO (M05)
@@ -281,7 +281,7 @@ function PurchaseRequestsTab() {
 function RankBadge({ rank }: { rank: number | null }) {
   if (rank == null)
     return (
-      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-zinc-300 text-xs font-bold text-zinc-500 dark:border-zinc-700">
+      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-zinc-300 text-xs font-bold text-zinc-500 dark:border-zinc-400/25">
         ?
       </span>
     );
@@ -290,7 +290,7 @@ function RankBadge({ rank }: { rank: number | null }) {
       className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
         rank === 1
           ? "bg-emerald-600 text-white"
-          : "border border-zinc-300 bg-zinc-100 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
+          : "border border-zinc-300 bg-zinc-100 text-zinc-700 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-300"
       }`}
       aria-label={`Rank ${rank}`}
     >
@@ -304,7 +304,7 @@ function SourcingTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+      <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300">
         <Gavel className="mt-0.5 h-4 w-4 shrink-0" />
         <span>
           <span className="font-semibold">No autonomous supplier award</span> — every rank and criterion is explained (M06).
@@ -343,7 +343,7 @@ function SourcingTab() {
                     {criteria.map((c, i) => (
                       <span
                         key={i}
-                        className="rounded-md border border-teal-300 bg-teal-50 px-1.5 py-0.5 text-[10px] font-medium text-teal-800 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300"
+                        className="rounded-md border border-teal-300 bg-teal-50 px-1.5 py-0.5 text-[10px] font-medium text-teal-800 dark:border-teal-400/25 dark:bg-teal-400/10 dark:text-teal-300"
                       >
                         {c}
                       </span>
@@ -403,7 +403,7 @@ function SourcingTab() {
                             {devs.length > 0 ? (
                               devs.map((d, i) => <DeviationChip key={i} text={d} />)
                             ) : (
-                              <span className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                              <span className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-300">
                                 <CircleCheck className="h-3 w-3" /> no deviations
                               </span>
                             )}
@@ -488,7 +488,7 @@ function PurchaseOrdersTab() {
                     <TableCell>
                       <span className="font-mono text-xs font-semibold">{po.ref}</span>
                       {po.amendmentNo > 0 ? (
-                        <span className="ml-1.5 rounded border border-orange-300 px-1 text-[9px] font-bold text-orange-700 dark:border-orange-800 dark:text-orange-300">
+                        <span className="ml-1.5 rounded border border-orange-300 px-1 text-[9px] font-bold text-orange-700 dark:border-orange-400/25 dark:text-orange-300">
                           AMENDMENT {po.amendmentNo}
                         </span>
                       ) : null}
@@ -632,11 +632,11 @@ function PurchaseOrdersTab() {
 
 /* ════════════════════════════ Contracts ═══════════════════════════════════ */
 const OBLIGATION_STYLE: Record<string, string> = {
-  delivery: "border-teal-300 bg-teal-50 text-teal-800 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300",
-  penalty: "border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300",
-  insurance: "border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300",
+  delivery: "border-teal-300 bg-teal-50 text-teal-800 dark:border-teal-400/25 dark:bg-teal-400/10 dark:text-teal-300",
+  penalty: "border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300",
+  insurance: "border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300",
   certification:
-    "border-violet-300 bg-violet-100 text-violet-800 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300",
+    "border-violet-300 bg-violet-100 text-violet-800 dark:border-violet-400/25 dark:bg-violet-400/10 dark:text-violet-300",
 };
 
 function ContractsTab() {
@@ -669,7 +669,7 @@ function ContractsTab() {
                         </span>
                       ) : null}
                       {c.status === "EXPIRING" ? (
-                        <span className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                        <span className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300">
                           <CircleAlert className="h-3 w-3" /> expires {fmtDate(c.validTo)} — renewal decision required
                         </span>
                       ) : null}

@@ -123,24 +123,24 @@ interface BolRow {
 /* ── local atoms ───────────────────────────────────────────────────────────── */
 const CHIP =
   "inline-flex items-center whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[10px] font-semibold tracking-wide";
-const ZINC_CHIP = `${CHIP} border-zinc-300 bg-zinc-100 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300`;
+const ZINC_CHIP = `${CHIP} border-zinc-300 bg-zinc-100 text-zinc-700 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-300`;
 const SCROLL =
   "[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-zinc-300 [&::-webkit-scrollbar-track]:bg-transparent dark:[&::-webkit-scrollbar-thumb]:bg-zinc-700";
 
 function MatchBadge({ v }: { v: string }) {
   const cls =
     v === "MATCHED"
-      ? "border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+      ? "border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-300"
       : v === "PARTIAL"
-        ? "border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"
-        : "border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300";
+        ? "border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300"
+        : "border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300";
   return <span className={`${CHIP} ${cls}`}>{v}</span>;
 }
 
 function identityPillCls(status: string): string {
   if (status === "RESOLVED")
-    return "border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300";
-  return "border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300";
+    return "border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-300";
+  return "border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300";
 }
 
 function ConfidenceBar({ v }: { v: number | null }) {
@@ -244,7 +244,7 @@ export function BolIntelligenceView({ drillRef }: { drillRef?: string | null }) 
                       >
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="font-mono text-sm font-bold">{b.bolNo}</span>
-                          <span className={`${CHIP} border-zinc-300 bg-zinc-100 font-mono dark:border-zinc-700 dark:bg-zinc-900`}>v{b.version}</span>
+                          <span className={`${CHIP} border-zinc-300 bg-zinc-100 font-mono dark:border-zinc-400/25 dark:bg-zinc-900`}>v{b.version}</span>
                           <span className={ZINC_CHIP}>{b.docType}</span>
                           <span className="ml-auto">
                             <StatusPill value={b.status} />
@@ -252,7 +252,7 @@ export function BolIntelligenceView({ drillRef }: { drillRef?: string | null }) 
                         </div>
                         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                           <MatchBadge v={b.matchStatus} />
-                          <span className={`${CHIP} ${b.isActive ? "border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300" : ZINC_CHIP}`}>
+                          <span className={`${CHIP} ${b.isActive ? "border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-300" : ZINC_CHIP}`}>
                             {b.isActive ? "ACTIVE" : "SUPERSEDED"}
                           </span>
                         </div>
@@ -388,20 +388,20 @@ function BolDetail({ b, onDrill, onCorrected }: { b: BolRow; onDrill: (v: ViewNa
         title={
           <span className="flex flex-wrap items-center gap-1.5">
             <span className="font-mono">{b.bolNo}</span>
-            <span className={`${CHIP} border-zinc-300 bg-zinc-100 font-mono dark:border-zinc-700 dark:bg-zinc-900`}>v{b.version}</span>
+            <span className={`${CHIP} border-zinc-300 bg-zinc-100 font-mono dark:border-zinc-400/25 dark:bg-zinc-900`}>v{b.version}</span>
             <span className={ZINC_CHIP}>{b.docType}</span>
             {b.amendmentIndicator && (
-              <span className={`${CHIP} border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300`}>
+              <span className={`${CHIP} border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300`}>
                 AMENDMENT
               </span>
             )}
             {b.supersedes && (
-              <span className={`${CHIP} border-teal-300 bg-teal-100 font-mono text-teal-800 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300`}>
+              <span className={`${CHIP} border-teal-300 bg-teal-100 font-mono text-teal-800 dark:border-teal-400/25 dark:bg-teal-400/10 dark:text-teal-300`}>
                 supersedes {b.supersedes.bolNo} v{b.supersedes.version}
               </span>
             )}
             {b.supersededBy && b.supersededBy.length > 0 && (
-              <span className={`${CHIP} border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300`}>
+              <span className={`${CHIP} border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300`}>
                 SUPERSEDED BY v{b.supersededBy.map((v) => v.version).join(", v")}
               </span>
             )}
@@ -412,7 +412,7 @@ function BolDetail({ b, onDrill, onCorrected }: { b: BolRow; onDrill: (v: ViewNa
           <span className="flex flex-wrap items-center justify-end gap-1.5">
             <StatusPill value={b.status} />
             <MatchBadge v={b.matchStatus} />
-            <span className={`${CHIP} ${b.isActive ? "border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300" : ZINC_CHIP}`}>
+            <span className={`${CHIP} ${b.isActive ? "border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-300" : ZINC_CHIP}`}>
               {b.isActive ? "ACTIVE" : "SUPERSEDED"}
             </span>
           </span>
@@ -490,7 +490,7 @@ function BolDetail({ b, onDrill, onCorrected }: { b: BolRow; onDrill: (v: ViewNa
                     key={p}
                     type="button"
                     onClick={() => onDrill("procurement", p)}
-                    className={`${CHIP} border-zinc-300 bg-zinc-100 font-mono text-zinc-700 hover:bg-zinc-200 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800`}
+                    className={`${CHIP} border-zinc-300 bg-zinc-100 font-mono text-zinc-700 hover:bg-zinc-200 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800`}
                   >
                     {p}
                   </button>
@@ -533,7 +533,7 @@ function BolDetail({ b, onDrill, onCorrected }: { b: BolRow; onDrill: (v: ViewNa
         subtitle="Value + normalized value + page + engine + confidence + validation for every field"
         right={
           openCorrections.length > 0 ? (
-            <span className={`${CHIP} border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/60 dark:text-rose-300`}>
+            <span className={`${CHIP} border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-400/25 dark:bg-rose-400/10/60 dark:text-rose-300`}>
               {openCorrections.length} field{openCorrections.length > 1 ? "s" : ""} awaiting correction
             </span>
           ) : undefined
@@ -566,7 +566,7 @@ function BolDetail({ b, onDrill, onCorrected }: { b: BolRow; onDrill: (v: ViewNa
                   const fail = f.validationStatus === "FAIL";
                   const editable = f.validationStatus === "FAIL" || f.validationStatus === "WARN";
                   return (
-                    <TableRow key={f.id} className={fail ? "bg-rose-50/80 dark:bg-rose-950/30" : undefined}>
+                    <TableRow key={f.id} className={fail ? "bg-rose-50/80 dark:bg-rose-400/10" : undefined}>
                       <TableCell className="py-1.5 font-mono text-xs font-semibold">{f.fieldName}</TableCell>
                       <TableCell className="whitespace-normal py-1.5 font-mono text-xs">{f.rawValue ?? <span className="italic text-rose-700 dark:text-rose-400">MISSING</span>}</TableCell>
                       <TableCell className="whitespace-normal py-1.5 font-mono text-xs">{f.normalizedValue ?? "—"}</TableCell>
@@ -617,7 +617,7 @@ function BolDetail({ b, onDrill, onCorrected }: { b: BolRow; onDrill: (v: ViewNa
       {/* c) reconciliation results */}
       <SectionCard title="Reconciliation results" subtitle="Cross-document rules with versions — PASS / WARN / FAIL / NOT_CHECKED (§15)">
         {anyFail && (
-          <div className="mb-3 rounded-md border border-rose-300 bg-rose-50 p-2.5 text-xs leading-relaxed text-rose-900 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-300">
+          <div className="mb-3 rounded-md border border-rose-300 bg-rose-50 p-2.5 text-xs leading-relaxed text-rose-900 dark:border-rose-400/25 dark:bg-rose-400/10/50 dark:text-rose-300">
             Reconciliation FAIL present — discrepancies require human review before this BOL can be published as verified (M09).
           </div>
         )}
@@ -643,10 +643,10 @@ function BolDetail({ b, onDrill, onCorrected }: { b: BolRow; onDrill: (v: ViewNa
                 </TableRow>
               ) : (
                 b.reconciliations.map((r) => (
-                  <TableRow key={r.id} className={r.result === "FAIL" ? "bg-rose-50/80 dark:bg-rose-950/30" : undefined}>
+                  <TableRow key={r.id} className={r.result === "FAIL" ? "bg-rose-50/80 dark:bg-rose-400/10" : undefined}>
                     <TableCell className="py-1.5 font-mono text-xs font-semibold">{r.ruleCode}</TableCell>
                     <TableCell className="py-1.5">
-                      <span className={`${CHIP} border-zinc-300 bg-zinc-100 font-mono dark:border-zinc-700 dark:bg-zinc-900`}>{r.ruleVersion}</span>
+                      <span className={`${CHIP} border-zinc-300 bg-zinc-100 font-mono dark:border-zinc-400/25 dark:bg-zinc-900`}>{r.ruleVersion}</span>
                     </TableCell>
                     <TableCell className="py-1.5">
                       <ReconciliationBadge result={r.result} />
@@ -666,7 +666,7 @@ function BolDetail({ b, onDrill, onCorrected }: { b: BolRow; onDrill: (v: ViewNa
           </Table>
         </div>
         {anyNotChecked && (
-          <p className="mt-3 rounded-md border border-zinc-300 bg-muted/50 p-2 text-[11px] text-muted-foreground dark:border-zinc-700">
+          <p className="mt-3 rounded-md border border-zinc-300 bg-muted/50 p-2 text-[11px] text-muted-foreground dark:border-zinc-400/25">
             NOT_CHECKED must not be treated as PASS (§15).
           </p>
         )}
@@ -692,7 +692,7 @@ function BolDetail({ b, onDrill, onCorrected }: { b: BolRow; onDrill: (v: ViewNa
                 <p className="text-[11px] text-muted-foreground">identity source: {c.identitySource ?? "none — unresolved"}</p>
                 {c.note && <p className="mt-1 text-[11px] italic text-muted-foreground">{c.note}</p>}
                 {c.identityStatus !== "RESOLVED" && (
-                  <div className="mt-2 rounded-md border border-rose-300 bg-rose-50 p-2 text-[11px] leading-relaxed text-rose-800 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-300">
+                  <div className="mt-2 rounded-md border border-rose-300 bg-rose-50 p-2 text-[11px] leading-relaxed text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10/50 dark:text-rose-300">
                     Container location unresolved — tracking starts only when a valid provider identifier/feed is available (M09/M11).
                   </div>
                 )}
@@ -714,7 +714,7 @@ function BolDetail({ b, onDrill, onCorrected }: { b: BolRow; onDrill: (v: ViewNa
                 {b.documents.map((d) => (
                   <li key={d.id} className="flex flex-wrap items-center gap-2 rounded-md border p-2 text-xs">
                     <FileText className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden />
-                    <span className={`${CHIP} border-zinc-300 bg-zinc-100 font-mono uppercase text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400`}>
+                    <span className={`${CHIP} border-zinc-300 bg-zinc-100 font-mono uppercase text-zinc-600 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-400`}>
                       {d.docType}
                     </span>
                     <span className="font-mono font-medium">{d.refNo ?? "—"}</span>

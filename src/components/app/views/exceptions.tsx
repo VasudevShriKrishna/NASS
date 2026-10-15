@@ -144,28 +144,28 @@ interface CaseDetail extends CaseRow {
 
 /* ── Chip palettes (allowed palette only: emerald/teal/amber/orange/rose/violet/zinc) ── */
 const EVENT_TYPE_CLS: Record<string, string> = {
-  STATE_TRANSITION: "bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950 dark:text-teal-300",
+  STATE_TRANSITION: "bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-400/10 dark:text-teal-300",
   COMMENT: "bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-900 dark:text-zinc-300",
-  EVIDENCE: "bg-violet-100 text-violet-800 border-violet-300 dark:bg-violet-950 dark:text-violet-300",
-  ASSIGNMENT: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300",
-  COMMUNICATION: "bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-950 dark:text-orange-300",
+  EVIDENCE: "bg-violet-100 text-violet-800 border-violet-300 dark:bg-violet-400/10 dark:text-violet-300",
+  ASSIGNMENT: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-400/10 dark:text-amber-300",
+  COMMUNICATION: "bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-400/10 dark:text-orange-300",
 };
 const NTF_STATE_CLS: Record<string, string> = {
-  DELIVERED: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300",
-  SENT: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300",
+  DELIVERED: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-400/10 dark:text-emerald-300",
+  SENT: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-400/10 dark:text-amber-300",
   QUEUED: "bg-zinc-100 text-zinc-600 border-zinc-300 dark:bg-zinc-900 dark:text-zinc-400",
-  FAILED: "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-300",
-  BOUNCED: "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-300",
+  FAILED: "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-400/10 dark:text-rose-300",
+  BOUNCED: "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-400/10 dark:text-rose-300",
 };
 const CHANNEL_CLS: Record<string, string> = {
   IN_APP: "bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-900 dark:text-zinc-300",
-  EMAIL: "bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950 dark:text-teal-300",
-  SMS_WHATSAPP: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300",
-  SUPPLIER_PORTAL: "bg-violet-100 text-violet-800 border-violet-300 dark:bg-violet-950 dark:text-violet-300",
+  EMAIL: "bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-400/10 dark:text-teal-300",
+  SMS_WHATSAPP: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-400/10 dark:text-amber-300",
+  SUPPLIER_PORTAL: "bg-violet-100 text-violet-800 border-violet-300 dark:bg-violet-400/10 dark:text-violet-300",
 };
 const RISK_CLS: Record<string, string> = {
-  SAFE: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300",
-  HIGH_RISK: "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-300",
+  SAFE: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-400/10 dark:text-emerald-300",
+  HIGH_RISK: "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-400/10 dark:text-rose-300",
 };
 
 function chipCls(cls: string | undefined) {
@@ -351,7 +351,7 @@ export function ExceptionsView({ drillRef }: { drillRef?: string | null }) {
               filter === "ALL" ? "border-foreground/30 bg-accent shadow-sm" : "border-transparent hover:bg-accent/50"
             )}
           >
-            <span className="inline-flex items-center rounded-md border border-zinc-300 bg-zinc-100 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+            <span className="inline-flex items-center rounded-md border border-zinc-300 bg-zinc-100 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-zinc-700 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-300">
               ALL
             </span>
             <span className="text-xs font-semibold tabular-nums">{cases.length}</span>
@@ -566,7 +566,7 @@ export function ExceptionsView({ drillRef }: { drillRef?: string | null }) {
 
               {/* b) Recommended action */}
               {kase.recommendedAction ? (
-                <div className="rounded-lg border border-teal-300 bg-teal-50 p-4 dark:border-teal-800 dark:bg-teal-950">
+                <div className="rounded-lg border border-teal-300 bg-teal-50 p-4 dark:border-teal-400/25 dark:bg-teal-400/10">
                   <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-teal-800 dark:text-teal-300">
                     <ShieldCheck className="h-3.5 w-3.5" /> Recommended action (proposal — requires approval gateway M18)
                   </p>
@@ -586,7 +586,7 @@ export function ExceptionsView({ drillRef }: { drillRef?: string | null }) {
                 {parseArr(kase.evidenceRefs).length > 0 ? (
                   <div className="mb-3 flex flex-wrap gap-1.5">
                     {parseArr(kase.evidenceRefs).map((r) => (
-                      <span key={r} className="inline-flex items-center gap-1 rounded-md border border-zinc-300 bg-zinc-100 px-1.5 py-0.5 font-mono text-[10px] text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+                      <span key={r} className="inline-flex items-center gap-1 rounded-md border border-zinc-300 bg-zinc-100 px-1.5 py-0.5 font-mono text-[10px] text-zinc-700 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-300">
                         <FileText className="h-3 w-3" /> {r}
                       </span>
                     ))}
@@ -707,7 +707,7 @@ export function ExceptionsView({ drillRef }: { drillRef?: string | null }) {
                             {n.template} <span className="font-mono text-muted-foreground">{n.templateVersion}</span>
                           </span>
                           <span className="text-muted-foreground">to {n.recipient}</span>
-                          <span className={chipCls(n.audienceType === "EXTERNAL" ? "bg-violet-100 text-violet-800 border-violet-300 dark:bg-violet-950 dark:text-violet-300" : "bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-900 dark:text-zinc-300")}>
+                          <span className={chipCls(n.audienceType === "EXTERNAL" ? "bg-violet-100 text-violet-800 border-violet-300 dark:bg-violet-400/10 dark:text-violet-300" : "bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-900 dark:text-zinc-300")}>
                             {n.audienceType}
                           </span>
                           <span className={chipCls(NTF_STATE_CLS[n.state])}>{n.state}</span>
@@ -730,7 +730,7 @@ export function ExceptionsView({ drillRef }: { drillRef?: string | null }) {
 /* small local chip for category values */
 function chipClsChip(v: string | null | undefined) {
   return (
-    <span className="inline-flex items-center whitespace-nowrap rounded-md border border-zinc-300 bg-zinc-100 px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-wide text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+    <span className="inline-flex items-center whitespace-nowrap rounded-md border border-zinc-300 bg-zinc-100 px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-wide text-zinc-700 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-300">
       {v ?? "—"}
     </span>
   );

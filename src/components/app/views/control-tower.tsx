@@ -110,7 +110,7 @@ function FreshnessBar({ counts }: { counts: OverviewPayload["kpis"]["freshness"]
   return (
     <div>
       <div
-        className="flex h-3 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800"
+        className="flex h-3 w-full overflow-hidden rounded-full bg-muted"
         role="img"
         aria-label={`Freshness distribution: ${segs.map((s) => `${s.n} ${s.label.toLowerCase()}`).join(", ")}`}
       >
@@ -156,8 +156,8 @@ export function ControlTowerView({ drillRef }: { drillRef?: string | null }) {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight">Control Tower</h2>
-          <p className="text-xs text-muted-foreground">
+          <h2 className="font-display text-xl font-semibold tracking-wide">Control Tower</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
             Data as of <span className="font-medium text-foreground">{fmtDateTime(asOf)}</span> · every figure drills to
             row-level records
           </p>
@@ -249,7 +249,7 @@ export function ControlTowerView({ drillRef }: { drillRef?: string | null }) {
                     {data.shipments.map((s) => (
                       <TableRow
                         key={s.ref}
-                        className={drillRef === s.ref ? "cursor-pointer bg-amber-50 dark:bg-amber-950/40" : "cursor-pointer"}
+                        className={drillRef === s.ref ? "cursor-pointer bg-primary/10 outline outline-1 outline-primary/25" : "cursor-pointer"}
                         onClick={() => drillTo("import-tracking", s.ref)}
                         tabIndex={0}
                         onKeyDown={(e) => e.key === "Enter" && drillTo("import-tracking", s.ref)}
@@ -266,10 +266,10 @@ export function ControlTowerView({ drillRef }: { drillRef?: string | null }) {
                         <TableCell>
                           <FreshnessBadge value={s.carrierEtaFreshness} />
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="whitespace-normal align-top">
                           <div className="flex flex-col gap-1">
                             {s.etaSlipped ? (
-                              <span className="inline-flex w-fit items-center rounded-md border border-rose-300 bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                              <span className="inline-flex w-fit items-center rounded-md border border-rose-300 bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300">
                                 SLIPPED vs supplier promise
                               </span>
                             ) : null}
@@ -312,7 +312,7 @@ export function ControlTowerView({ drillRef }: { drillRef?: string | null }) {
                         type="button"
                         onClick={() => drillTo("exceptions", c.ref)}
                         className={`w-full rounded-lg border p-3 text-left transition-colors hover:bg-muted/60 ${
-                          drillRef === c.ref ? "border-amber-400 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40" : ""
+                          drillRef === c.ref ? "border-primary/50 bg-primary/10" : ""
                         }`}
                       >
                         <div className="flex flex-wrap items-center gap-2">

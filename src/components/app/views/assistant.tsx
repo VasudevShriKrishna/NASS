@@ -74,7 +74,7 @@ export function AssistantView() {
       <Card className="flex min-h-0 flex-1 flex-col">
         <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 border-b py-3">
           <CardTitle className="text-sm font-semibold">Grounded conversational assistant (M20)</CardTitle>
-          <span className="rounded-md border border-teal-300 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-800 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300">
+          <span className="rounded-md border border-teal-300 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-800 dark:border-teal-400/25 dark:bg-teal-400/10 dark:text-teal-300">
             retrieval before generation
           </span>
         </CardHeader>
@@ -96,7 +96,7 @@ export function AssistantView() {
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Sources:</span>
                         {m.sources.map((s) => (
-                          <span key={s} className="rounded-md border border-zinc-300 bg-zinc-100 px-1.5 py-0.5 font-mono text-[10px] text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+                          <span key={s} className="rounded-md border border-zinc-300 bg-zinc-100 px-1.5 py-0.5 font-mono text-[10px] text-zinc-700 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-300">
                             {s}
                           </span>
                         ))}
@@ -104,7 +104,7 @@ export function AssistantView() {
                     ) : null}
                     {m.asOf ? <p className="text-[10px] text-muted-foreground">as of {fmtDateTime(m.asOf)}</p> : null}
                     {m.degraded ? (
-                      <p className="inline-flex items-start gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                      <p className="inline-flex items-start gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-xs text-amber-900 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300">
                         <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
                         Model unavailable — deterministic fallback used; core workflows unaffected (Rule 10).
                       </p>
@@ -130,7 +130,7 @@ export function AssistantView() {
                 onClick={() => send(s)}
                 className={cn(
                   "rounded-full border border-teal-300 bg-teal-50 px-2.5 py-1 text-xs text-teal-900 transition-colors hover:bg-teal-100",
-                  "disabled:cursor-not-allowed disabled:opacity-50 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-200 dark:hover:bg-teal-900"
+                  "disabled:cursor-not-allowed disabled:opacity-50 dark:border-teal-400/25 dark:bg-teal-400/10 dark:text-teal-200 dark:hover:bg-teal-900"
                 )}
               >
                 {s}
