@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAppStore, type ViewId } from "@/lib/app-state";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,9 @@ import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/s
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CaseStateBadge, EvidenceBadge, FreshnessBadge } from "@/components/app/shared";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { LiveTraceabilityView } from "@/components/app/views/live";
+import { PageFade, PulsingDot } from "@/components/app/motion";
+import { LiveClock } from "@/components/app/live-clock";
 import {
   Activity,
   Anchor,
@@ -26,6 +29,7 @@ import {
   Menu,
   MessageSquareText,
   PackageSearch,
+  RadioTower,
   ShieldCheck,
   Warehouse,
   XCircle,
@@ -49,6 +53,7 @@ const NAV: { group: string; items: { id: ViewId; label: string; icon: React.Reac
   {
     group: "Command",
     items: [
+      { id: "live", label: "Live Traceability", icon: <RadioTower className="h-4 w-4" /> },
       { id: "control-tower", label: "Control Tower", icon: <LayoutDashboard className="h-4 w-4" /> },
       { id: "assistant", label: "Ops Assistant", icon: <MessageSquareText className="h-4 w-4" /> },
     ],
@@ -147,6 +152,7 @@ function Brand() {
 
 export default function Home() {
   const { view, drill, drillTo, clearDrill } = useAppStore();
+  const [navOpen, setNavOpen] = useState(false);
 
   // Consume cross-view drill once the target view mounts.
   useEffect(() => {
@@ -161,7 +167,7 @@ export default function Home() {
       <header className="sticky top-0 z-40 border-b border-primary/15 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="flex h-14 items-center gap-3 px-4">
           {/* Mobile nav */}
-          <Sheet>
+          <Sheet open={navOpen} onOpenChange={setNavOpen}>
             <SheetTrigger asChild>
               <Button variant="outline" size="icon" className="lg:hidden" aria-label="Open navigation">
                 <Menu className="h-4 w-4" />
@@ -172,7 +178,7 @@ export default function Home() {
               <Brand />
               <Separator className="mt-3" />
               <ScrollArea className="h-[calc(100vh-5.5rem)]">
-                <NavItems onNavigate={() => undefined} />
+                <NavItems onNavigate={() => setNavOpen(false)} />
               </ScrollArea>
             </SheetContent>
           </Sheet>
@@ -189,6 +195,13 @@ export default function Home() {
             <h1 className="text-sm font-semibold tracking-tight">
               {NAV.flatMap((g) => g.items).find((i) => i.id === view)?.label ?? "Control Tower"}
             </h1>
+            <span className="ml-1 hidden items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-primary md:inline-flex">
+              <PulsingDot /> live
+            </span>
+            <LiveClock
+              prefix="ops"
+              className="hidden xl:inline-flex items-center rounded-md border border-border/70 bg-card/60 px-2 py-1 text-[11px] font-semibold"
+            />
           </div>
 
           <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
@@ -216,7 +229,8 @@ export default function Home() {
 
         {/* Main content */}
         <main className="min-w-0 flex-1 px-3 py-4 sm:px-5 sm:py-5">
-          {drillRef ? (
+          <PageFade viewKey={view}>
+            {drillRef ? (
             <button
               onClick={() => drillTo(view)}
               className="mb-3 inline-flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
@@ -224,6 +238,7 @@ export default function Home() {
               <XCircle className="h-3.5 w-3.5" /> Focused on <span className="font-mono font-semibold">{drillRef}</span> — click to clear
             </button>
           ) : null}
+          {view === "live" && <LiveTraceabilityView drillRef={drillRef} />}
           {view === "control-tower" && <ControlTowerView drillRef={drillRef} />}
           {view === "procurement" && <ProcurementView />}
           {view === "suppliers" && <SuppliersView />}
@@ -238,6 +253,7 @@ export default function Home() {
           {view === "assistant" && <AssistantView />}
           {view === "governance" && <GovernanceView />}
           {view === "architecture" && <ArchitectureView />}
+          </PageFade>
         </main>
       </div>
 

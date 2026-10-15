@@ -3,6 +3,7 @@
 import { create } from "zustand";
 
 export type ViewId =
+  | "live"
   | "control-tower"
   | "procurement"
   | "suppliers"
