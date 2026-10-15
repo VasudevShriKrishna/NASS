@@ -1,0 +1,502 @@
+     1→     1→---
+     2→     2→name: nass-closed-loop-supply-chain-intelligence
+     3→     3→version: 1.0.0
+     4→     4→description: Design evidence-led, implementation-ready architecture for NASS-style multi-supplier procurement, import shipment visibility, bill-of-lading intelligence, warehouse inventory, asset monitoring, and closed-loop operational workflows. Distinguish verified platform evidence from proposed scope and validate all live-data dependencies.
+     5→     5→---
+     6→     6→
+     7→     7→# NASS Closed-Loop Supply Chain Intelligence — Skill File
+     8→     8→
+     9→     9→## 1. Purpose
+    10→    10→
+    11→    11→Use this skill to design a practical, closed-loop operational intelligence system for a construction, EPC, contracting, industrial, or multi-site organization such as NASS. The system should connect procurement requests, suppliers, contracts, purchase orders, import documents, shipments, containers, vessel/location feeds, warehouse stock, receiving, project material demand, equipment/assets, inspections, maintenance, alerts, tasks, approvals, and verified outcomes.
+    12→    12→
+    13→    13→The intended outcome is a **single operational view backed by connected source records**, not an AI chatbot placed on top of disconnected data. Every operational alert must be traceable to evidence, assigned to an owner, worked through an approved action, and closed only after the outcome is verified.
+    14→    14→
+    15→    15→This file defines a target architecture and a reusable instruction set. It is **not proof that every proposed module is already built or deployed by StellarMind**. Public platform descriptions and case studies are mapped in Section 18. Use explicit evidence labels whenever describing capability maturity.
+    16→    16→
+    17→    17→## 2. Operating context to use as design input
+    18→    18→
+    19→    19→The following points are reported from a discussion with a NASS representative, Antoine, and should be treated as conversation inputs rather than independently verified company-wide facts:
+    20→    20→
+    21→    21→- Purchase requests may arrive through inconsistent channels.
+    22→    22→- Procurement and contract steps require coordination across internal teams and suppliers.
+    23→    23→- Sourcing and logistics may span international suppliers and shipments.
+    24→    24→- Warehouse inventory may not be linked cleanly to purchase requests or project requirements.
+    25→    25→- A bill of lading (B/L or BOL) may be missing a container number.
+    26→    26→- Teams need to see which supplier is linked to which order or shipment, where the shipment was last reported, its latest expected arrival, and whether a delay will affect a project or warehouse.
+    27→    27→
+    28→    28→Do not assume NASS uses a specific ERP, WMS, carrier, port community system, customs platform, IoT stack, or data standard until discovery confirms it. Do not assume all NASS legal entities, subsidiaries, projects, or business units share one system.
+    29→    29→
+    30→    30→## 3. Non-negotiable design rules
+    31→    31→
+    32→    32→1. **Evidence before assertion.** Every factual status, location, ETA, inventory quantity, supplier commitment, extracted document field, AI recommendation, and completed action must retain its source and timestamp.
+    33→    33→2. **Separate evidence from design.** Label statements as `PUBLICLY EVIDENCED`, `PROPOSED TARGET CAPABILITY`, `REQUIRES CUSTOMER DATA/INTEGRATION`, `REQUIRES DEMO/VALIDATION`, or `NOT CONFIRMED`.
+    34→    34→3. **Never manufacture live data.** Do not say a shipment is live-tracked unless an active feed, its update time, and the relevant shipment/container/vessel identity are available. Do not invent ETAs, GPS points, stock levels, supplier performance scores, or delivery dates.
+    35→    35→4. **A vessel is not a container.** AIS usually reports vessel position. Do not infer a particular container's position from a vessel position unless a trustworthy shipment-to-vessel/container relationship is established by source records.
+    36→    36→5. **Closed loop means verified outcome.** Detecting an exception or creating a task is not resolution. Close the case only after the source system or authorized user confirms the result.
+    37→    37→6. **Human approval for consequential actions.** Never automatically approve a supplier, change a contract, release a purchase order, commit spend, change a delivery address, clear a customs hold, or send binding commitments without configured authority and explicit approval.
+    38→    38→7. **Idempotency and deduplication.** Reprocessing the same email, BOL, webhook, shipment milestone, or ERP event must not create duplicate purchase orders, receipts, supplier records, cases, or notifications.
+    39→    39→8. **Preserve history.** Never silently overwrite the original document, ETA, milestone, stock count, approval, or user correction. Keep version history and record who/what changed it and why.
+    40→    40→9. **Show freshness and uncertainty.** Each live-looking field must expose source, `last_updated_at`, freshness status, and confidence/quality where applicable. A stale value must be labeled stale, not presented as current.
+    41→    41→10. **Degrade safely.** If a provider, integration, model, database, or external API fails, show a truthful partial state, log the fault, queue retryable work, and route unrecoverable or ambiguous cases to a human queue.
+    42→    42→11. **Least privilege.** Enforce company, legal entity, project, site, supplier, cost centre, and role permissions at the API/data layer, not only in the UI.
+    43→    43→12. **Bounded scope.** Build one shared operational backbone and separately deployable modules. Do not create a separate AI agent for every screen or overbuild predictive AI before identifiers and source data are reliable.
+    44→    44→13. **Deterministic rules for decisions.** Use versioned business rules for thresholds, reconciliation, escalation and approvals. Use LLMs for language, extraction assistance and explanations, never as the sole authority for high-impact status transitions.
+    45→    45→14. **Explicit time semantics.** Store timestamps in UTC; preserve original timezone and source timestamp; render local time with timezone. Distinguish event time from ingestion time.
+    46→    46→15. **No false precision.** A predicted arrival is a forecast with a model/source and confidence, not a guaranteed arrival. Display a point estimate only when justified; otherwise display a range or “not enough data.”
+    47→    47→
+    48→    48→## 4. Instructions when using this skill
+    49→    49→
+    50→    50→When asked to design or review the system:
+    51→    51→
+    52→    52→1. Start with the concrete operational question and the workflow outcome, not a technology stack.
+    53→    53→2. State assumptions and unknowns. Ask only for blockers; if enough is known, proceed with marked assumptions and a discovery checklist.
+    54→    54→3. Produce a coherent end-to-end architecture, not disconnected module descriptions.
+    55→    55→4. For every module, define purpose, users, inputs, source of truth, outputs, API/events, permissions, failure behavior, audit evidence, and acceptance tests.
+    56→    56→5. Use the architecture in Section 7 as the default. Change it only when a documented constraint requires it.
+    57→    57→6. Separate source-system facts, computed metrics, AI interpretations, and proposed actions in the data model and UI.
+    58→    58→7. Include live import/shipment tracking and the complete BOL workflow explicitly. Do not bury them under a generic “document AI” or “logistics” label.
+    59→    59→8. Include runtime failure/recovery paths, data freshness, replay, idempotency, and manual exception handling in every relevant sequence.
+    60→    60→9. Avoid claiming any feature is production-ready based solely on a marketing page or case-study summary. Map claims to the evidence table in Section 18 and list required demonstrations.
+    61→    61→10. Finish with module coverage, failure-path coverage, security coverage, and acceptance criteria. Perform two separate review passes as described in Section 20 before presenting the final result.
+    62→    62→
+    63→    63→## 5. Target outcomes and operating questions
+    64→    64→
+    65→    65→The system should help authorized users answer questions such as:
+    66→    66→
+    67→    67→- Which purchase requests are waiting for clarification, approval, sourcing, a purchase order, shipment, or receipt?
+    68→    68→- Which suppliers are connected to each PR, RFQ, contract, PO, item, shipment, BOL, invoice, and delivery?
+    69→    69→- Which shipment or container carries this material, and which project/site needs it?
+    70→    70→- What is the latest **source-reported** location or milestone? Which provider reported it, and when?
+    71→    71→- What is the latest carrier/freight-forwarder/port-system ETA? Is it confirmed, stale, forecast, or missing?
+    72→    72→- Which shipments have slipped against supplier-confirmed ETD/ETA or the project-required date?
+    73→    73→- Which delays create a stockout or threaten a construction/maintenance milestone?
+    74→    74→- What stock is available, reserved, in transit, quarantined, damaged, or awaiting inspection at each warehouse/site?
+    75→    75→- Which BOL is missing a container number, has inconsistent packages/weights, or does not reconcile with its PO, invoice, packing list, or arrival notice?
+    76→    76→- Which assets have abnormal telemetry, missed inspection, open defects, expired certificates, upcoming maintenance, or missing spare parts?
+    77→    77→- Who owns an exception, what action is pending, who must approve it, and what evidence proves closure?
+    78→    78→
+    79→    79→## 6. Architecture principles and boundaries
+    80→    80→
+    81→    81→### 6.1 One operational backbone; bounded modules
+    82→    82→
+    83→    83→Use common identity, eventing, source connectors, canonical identifiers, evidence storage, audit, policy, and workflow services. Procurement, imports, BOL intelligence, shipment tracking, warehouse, assets, and supplier performance are bounded domain modules. They share identifiers and events rather than duplicating the same supplier, material, PO, shipment, or asset records.
+    84→    84→
+    85→    85→### 6.2 Source of truth by data category
+    86→    86→
+    87→    87→Establish the source of truth during discovery. A common pattern is:
+    88→    88→
+    89→    89→- ERP/procurement system: approved suppliers, PRs, PO lines, accounting fields, commitments, GRNs and payment-relevant statuses.
+    90→    90→- Contract repository/DMS: signed contracts, amendments and controlled versions.
+    91→    91→- Carrier, freight forwarder, port, vessel/AIS or tracking provider: transport events and reported locations within that provider's coverage.
+    92→    92→- WMS/ERP/site register: on-hand, allocated, reserved, quarantined, received and issued inventory.
+    93→    93→- CMMS/EAM/asset register: asset identity, maintenance work orders and inspection records.
+    94→    94→- IoT platform/historian: sensor measurements and device health.
+    95→    95→- BOL/invoice/packing list/arrival notice: source documents for extracted shipping and trade fields.
+    96→    96→- Workflow service: assignments, approvals, exception state and closure evidence.
+    97→    97→
+    98→    98→These are proposed source-of-truth patterns, not assumptions about NASS's current software.
+    99→    99→
+   100→   100→### 6.3 Read side and write side must be separated
+   101→   101→
+   102→   102→Start with read-only connectors where possible. For every write-back connector, define allowed commands, data validation, permission check, approval policy, idempotency key, post-write verification, rollback/compensation path, and operator alerting. The system must not report a write as successful until the target system confirms it.
+   103→   103→
+   104→   104→### 6.4 Prefer integration over rip-and-replace
+   105→   105→
+   106→   106→Connect existing ERP, email, spreadsheets, procurement tools, WMS, CMMS, carrier/forwarder APIs and approved document stores before proposing replacements. Use adapters so an upstream application change does not rewrite business logic.
+   107→   107→
+   108→   108→## 7. Reference architecture
+   109→   109→
+   110→   110→```mermaid
+   111→   111→flowchart TB
+   112→   112→  subgraph SRC[Systems of record and evidence sources]
+   113→   113→    ERP[ERP / PR / PO / Finance]
+   114→   114→    SUP[Supplier portals / email / RFQ]
+   115→   115→    DOC[Contracts / BOL / invoices / packing lists]
+   116→   116→    LOG[Carrier / forwarder / port / AIS APIs]
+   117→   117→    WMS[WMS / warehouse / site stock]
+   118→   118→    EAM[CMMS / EAM / asset register]
+   119→   119→    IOT[IoT sensors / SCADA / telematics]
+   120→   120→    PROJ[Project controls / material schedules]
+   121→   121→  end
+   122→   122→
+   123→   123→  subgraph EDGE[Integration boundary]
+   124→   124→    CON[API adapters, webhooks, polling, file and email ingestion]
+   125→   125→    SEC[Auth, secrets, rate limits, source allow-lists]
+   126→   126→    RAW[Immutable raw payload and document store]
+   127→   127→    VAL[Schema validation, quarantine, dedupe, idempotency]
+   128→   128→  end
+   129→   129→
+   130→   130→  subgraph DATA[Canonical operational data layer]
+   131→   131→    MDM[Master data and identity resolution]
+   132→   132→    BUS[Event bus / durable queue / replay]
+   133→   133→    ODS[Operational relational store]
+   134→   134→    GRAPH[Relationship graph / cross-record links]
+   135→   135→    SEARCH[Full-text and semantic index]
+   136→   136→    TIME[Time-series store for telemetry and location observations]
+   137→   137→    EVID[Evidence registry, provenance and version history]
+   138→   138→  end
+   139→   139→
+   140→   140→  subgraph DOM[Domain services]
+   141→   141→    PROCUREMENT[PR, RFQ, supplier, PO and contract]
+   142→   142→    DOCAI[Document intelligence and BOL reconciliation]
+   143→   143→    IMPORT[Import file, shipment, container and milestone tracking]
+   144→   144→    INV[Warehouse inventory, receipt and material allocation]
+   145→   145→    ASSET[Asset, inspection, condition and maintenance]
+   146→   146→    RISK[Rules, risk, ETA and stockout calculations]
+   147→   147→    CASE[Exception, task, escalation and approval workflow]
+   148→   148→  end
+   149→   149→
+   150→   150→  subgraph APP[User and decision layer]
+   151→   151→    API[Permission-aware API layer]
+   152→   152→    DASH[Control tower / dashboards / reports]
+   153→   153→    CHAT[Grounded conversational assistant]
+   154→   154→    NOTIFY[Email / messaging / in-app notifications]
+   155→   155→    ACTION[Approved action gateway / write-back adapters]
+   156→   156→  end
+   157→   157→
+   158→   158→  subgraph GOV[Cross-cutting controls]
+   159→   159→    IAM[RBAC/ABAC, SSO, MFA and segregation of duties]
+   160→   160→    OBS[Logs, metrics, traces, connector health and alerts]
+   161→   161→    AUDIT[Append-only audit trail and evidence links]
+   162→   162→    OPS[Backups, DR, retention, privacy and policy]
+   163→   163→  end
+   164→   164→
+   165→   165→  SRC --> CON --> SEC --> RAW --> VAL
+   166→   166→  VAL --> BUS
+   167→   167→  VAL --> MDM
+   168→   168→  BUS --> ODS
+   169→   169→  BUS --> GRAPH
+   170→   170→  BUS --> TIME
+   171→   171→  RAW --> DOCAI
+   172→   172→  DOCAI --> EVID
+   173→   173→  MDM --> ODS
+   174→   174→  MDM --> GRAPH
+   175→   175→  ODS --> PROCUREMENT
+   176→   176→  GRAPH --> PROCUREMENT
+   177→   177→  DOCAI --> IMPORT
+   178→   178→  BUS --> IMPORT
+   179→   179→  TIME --> IMPORT
+   180→   180→  ODS --> INV
+   181→   181→  TIME --> ASSET
+   182→   182→  ODS --> ASSET
+   183→   183→  PROCUREMENT --> RISK
+   184→   184→  IMPORT --> RISK
+   185→   185→  INV --> RISK
+   186→   186→  ASSET --> RISK
+   187→   187→  RISK --> CASE
+   188→   188→  CASE --> ACTION
+   189→   189→  ACTION --> SRC
+   190→   190→  PROCUREMENT --> API
+   191→   191→  DOCAI --> API
+   192→   192→  IMPORT --> API
+   193→   193→  INV --> API
+   194→   194→  ASSET --> API
+   195→   195→  RISK --> API
+   196→   196→  CASE --> API
+   197→   197→  API --> DASH
+   198→   198→  API --> CHAT
+   199→   199→  CASE --> NOTIFY
+   200→   200→  GOV -. applies across .-> EDGE
+   201→   201→  GOV -. applies across .-> DATA
+   202→   202→  GOV -. applies across .-> DOM
+   203→   203→  GOV -. applies across .-> APP
+   204→   204→```
+   205→   205→
+   206→   206→### 7.1 Architecture interpretation
+   207→   207→
+   208→   208→- The integration boundary receives and validates data; it must not perform undocumented business decisions.
+   209→   209→- Raw source payloads and original documents are preserved for traceability, subject to retention policy.
+   210→   210→- Canonical domain services own validated domain state; event consumers can be replayed safely.
+   211→   211→- The graph links records across systems, while the relational store remains appropriate for transactions. Do not force every workload into a graph database.
+   212→   212→- Time-series storage is for telemetry and location observations; it is not the only source of shipment state.
+   213→   213→- AI provides extraction assistance, natural-language access, explanation, and prioritization. Deterministic rules validate critical state transitions.
+   214→   214→- The action gateway is the only path for external write-backs and consequential notifications.
+   215→   215→- Security, observability, audit, retention, backup and disaster recovery apply across all layers.
+   216→   216→
+   217→   217→## 8. Canonical entities and relationship model
+   218→   218→
+   219→   219→Create persistent canonical IDs independent of any supplier's or carrier's identifier. Retain all source-system IDs as aliases.
+   220→   220→
+   221→   221→### 8.1 Core entities
+   222→   222→
+   223→   223→1. **LegalEntity / BusinessUnit** — the NASS entity or operating unit that owns a transaction.
+   224→   224→2. **Project / Site** — project code, site, required-on-site date, cost code, work package and material demand.
+   225→   225→3. **Supplier / Vendor** — canonical supplier ID, registered names, aliases, locations, status, approved categories, terms, certifications and contacts.
+   226→   226→4. **Material / SKU / Part** — canonical item ID, manufacturer part number, unit of measure, description, criticality, storage conditions and controlled aliases.
+   227→   227→5. **PurchaseRequest (PR)** — requester, project/site, line items, quantity, required date, justification, channel, approval route, status and source reference.
+   228→   228→6. **RFQ / SupplierResponse** — supplier invitation, quotation/version, currency, lead time, validity, price components, exceptions and evidence.
+   229→   229→7. **PurchaseOrder (PO)** — supplier, legal entity, PO lines, quantities, currency, price, delivery terms, delivery location, milestones, amendments and line-level statuses.
+   230→   230→8. **Contract / Obligation** — contract/amendment versions, parties, scope, clauses, committed dates, delivery terms, penalties, insurance/certification obligations and approval status.
+   231→   231→9. **Shipment / ShipmentLeg** — shipment ID, related PO lines, shipper, consignee, forwarder, carrier, mode, origin/destination, handoff milestones, planned and actual dates.
+   232→   232→10. **Container / Package / Seal** — container or package identifiers, size/type, seal, package count, weights, linked shipment/BOL and identification source. Support LCL and non-container freight without requiring a container ID.
+   233→   233→11. **BillOfLading (BOL)** — document ID, BOL number, master/house type, issuer, version, issue date, shipper, consignee, notify party, vessel/voyage when present, ports/places, container/seal list, cargo marks, package count, gross/net weight, goods description, freight terms and referenced POs/invoices.
+   234→   234→12. **ShippingDocument** — commercial invoice, packing list, certificate of origin, insurance document, import permit, customs declaration, arrival notice, delivery order, inspection/certification or other document type.
+   235→   235→13. **TrackingObservation / ShipmentMilestone** — event code/type, location, source/provider, provider event ID, event time, ingestion time, source payload reference, confidence and correction/retraction links.
+   236→   236→14. **ETAObservation** — value or range, source, estimate type (supplier, carrier, forwarder, port, model), calculated_at, valid-for-time, confidence and input lineage.
+   237→   237→15. **Warehouse / Location / Bin** — site/warehouse/bin identity, allowed stock types and physical location hierarchy.
+   238→   238→16. **InventoryLot / StockPosition** — item, quantity, UOM, condition/status, lot/batch, serials where applicable, warehouse/bin, owner/project reservation and last verified time.
+   239→   239→17. **GoodsReceipt (GRN) / Inspection / Discrepancy** — PO line, shipment, BOL/packing-list references, received quantities, damage/shortage, photos, QC result, receiving time and approver.
+   240→   240→18. **Asset / Equipment / Sensor** — asset ID, make/model/serial, site/location, owner, criticality, condition, meter, connected devices and source references.
+   241→   241→19. **MaintenanceWorkOrder / Inspection / Certificate** — task type, due date, findings, defects, parts required, owner, approvals and closeout evidence.
+   242→   242→20. **ExceptionCase / Task / Approval** — trigger, severity, owner, SLA, related entities, recommended action, approval state, due date, communications, resolution code and closure proof.
+   243→   243→21. **SourceEvidence / DocumentVersion** — source URI/ID, content hash, received time, issuer, extraction version, confidence by field, original/derived status and retention classification.
+   244→   244→22. **ActionCommand / ActionResult** — requested command, author, policy decision, approval references, idempotency key, target system, request/response references and verified postcondition.
+   245→   245→23. **SupplierScoreSnapshot / RiskSignal** — metric, definition/version, period, value, source lineage, uncertainty and explanation.
+   246→   246→24. **AuditEvent** — actor/service, action, entity, prior/new state or diff, timestamp, reason, correlation ID, approval link and evidence links.
+   247→   247→
+   248→   248→### 8.2 Required relationship rules
+   249→   249→
+   250→   250→- One supplier may connect to many contracts, PRs, POs and shipments.
+   251→   251→- One PO may be split into multiple deliveries, BOLs, containers, partial receipts and warehouse destinations.
+   252→   252→- One shipment may cover multiple PO lines and may change legs or carriers.
+   253→   253→- A master BOL may reference house BOLs or multiple containers where the source documents establish that relationship.
+   254→   254→- A BOL may be amended or superseded. Preserve prior versions and state which version is operationally active.
+   255→   255→- One container should not be linked to multiple simultaneously active shipments unless the logistics model and source evidence explicitly permit it.
+   256→   256→- Quantity comparisons must normalize units and record conversion rules. Never compare kg to tonnes or pieces to boxes without explicit conversion metadata.
+   257→   257→- Project material demand is a planned requirement; warehouse availability is a stock fact; in-transit quantity is not available on-site inventory.
+   258→   258→- Every computed/AI-derived relationship must retain its method and evidence, and remain distinguishable from an explicitly source-recorded relationship.
+   259→   259→
+   260→   260→## 9. Module-by-module functional specification
+   261→   261→
+   262→   262→Each module below is a distinct bounded capability. The deployment may combine modules in one application initially, but ownership, data contracts and tests must remain identifiable.
+   263→   263→
+   264→   264→### M01. Identity, tenant, entity and permission management
+   265→   265→
+   266→   266→**Capabilities:** SSO/MFA where available; user, team, legal entity, project/site and supplier scope; roles for requesters, procurement, logistics, warehouse, maintenance, project controls, finance, approvers, auditors and administrators; segregation of duties; temporary delegated approval; vendor portal scope if required.
+   267→   267→
+   268→   268→**Controls:** API-layer authorization, row/data-level filters, least privilege, privileged-action review, session expiry, secret rotation and audit of access to restricted documents. A user must not see another project's contract or supplier commercial terms unless authorized.
+   269→   269→
+   270→   270→**Acceptance:** Cross-project access tests fail closed; a requester cannot self-approve a purchase above their authority; the audit record identifies actor and policy.
+   271→   271→
+   272→   272→### M02. Source connectors and ingestion orchestration
+   273→   273→
+   274→   274→**Inputs:** ERP APIs/database views, procurement systems, WMS, CMMS/EAM, email/mailbox rules, approved shared folders, CSV/XLSX, PDF/image upload, supplier/forwarder portals, carrier APIs, vessel/AIS, customs/port sources, IoT/SCADA and project schedule exports.
+   275→   275→
+   276→   276→**Capabilities:** API/webhook/polling/file ingestion; schema registry; source-specific adapters; pagination; incremental cursor/checkpoint; rate-limit handling; schema drift detection; mapping; payload validation; quarantines; replay; per-source health; service account and secrets management.
+   277→   277→
+   278→   278→**Rules:** Keep connectors thin. Normalize data downstream. Use incremental ingestion and checkpoint only after durable persistence. Record source system, endpoint/file, retrieval time, source timestamp, payload hash, sync cursor and connector version. Respect source API terms and access controls; never scrape or bypass authentication without permission.
+   279→   279→
+   280→   280→**Acceptance:** Replaying a source batch twice creates no duplicates; a failed page is retried without skipping records; schema drift appears as a visible integration issue.
+   281→   281→
+   282→   282→### M03. Master data management and entity resolution
+   283→   283→
+   284→   284→**Capabilities:** Canonical supplier/material/project/warehouse/asset identities; alias resolution; duplicate detection; code mapping; UOM and currency normalization; source precedence; confidence-based candidate matches; steward review and merge/unmerge history.
+   285→   285→
+   286→   286→**Rules:** Do not automatically merge suppliers or container/shipment identities on fuzzy similarity alone. Use strong identifiers first (source ID, PO number + line, BOL number + issuer/version, container number with check-digit validation where applicable, serial number). A fuzzy match can suggest candidates but must not erase ambiguity.
+   287→   287→
+   288→   288→**Acceptance:** Ambiguous supplier names and similar container references go to review; approved merge preserves old IDs as aliases and keeps a reversible audit trail.
+   289→   289→
+   290→   290→### M04. Supplier network and performance
+   291→   291→
+   292→   292→**Capabilities:** Supplier directory, approved/vendor-inactive status, categories, locations, lead-time commitments, delivery terms, quote history, contract/PO linkage, shipment reliability, discrepancy history, certification expiry, corrective-action record and supplier-specific open cases.
+   293→   293→
+   294→   294→**Output:** Supplier view across PR → RFQ → contract → PO → shipment → receipt → invoice/discrepancy. Scorecards may cover on-time delivery, quantity accuracy, quality, documentation, responsiveness and contract compliance.
+   295→   295→
+   296→   296→**Guardrails:** Publish metric formulas, sample size, period, exclusions and source data. Do not compare unlike supplier categories or penalize suppliers for delays demonstrably outside their control without configurable attribution rules. Do not infer financial/credit status without an authorized data source.
+   297→   297→
+   298→   298→### M05. Purchase request intake and demand management
+   299→   299→
+   300→   300→**Capabilities:** Capture requests from a controlled form, ERP, email and approved spreadsheets; extract requester, project/site, material, quantity, UOM, required-on-site date, cost code, specification, justification, priority and attachments; detect duplicates; ask for missing fields; route approvals.
+   301→   301→
+   302→   302→**Controls:** OCR/LLM extraction is a draft until validated. Preserve original email/form/document. Require a human or deterministic source confirmation for critical fields. Track request status from draft to submitted, clarification, approved, sourcing, ordered, partly fulfilled and closed/cancelled.
+   303→   303→
+   304→   304→**Acceptance:** Incomplete request does not silently create a PO; duplicate intake links to the existing request or queues review.
+   305→   305→
+   306→   306→### M06. RFQ, quote comparison and sourcing
+   307→   307→
+   308→   308→**Capabilities:** Supplier shortlist based on authorized/approved criteria; RFQ package; supplier responses and versioning; price/currency/Incoterms/lead-time comparison; freight/tax/landed-cost breakdown when data is available; technical/compliance deviations; quote expiration; recommendation and decision record.
+   309→   309→
+   310→   310→**Guardrails:** Explain every rank and criterion. LLM extraction of a quote must link to the original page/field and confidence. No autonomous supplier award or commercial negotiation without explicit policy and approval.
+   311→   311→
+   312→   312→### M07. Purchase order, contract and obligation management
+   313→   313→
+   314→   314→**Capabilities:** PO/line states; amendments; promised and required dates; quantities and partial deliveries; contract obligations; delivery terms; cancellation/restock/penalty clauses; insurance and certification requirements; expiry and renewal alerts; supplier-confirmation capture; changes compared against approved baseline.
+   315→   315→
+   316→   316→**Controls:** Contract summaries are navigational aids, not legal advice. Signed documents and approved ERP values are authoritative. Any PO/contract amendment requires controlled approval and version lineage.
+   317→   317→
+   318→   318→### M08. Document registry and document intelligence
+   319→   319→
+   320→   320→**Document types:** BOL, house/master BOL, commercial invoice, packing list, certificate of origin, delivery order, arrival notice, customs declaration, import permit, insurance, quality certificate, inspection report, supplier quotation, contract, PO, receipt note, photos and correspondence.
+   321→   321→
+   322→   322→**Capabilities:** Multi-format intake; OCR/layout parsing; page-level source coordinates; document classification; field extraction; version comparison; duplicate detection; entity/PO/shipment linking; validation rules; full-text and semantic search; retention and access policy.
+   323→   323→
+   324→   324→**Controls:** Each extracted field stores value, normalized value, source page/coordinates, extraction engine/model/version, confidence and validation result. Low confidence or conflict triggers review. Keep original files immutable; derived text and redacted copy are separate artifacts.
+   325→   325→
+   326→   326→### M09. Bill of lading (BOL) intelligence — required standalone module
+   327→   327→
+   328→   328→**Goal:** Turn each BOL into a controlled, versioned source of shipment facts and reconcile it with procurement and other import records.
+   329→   329→
+   330→   330→**Capture fields where present:**
+   331→   331→
+   332→   332→- BOL number; master/house designation; issuer/carrier/forwarder; document version, issue date and amendment indicator.
+   333→   333→- Shipper, consignee and notify party, including normalized names and addresses.
+   334→   334→- Vessel name, voyage, transport mode and carrier references, where specified.
+   335→   335→- Port/place of receipt, port of loading, transshipment port(s), port of discharge, final delivery place and country.
+   336→   336→- Container numbers, container type/size, seal number, package count/type, cargo marks, goods description, gross/net weight, volume and declared units.
+   337→   337→- Freight prepaid/collect terms and other transport terms when present.
+   338→   338→- PO number(s), PO line(s), supplier reference, invoice number, packing-list number, booking number, shipment ID and import file ID where identifiable.
+   339→   339→- Estimated/actual sailing/arrival details only when present in a source; record who supplied the date and whether it is planned, estimated or actual.
+   340→   340→
+   341→   341→**Processing lifecycle:**
+   342→   342→
+   343→   343→1. Receive original BOL and establish immutable document ID + content hash.
+   344→   344→2. Classify master/house BOL and amendment/supersession state; never assume a later upload is an amendment without evidence.
+   345→   345→3. Extract fields with page-level provenance, normalization and field-level confidence.
+   346→   346→4. Validate formats and internal consistency (for example, line-item totals, container identifier structure and units) using configurable rules.
+   347→   347→5. Match against supplier, PO/PO lines, commercial invoice, packing list, booking, shipment, container, arrival notice, delivery order and subsequent GRN.
+   348→   348→6. Run cross-document reconciliation: quantities, UOM, goods description, weights, packages, parties, origin/destination, container/seal, and PO references.
+   349→   349→7. Create a discrepancy case for missing, conflicting, duplicate, invalid or suspiciously changed fields. Include severity, owner, evidence, due date and next step.
+   350→   350→8. A human reviewer confirms or corrects critical fields. Store the correction separately; retain extracted value and provenance.
+   351→   351→9. Publish verified BOL links to the import/shipment record and to supplier/PO/warehouse/project views.
+   352→   352→10. Monitor downstream milestones. If a container, vessel, ETA or port event cannot be reliably matched, show unresolved identity rather than guessing.
+   353→   353→
+   354→   354→**BOL exception catalogue:** missing container number; malformed/invalid number; duplicate number across active shipments; BOL number collision; unknown supplier/consignee; PO reference absent; PO not found; different supplier than PO; package/weight mismatch; UOM mismatch; conflicting container/seal between BOL and packing list; amended BOL without approval or clear supersession; duplicate document; missing signature/stamp where required by policy; route mismatch; expected dates missing; customs/arrival notice inconsistency; receipt quantity short/damaged; master/house relationship unresolved.
+   355→   355→
+   356→   356→**Decision boundaries:** The system may auto-classify and propose matches, but critical document identity, conflicting cargo identifiers, and commercial/legal exceptions require configured approval. An absent container number must never be fabricated from an unrelated document or inferred from vessel AIS.
+   357→   357→
+   358→   358→**Acceptance tests:**
+   359→   359→
+   360→   360→- A BOL with no container number becomes `MISSING_IDENTIFIER` and creates a discrepancy case.
+   361→   361→- A BOL with a number but no matching shipment remains `UNMATCHED`; it is not force-linked based only on supplier-name similarity.
+   362→   362→- A container number that disagrees across BOL and packing list produces a field-level conflict with both document references.
+   363→   363→- An amended BOL keeps the previous version, marks the new active version only after policy validation, and recomputes affected reconciliations.
+   364→   364→- A successful human correction records user, timestamp, reason, old/new value and approval policy.
+   365→   365→- A retried upload with the same hash does not create a second active BOL.
+   366→   366→
+   367→   367→### M10. Import file and trade compliance
+   368→   368→
+   369→   369→**Capabilities:** Per-shipment import dossier; responsible broker/forwarder; origin and destination; commodity/HS code if supplied or approved; country-of-origin evidence; required permit/certificate checklist; customs declaration/status where integrated; duties/taxes/fees if sourced; inspection/hold/release; delivery order; demurrage/detention clock where dates/rates are known; document completeness and broker queries.
+   370→   370→
+   371→   371→**Rules:** Do not determine legal customs classifications, duties, sanctions clearance or regulatory eligibility solely from an LLM. Require jurisdiction-specific rules and authorized source data. If customs data is not connected, label status as manually reported or unknown; never imply customs clearance.
+   372→   372→
+   373→   373→### M11. Live import shipment, container and milestone tracking — required standalone module
+   374→   374→
+   375→   375→**Goal:** Show the most recent verified transport event, expected arrival, route and exception status from origin to warehouse/site, with explicit freshness and provenance.
+   376→   376→
+   377→   377→**Supported sources may include, subject to customer contract and technical availability:** supplier dispatch notices; freight-forwarder platform; ocean/air/road carrier tracking APIs; terminal/port events; vessel AIS feed; customs/broker updates; GPS/telematics; manual operator event; warehouse gate/receipt scan.
+   378→   378→
+   379→   379→**Model the journey as milestones, not one free-text status:**
+   380→   380→
+   381→   381→- Booking requested / booking confirmed.
+   382→   382→- Cargo ready / supplier pickup arranged.
+   383→   383→- Picked up / gate-in / export terminal received.
+   384→   384→- Export customs submitted / released / held where connected.
+   385→   385→- Loaded / departed / actual departure (ATD).
+   386→   386→- Vessel/flight/truck leg underway and any transshipment.
+   387→   387→- Port/terminal arrival / discharge / availability.
+   388→   388→- Import customs submitted / released / held where connected.
+   389→   389→- Delivery order issued / cargo released.
+   390→   390→- Gate-out / final-mile dispatch / arrived at site.
+   391→   391→- Delivered / received / receipt pending / exception.
+   392→   392→
+   393→   393→Actual milestone list depends on transport mode and provider. Allow mode-specific milestones and provider-specific mappings.
+   394→   394→
+   395→   395→**Tracking behavior:**
+   396→   396→
+   397→   397→- Store every raw event and a normalized milestone; keep provider event ID, source, event time, received time, position/location accuracy if present, and whether it is estimated or actual.
+   398→   398→- Use API/webhook pushes when available; use configured polling otherwise. Respect provider quotas and service terms.
+   399→   399→- Maintain separate values for supplier promised ETA, carrier/forwarder ETA, port schedule, model-predicted ETA, actual arrival and user-entered estimate.
+   400→   400→- Use a visible precedence policy, never silently replace a source estimate with a model prediction.
+   401→   401→- Display last reported position/milestone and the source update timestamp. Use a configurable freshness class (fresh / aging / stale / unavailable) based on transport mode and provider cadence.
+   402→   402→- ETA prediction must include method/source, calculation time, input data time, uncertainty/confidence and factors only when supported. With insufficient history, show the provider ETA or “not enough data.”
+   403→   403→- Link shipment to vessel only from booking, carrier event, manifest or another reliable source. Vessel AIS can then support a vessel position; do not claim it proves the container is aboard unless the relationship is supported.
+   404→   404→- Support multi-leg shipments, transshipments, split/partial delivery, containers grouped in a shipment, LCL freight with no container-level visibility, and multiple deliveries against one PO.
+   405→   405→- Detect no-update beyond a configured threshold, route deviation when valid route/geofence exists, milestone delay, ETA slip, missed required-on-site date, port dwell, customs hold, container mismatch and cancelled booking.
+   406→   406→- Every location and date view must indicate whether it is source-reported, manually reported, predicted or stale.
+   407→   407→
+   408→   408→**Acceptance tests:**
+   409→   409→
+   410→   410→- The shipment timeline shows event time and received time separately.
+   411→   411→- Stale carrier data is displayed as stale and does not appear “live.”
+   412→   412→- AIS reports a vessel position but the container relationship is missing: vessel position appears separately; container location is unresolved.
+   413→   413→- A source corrects or retracts a milestone: the correction is preserved and downstream state is recalculated idempotently.
+   414→   414→- A late-arriving event is accepted and ordered by event time without deleting the audit history.
+   415→   415→- A provider outage leaves last-known data visible with a stale label, health warning and retry status.
+   416→   416→- An ETA slip is evaluated against PO commitment and project-required date; only configured rules determine severity.
+   417→   417→
+   418→   418→### M12. Warehouse, stock and multi-site inventory
+   419→   419→
+   420→   420→**Capabilities:** Warehouses, bins, sites, stock ledger, item/UOM normalization, on-hand, available, reserved, allocated, in-transit, quarantine, damaged, inspection-pending and issued/consumed status; serial/lot/batch; min/max and safety stock; stock transfers; cycle count; barcode/QR scanning; receiving and picking records.
+   421→   421→
+   422→   422→**Rules:** Define “available” precisely (for example, on-hand minus reservations and quarantined stock). Never count in-transit quantities as physically available. Inventory should reconcile to WMS/ERP ledger; manually maintained shadow values are visibly provisional.
+   423→   423→
+   424→   424→**Acceptance:** Partial receipt updates only the received quantity; remaining quantity stays open against PO/shipment. Duplicate receipt webhook does not double stock.
+   425→   425→
+   426→   426→### M13. Inbound receiving, quality and discrepancy resolution
+   427→   427→
+   428→   428→**Capabilities:** Expected-receipt notice; scan PO/shipment/container/package; count/weight validation; damage photos; QC inspection; partial/over/short delivery; incorrect item; lot/serial capture; quarantine and release; GRN creation; put-away; supplier claim; invoice/PO/receipt three-way reconciliation when those sources are integrated.
+   429→   429→
+   430→   430→**Closed loop:** Receiving discrepancy → evidence capture → owner assignment → supplier/forwarder case → approved ERP adjustment/claim → verified response or stock correction → close with reason and proof.
+   431→   431→
+   432→   432→### M14. Project/site materials planning
+   433→   433→
+   434→   434→**Capabilities:** Project/site, work package, material requirement, planned need date, lead time, substitution/technical constraints, allocation, reservation and criticality; connect project schedules or manually approved demand baselines to PRs, POs, shipments and warehouse positions.
+   435→   435→
+   436→   436→**Rules:** Do not infer formal project schedule dependencies unless imported or explicitly configured. Distinguish planned requirement from approved requirement and actual consumption. Show which material delays put which work package at risk only when the relationship is evidenced.
+   437→   437→
+   438→   438→### M15. Asset registry, condition monitoring and inspection
+   439→   439→
+   440→   440→**Capabilities:** Asset hierarchy; asset IDs and serials; site and location; ownership; criticality; make/model; warranties/certificates; scheduled inspections; checklists, photos, defect classification, corrective actions; service hours/cycles; telemetry ingestion; condition trends; maintenance thresholds; open work orders; parts/tools needed; technician and completion evidence.
+   441→   441→
+   442→   442→**Data classes:**
+   443→   443→
+   444→   444→- Registry-only asset: a maintained record, not live monitored.
+   445→   445→- Inspection-monitored asset: status updated during inspections.
+   446→   446→- Telemetry-connected asset: live/near-real-time readings from configured sensors or SCADA.
+   447→   447→- Location-tracked asset: position from a configured GPS/RTLS/telematics source.
+   448→   448→
+   449→   449→Expose the class clearly. Do not call an asset “real-time monitored” if the only input is a periodic manual inspection.
+   450→   450→
+   451→   451→**Capabilities include:** sensor threshold and trend alerts; offline sensor detection; calibration/quality status; defect-to-work-order; maintenance-due notices; certificate expiry; spare-part dependency; maintenance verification; post-maintenance re-test.
+   452→   452→
+   453→   453→**Acceptance:** Sensor data older than the configured threshold triggers a telemetry-stale state, not a normal condition state. An inspection marked complete without required evidence remains pending or is rejected according to policy.
+   454→   454→
+   455→   455→### M16. Supplier, shipment and inventory risk engine
+   456→   456→
+   457→   457→**Capabilities:** Deterministic signal calculations for PO lateness, ETA slippage, supplier promise drift, missing documents, low stock, projected stockout, open customs hold, capacity/lead-time variance, repeat receiving discrepancy, asset criticality and project deadline exposure.
+   458→   458→
+   459→   459→**Rules:** Every signal has definition/version, source fields, calculation time, severity mapping, threshold, uncertainty and suppression rule. Avoid opaque composite scores with no component breakdown. Keep fact (e.g., “ETA changed by two days”) separate from interpretation (e.g., “high risk to project”).
+   460→   460→
+   461→   461→**Forecasting:** Predictive ETA, stockout and delay models are optional add-ons after historical labels and quality are assessed. Establish baseline metrics and back-testing before activation. The deterministic baseline must still work if the prediction service fails.
+   462→   462→
+   463→   463→### M17. Exception, case and SLA workflow engine
+   464→   464→
+   465→   465→**Capabilities:** Trigger, severity, category, owner, team, SLA, due date, related PR/PO/supplier/BOL/container/project/asset, evidence bundle, investigation checklist, comments, supplier/forwarder communication record, approval state, escalation and resolution code.
+   466→   466→
+   467→   467→**State pattern:** `DETECTED → TRIAGED → ASSIGNED → INVESTIGATING → ACTION_PROPOSED → AWAITING_APPROVAL (if required) → ACTION_SUBMITTED → OUTCOME_PENDING_VERIFICATION → RESOLVED` or `CANCELLED` with a reason. Exceptions may reopen if the verified condition regresses.
+   468→   468→
+   469→   469→**Controls:** SLA pause/resume rules must be explicit. A case cannot reach `RESOLVED` solely because an email was drafted or sent. Require a verified postcondition, human confirmation, or an approved closure rule.
+   470→   470→
+   471→   471→### M18. Action gateway, approvals and write-back
+   472→   472→
+   473→   473→**Capabilities:** Permission and policy checks; approval routing; command validation; dry-run/preview; idempotency key; external API execution; result capture; post-write read-back; retry; compensation/rollback workflow where feasible; manual operator queue.
+   474→   474→
+   475→   475→**Example safe actions:** draft a supplier follow-up; prepare a PO amendment proposal; open a warehouse count task; request missing BOL data; draft a claim; create an approved maintenance work order; create an ERP requisition after explicit approval.
+   476→   476→
+   477→   477→**High-risk actions requiring stricter controls:** supplier award, PO release, financial commitment, changing bank/payment information, contract amendment, booking cancellation, receiving/stock adjustment, customs declaration, asset shutdown or safety-related action.
+   478→   478→
+   479→   479→**Rule:** LLM output is a proposal, not an action authorization. Only the action gateway can execute an operation, after policy, authorization and approval checks.
+   480→   480→
+   481→   481→### M19. Notification and communication orchestration
+   482→   482→
+   483→   483→**Channels:** In-app, email, approved collaboration platform, SMS/WhatsApp only where company policy and consent allow, and supplier portal if in scope.
+   484→   484→
+   485→   485→**Capabilities:** Template versioning; recipient validation; urgency and quiet hours; digest versus immediate escalation; reminder cadence; delivery status; bounce/failure tracking; opt-outs where required; communication link to case and evidence.
+   486→   486→
+   487→   487→**Guardrails:** Separate internal notes from external communications. Supplier-facing statements must use verified facts and approved templates; no AI-generated binding commitments. Prevent duplicate notifications during retries using an idempotency key.
+   488→   488→
+   489→   489→### M20. Conversational operations assistant
+   490→   490→
+   491→   491→**Capabilities:** Permission-aware natural language queries; query clarification; supplier/PO/BOL/container/material/asset cross-referencing; grounded answers; citations to source records/documents; timestamp and freshness display; drill-down to timeline and exceptions; draft investigation summaries.
+   492→   492→
+   493→   493→**Query contract:** For questions about live or current state, retrieve source records first, calculate deterministic answers, then explain. State “unknown/unavailable” when source coverage is absent. Provide a compact answer with `as_of` time, sources used, and known caveat. Never invent a container location, ETA, receipt, or asset condition.
+   494→   494→
+   495→   495→**Safety:** No direct database write from the LLM. Read and write operations use separate permission-aware APIs. Restrict generated queries to a safe schema and read-only scope unless a reviewed action workflow authorizes writing.
+   496→   496→
+   497→   497→### M21. Control tower, dashboards and reporting
+   498→   498→
+   499→   499→**Minimum views:**
+   500→   500→
+
+[showing lines 1-500 of 874; use offset=501 with limit to continue reading]
