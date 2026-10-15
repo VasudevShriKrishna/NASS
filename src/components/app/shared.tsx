@@ -1,9 +1,11 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CountUp } from "@/components/app/motion";
 import { AlertTriangle, CircleCheck, Clock, CloudOff, Database, FileWarning, Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -133,7 +135,9 @@ export function KpiTile({ label, value, sub, tone = "default", onClick, icon }: 
         <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
         {icon ? <span className="text-primary/70">{icon}</span> : null}
       </div>
-      <p className={cn("relative mt-1.5 font-display text-[26px] font-semibold leading-none tabular-nums", toneCls)}>{value}</p>
+      <p className={cn("relative mt-1.5 font-display text-[26px] font-semibold leading-none tabular-nums", toneCls)}>
+        {typeof value === "number" ? <CountUp value={value} /> : value}
+      </p>
       {sub ? <p className="relative mt-1.5 text-[11px] leading-snug text-muted-foreground">{sub}</p> : null}
     </Card>
   );
@@ -142,19 +146,26 @@ export function KpiTile({ label, value, sub, tone = "default", onClick, icon }: 
 /* ── Section card ── */
 export function SectionCard({ title, subtitle, right, children, className, bodyClass }: { title: ReactNode; subtitle?: ReactNode; right?: ReactNode; children: ReactNode; className?: string; bodyClass?: string }) {
   return (
-    <Card className={cn("min-w-0", className)}>
-      <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 border-b border-border/70 py-3">
-        <div className="min-w-0">
-          <CardTitle className="flex items-center gap-2 text-[13px] font-semibold tracking-wide">
-            <span className="inline-block h-3.5 w-0.5 rounded-full bg-primary/70" aria-hidden />
-            {title}
-          </CardTitle>
-          {subtitle ? <p className="mt-1 pl-3 text-xs text-muted-foreground">{subtitle}</p> : null}
-        </div>
-        {right ? <div className="shrink-0">{right}</div> : null}
-      </CardHeader>
-      <CardContent className={cn("pt-4", bodyClass)}>{children}</CardContent>
-    </Card>
+    <motion.div
+      className="min-w-0"
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <Card className={cn("min-w-0", className)}>
+        <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 border-b border-border/70 py-3">
+          <div className="min-w-0">
+            <CardTitle className="flex items-center gap-2 text-[13px] font-semibold tracking-wide">
+              <span className="inline-block h-3.5 w-0.5 rounded-full bg-primary/70" aria-hidden />
+              {title}
+            </CardTitle>
+            {subtitle ? <p className="mt-1 pl-3 text-xs text-muted-foreground">{subtitle}</p> : null}
+          </div>
+          {right ? <div className="shrink-0">{right}</div> : null}
+        </CardHeader>
+        <CardContent className={cn("pt-4", bodyClass)}>{children}</CardContent>
+      </Card>
+    </motion.div>
   );
 }
 

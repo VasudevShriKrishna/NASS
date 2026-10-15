@@ -171,3 +171,33 @@ Stage Summary:
 - Fixed the content-bleed bug (Radix ScrollArea → overflow-auto) that caused rows to paint over sections
 - Light ivory-gold theme remains available via header toggle; dark persists via next-themes
 - Files: globals.css, layout.tsx, page.tsx, shared.tsx, control-tower.tsx, architecture.tsx, all view files (batch sed), new theme-provider.tsx + theme-toggle.tsx
+
+---
+Task ID: 8
+Agent: main (Z.ai Code)
+Task: Modernization pass — animated "addictive" system + Live Traceability view (slow-moving, hour-updating)
+
+Work Log:
+- User screenshot showed Governance audit table bleeding over the sticky footer (old cached render of the Radix ScrollArea bug) and demanded a modernized, animated, highly engaging flow with a live traceability view that "moves slow but hour update in it"
+- src/lib/client.ts: useApi gains silent background polling (pollMs arg) — no loading flicker on refresh
+- src/components/app/live-clock.tsx: LiveClock (ticking HH:MM:SS + date, hydration-safe placeholder, setTimeout(0) first tick to satisfy react-hooks/set-state-in-effect) + useNow(interval) shared ticker + fmtCountdown (d/h/m/s)
+- src/components/app/motion.tsx: PageFade (view-switch blur/fade/rise), Rise, CountUp (spring odometer), PulsingDot (ping halo)
+- NEW src/components/app/views/live.tsx — flagship Live Traceability view:
+  * Fleet strip: horizontal scroll cards per shipment with time-proportional gold progress bars, per-second serif ETA countdowns, SLIP flags, focus selection (picked ?? drillRef ?? first IN_TRANSIT)
+  * Journey route: gold-gradient traveled line + hollow future track, milestone stations (filled=happened), glowing comet positioned TIME-PROPORTIONALLY between booking and displayEta — drifts slowly in real time (68.9% for SHP-8801), % readout
+  * Arrival countdown hero: huge Playfair gold countdown ticking every second + supplier-promise countdown + ETA SLIPPED badge + provenance source
+  * NEXT 24 HOURS strip: 24 hour-grid cells (labels update), gold diamond markers for ETAs inside the window, NOW cursor slides across in real time and softly flashes on each hour change (motion key=hour)
+  * Last completed / Upcoming milestone cards with per-second countdowns
+  * Live event stream: real /api/audit records replayed on a 4s cadence with AnimatePresence slide-in/out, USER/SERVICE/SYSTEM chips, prev→new transitions, Xm-ago ages
+  * Network pulse counters with CountUp; auto-sync 60s chip pulses on each poll cycle; "Sync now" button
+- page.tsx: "Live Traceability" nav item (first in Command, RadioTower icon), view registry entry, header LIVE pulse badge + ticking ops clock (xl+), all views now mount through PageFade for animated transitions, mobile Sheet is now CONTROLLED (open/onOpenChange) and auto-closes on navigation (was stuck open before)
+- shared.tsx: KpiTile numbers animate via CountUp; SectionCard wrapped in motion.div entrance (fade+rise)
+- globals.css: .text-gold-grad now carries a slow infinite gold-sheen sweep (7s) via @keyframes gold-sheen
+- control-tower.tsx: /api/overview polled every 60s
+- Fixed: NOW chip clipping (top-1 inside strip); TS null-narrowing in live view memos; 3× set-state-in-effect lint errors replaced with async-first-tick/derived patterns
+- Verified: bun run lint 0 errors; tsc src clean; dev.log 200s (one dev-server crash mid-session — restarted, unrelated to code); Agent Browser E2E: LIVE clock ticked 12:16:36→12:17:57 and countdown 9d23h00m03s→9d22h58m43s across screenshots (proving real-time), comet time-proportional at 68.9%, hour strip + NOW cursor render, event stream rotates, Control Tower intact with count-ups, Governance→Audit Trail (user's broken screenshot) now cleanly clipped with footer untouched, mobile 390px live view stacks + nav auto-close works; console clean (only pre-existing Radix aria-describedby warning)
+
+Stage Summary:
+- App now feels alive: animated view transitions, count-up KPIs, sheen brand, pulsing LIVE chrome, ticking header clock
+- New flagship Live Traceability view: slow time-proportional journey comet + 24h hour strip with sliding NOW cursor + per-second countdowns + rotating real audit event stream; feeds poll every 60s
+- Mobile nav sheet fixed to auto-close; files: client.ts, app-state.ts, live-clock.tsx, motion.tsx, views/live.tsx, page.tsx, shared.tsx, globals.css, control-tower.tsx

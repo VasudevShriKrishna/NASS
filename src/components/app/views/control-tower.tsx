@@ -143,7 +143,7 @@ function FreshnessBar({ counts }: { counts: OverviewPayload["kpis"]["freshness"]
 
 /* ── View ─────────────────────────────────────────────────────────────────── */
 export function ControlTowerView({ drillRef }: { drillRef?: string | null }) {
-  const { data, loading, error, asOf, refresh } = useApi<OverviewPayload>("/api/overview");
+  const { data, loading, error, asOf, refresh } = useApi<OverviewPayload>("/api/overview", [], 60_000);
   const drillTo = useAppStore((s) => s.drillTo);
 
   const stockOrder = useMemo(
