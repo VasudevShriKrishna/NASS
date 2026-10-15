@@ -74,18 +74,18 @@ function chipCls(cls: string) {
   return cn("inline-flex items-center whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[10px] font-semibold tracking-wide", cls);
 }
 const ZINC_CHIP = "bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-900 dark:text-zinc-300";
-const ROSE_CHIP = "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-300";
+const ROSE_CHIP = "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-400/10 dark:text-rose-300";
 const CAT_CLS: Record<string, string> = {
-  ERP: "bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950 dark:text-teal-300",
-  WMS: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300",
-  CARRIER: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300",
-  AIS: "bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-950 dark:text-orange-300",
-  PORT: "bg-violet-100 text-violet-800 border-violet-300 dark:bg-violet-950 dark:text-violet-300",
+  ERP: "bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-400/10 dark:text-teal-300",
+  WMS: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-400/10 dark:text-emerald-300",
+  CARRIER: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-400/10 dark:text-amber-300",
+  AIS: "bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-400/10 dark:text-orange-300",
+  PORT: "bg-violet-100 text-violet-800 border-violet-300 dark:bg-violet-400/10 dark:text-violet-300",
   EMAIL: "bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-900 dark:text-zinc-300",
-  IOT: "bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950 dark:text-teal-300",
-  CUSTOMS: "bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-950 dark:text-orange-300",
-  FORWARDER: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300",
-  CMMS: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300",
+  IOT: "bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-400/10 dark:text-teal-300",
+  CUSTOMS: "bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-400/10 dark:text-orange-300",
+  FORWARDER: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-400/10 dark:text-amber-300",
+  CMMS: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-400/10 dark:text-emerald-300",
 };
 function hash12(h: string | null | undefined) {
   if (!h) return "—";
@@ -94,7 +94,7 @@ function hash12(h: string | null | undefined) {
 
 function Callout({ children }: { children: React.ReactNode }) {
   return (
-    <p className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+    <p className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-xs text-amber-900 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300">
       {children}
     </p>
   );
@@ -113,10 +113,10 @@ function IntegrationHealth() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
-        <span className={chipCls("bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300")}>
+        <span className={chipCls("bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-400/10 dark:text-emerald-300")}>
           <span className="font-bold">HEALTHY</span>&nbsp;<span className="tabular-nums">{health.HEALTHY ?? 0}</span>
         </span>
-        <span className={chipCls("bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300")}>
+        <span className={chipCls("bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-400/10 dark:text-amber-300")}>
           <span className="font-bold">DEGRADED</span>&nbsp;<span className="tabular-nums">{health.DEGRADED ?? 0}</span>
         </span>
         <span className={chipCls(ROSE_CHIP)}>
@@ -301,7 +301,7 @@ function EvidenceRegistry() {
                     <EvidenceBadge label={r.label} />
                   </td>
                   <td className="py-2 pr-2">
-                    <span className={chipCls(r.originalOrDerived === "ORIGINAL" ? "bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950 dark:text-teal-300" : ZINC_CHIP)}>
+                    <span className={chipCls(r.originalOrDerived === "ORIGINAL" ? "bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-400/10 dark:text-teal-300" : ZINC_CHIP)}>
                       {r.originalOrDerived}
                     </span>
                   </td>

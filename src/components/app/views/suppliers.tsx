@@ -113,12 +113,12 @@ function CertChip({ cert }: { cert: Certification }) {
   const d = daysUntil(cert.expiresAt);
   const cls =
     d == null
-      ? "border-zinc-300 bg-zinc-100 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
+      ? "border-zinc-300 bg-zinc-100 text-zinc-700 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-300"
       : d < 0
-        ? "border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300"
+        ? "border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300"
         : d < 90
-          ? "border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"
-          : "border-zinc-300 bg-zinc-100 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300";
+          ? "border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300"
+          : "border-zinc-300 bg-zinc-100 text-zinc-700 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-300";
   return (
     <span className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${cls}`}>
       {cert.name}
@@ -165,7 +165,7 @@ function SupplierCard({ s }: { s: SupplierRecord }) {
             {s.city ? ` · ${s.city}` : ""}
           </p>
           {s.status === "PENDING" ? (
-            <span className="mt-1.5 inline-flex items-center rounded-md border border-violet-300 bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-800 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300">
+            <span className="mt-1.5 inline-flex items-center rounded-md border border-violet-300 bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-800 dark:border-violet-400/25 dark:bg-violet-400/10 dark:text-violet-300">
               approval required before award
             </span>
           ) : null}
@@ -185,7 +185,7 @@ function SupplierCard({ s }: { s: SupplierRecord }) {
             {aliases.map((a, i) => (
               <span
                 key={i}
-                className="rounded border border-zinc-300 px-1.5 py-0.5 text-[10px] text-muted-foreground dark:border-zinc-700"
+                className="rounded border border-zinc-300 px-1.5 py-0.5 text-[10px] text-muted-foreground dark:border-zinc-400/25"
               >
                 {a}
               </span>
@@ -245,7 +245,7 @@ function SupplierCard({ s }: { s: SupplierRecord }) {
 
         {/* Open exception cases */}
         {openCases.length > 0 ? (
-          <div className="max-h-28 space-y-1.5 overflow-y-auto rounded-lg border border-rose-200 bg-rose-50/50 p-2 dark:border-rose-900 dark:bg-rose-950/20">
+          <div className="max-h-28 space-y-1.5 overflow-y-auto rounded-lg border border-rose-200 bg-rose-50/50 p-2 dark:border-rose-900 dark:bg-rose-400/10">
             {openCases.map((c) => (
               <div key={c.ref} className="flex items-start gap-1.5">
                 <span className="mt-0.5 shrink-0 font-mono text-[10px] font-semibold">{c.ref}</span>
@@ -384,7 +384,7 @@ export function SuppliersView() {
           </p>
         </div>
         {pending > 0 ? (
-          <span className="inline-flex items-center rounded-md border border-violet-300 bg-violet-100 px-2 py-1 text-[10px] font-bold text-violet-800 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300">
+          <span className="inline-flex items-center rounded-md border border-violet-300 bg-violet-100 px-2 py-1 text-[10px] font-bold text-violet-800 dark:border-violet-400/25 dark:bg-violet-400/10 dark:text-violet-300">
             {pending} supplier{pending > 1 ? "s" : ""} pending approval — award blocked until approved
           </span>
         ) : null}

@@ -151,8 +151,8 @@ export function ReceivingView() {
                       <span
                         className={
                           pending
-                            ? "flex h-9 w-9 items-center justify-center rounded-full border border-amber-400 bg-amber-50 text-amber-700 ring-2 ring-amber-200 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300 dark:ring-amber-800"
-                            : "flex h-9 w-9 items-center justify-center rounded-full border border-zinc-300 bg-zinc-50 text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400"
+                            ? "flex h-9 w-9 items-center justify-center rounded-full border border-amber-400 bg-amber-50 text-amber-700 ring-2 ring-amber-200 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/25"
+                            : "flex h-9 w-9 items-center justify-center rounded-full border border-zinc-300 bg-zinc-50 text-zinc-600 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-400"
                         }
                       >
                         <Icon className="h-4 w-4" />
@@ -169,7 +169,7 @@ export function ReceivingView() {
                 );
               })}
             </ol>
-            <p className="mt-3 rounded-md border border-amber-300/70 bg-amber-50/60 px-2.5 py-1.5 text-xs leading-relaxed text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200">
+            <p className="mt-3 rounded-md border border-amber-300/70 bg-amber-50/60 px-2.5 py-1.5 text-xs leading-relaxed text-amber-900 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-200">
               EX-9007 (GRN-5003) is at ACTION_SUBMITTED — outcome pending verification; closure requires verified postcondition (M13).
             </p>
           </SectionCard>
@@ -291,7 +291,7 @@ export function ReceivingView() {
                                       )}
                                       {r.note && <p className="leading-relaxed text-muted-foreground">{r.note}</p>}
                                       {deduped && (
-                                        <span className="inline-flex items-center gap-1 rounded-md border border-violet-300 bg-violet-50 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-violet-800 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300">
+                                        <span className="inline-flex items-center gap-1 rounded-md border border-violet-300 bg-violet-50 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-violet-800 dark:border-violet-400/25 dark:bg-violet-400/10 dark:text-violet-300">
                                           <ShieldCheck className="h-3 w-3" /> IDEMPOTENT — duplicate webhook ignored (Rule 7)
                                         </span>
                                       )}
@@ -310,7 +310,7 @@ export function ReceivingView() {
             )}
           </SectionCard>
 
-          <Card className="border-zinc-300/70 bg-zinc-50/60 dark:border-zinc-700/60 dark:bg-zinc-900/30">
+          <Card className="border-zinc-300/70 bg-zinc-50/60 dark:border-zinc-400/25/60 dark:bg-zinc-900/30">
             <CardContent className="flex items-start gap-2 p-4">
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" />
               <p className="text-xs leading-relaxed text-muted-foreground">

@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CaseStateBadge, EvidenceBadge, FreshnessBadge } from "@/components/app/shared";
+import { ThemeToggle } from "@/components/theme-toggle";
 import {
   Activity,
   Anchor,
@@ -111,10 +112,10 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
                 }}
                 aria-current={view === it.id ? "page" : undefined}
                 className={cn(
-                  "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] font-medium transition-colors",
+                  "flex items-center gap-2.5 rounded-md border-l-2 border-transparent px-2.5 py-2 text-left text-[13px] font-medium transition-colors",
                   view === it.id
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
                 )}
               >
                 {it.icon}
@@ -131,12 +132,14 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
 function Brand() {
   return (
     <div className="flex items-center gap-2.5 px-4 pt-4">
-      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#f3dc8e] via-[#d4af37] to-[#8a6a1f] text-[#1a1408] shadow-[0_0_18px_oklch(0.79_0.135_88/25%)]">
         <Boxes className="h-5 w-5" />
       </div>
-      <div className="leading-tight">
-        <p className="text-sm font-bold tracking-tight">NASS Supply Chain Intelligence</p>
-        <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Closed-loop control tower</p>
+      <div className="min-w-0 leading-tight">
+        <p className="truncate font-display text-sm font-bold tracking-wide">
+          NASS <span className="text-gold-grad">Supply Chain Intelligence</span>
+        </p>
+        <p className="mt-0.5 text-[9px] font-medium uppercase tracking-[0.28em] text-muted-foreground">Closed-loop control tower</p>
       </div>
     </div>
   );
@@ -155,7 +158,7 @@ export default function Home() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       {/* Top bar */}
-      <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <header className="sticky top-0 z-40 border-b border-primary/15 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="flex h-14 items-center gap-3 px-4">
           {/* Mobile nav */}
           <Sheet>
@@ -189,18 +192,21 @@ export default function Home() {
           </div>
 
           <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
-            <span className="hidden md:inline-flex items-center gap-1 rounded-md border border-teal-300 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-800 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300">
+            <span className="hidden md:inline-flex items-center gap-1 rounded-md border border-teal-300 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-800 dark:border-teal-400/25 dark:bg-teal-400/10 dark:text-teal-300">
               <Gavel className="h-3 w-3" /> READ-ONLY SCOPE (M01)
             </span>
             <EvidenceBadge label="PROPOSED TARGET CAPABILITY" />
             <FreshnessBadge value="fresh" />
+            <ThemeToggle />
           </div>
         </div>
+        {/* gold hairline */}
+        <div className="hairline-gold h-px w-full" aria-hidden />
       </header>
 
       <div className="flex flex-1">
         {/* Desktop sidebar */}
-        <aside className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-64 shrink-0 border-r bg-muted/30 lg:block">
+        <aside className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-64 shrink-0 border-r border-primary/10 bg-sidebar lg:block">
           <ScrollArea className="h-full">
             <Brand />
             <Separator className="mt-3" />
@@ -213,9 +219,9 @@ export default function Home() {
           {drillRef ? (
             <button
               onClick={() => drillTo(view)}
-              className="mb-3 inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"
+              className="mb-3 inline-flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
             >
-              <XCircle className="h-3.5 w-3.5" /> Focused on {drillRef} — click to clear
+              <XCircle className="h-3.5 w-3.5" /> Focused on <span className="font-mono font-semibold">{drillRef}</span> — click to clear
             </button>
           ) : null}
           {view === "control-tower" && <ControlTowerView drillRef={drillRef} />}
@@ -236,15 +242,16 @@ export default function Home() {
       </div>
 
       {/* Sticky footer (MT layout rule): mt-auto + min-h-screen root */}
-      <footer className="mt-auto border-t bg-muted/40">
+      <footer className="mt-auto border-t border-primary/10 bg-sidebar/60">
+        <div className="hairline-gold h-px w-full" aria-hidden />
         <div className="flex flex-col items-center justify-between gap-2 px-4 py-3 text-[11px] text-muted-foreground sm:flex-row">
           <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center sm:text-left">
-            <span className="font-semibold text-foreground">NASS Closed-Loop Supply Chain Intelligence</span>
+            <span className="font-semibold text-foreground">NASS <span className="text-gold-grad">Closed-Loop Supply Chain Intelligence</span></span>
             <span>· skill spec v1.0.0</span>
             <span>· evidence-before-assertion · vessel ≠ container · verified outcomes only</span>
           </p>
           <p className="flex items-center gap-1.5 whitespace-nowrap">
-            <Anchor className="h-3 w-3" /> Modules M01–M23 · Workflows A–E · Single operational backbone
+            <Anchor className="h-3 w-3 text-primary/70" /> Modules M01–M23 · Workflows A–E · Single operational backbone
           </p>
         </div>
       </footer>

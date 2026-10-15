@@ -114,9 +114,9 @@ interface ShipmentRow {
 /* ── small local atoms ─────────────────────────────────────────────────────── */
 const CHIP =
   "inline-flex items-center whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[10px] font-semibold tracking-wide";
-const ZINC_CHIP = `${CHIP} border-zinc-300 bg-zinc-100 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300`;
+const ZINC_CHIP = `${CHIP} border-zinc-300 bg-zinc-100 text-zinc-700 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-300`;
 const ROSE_CALLOUT =
-  "rounded-md border border-rose-300 bg-rose-50 p-2 text-[11px] leading-relaxed text-rose-800 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-300";
+  "rounded-md border border-rose-300 bg-rose-50 p-2 text-[11px] leading-relaxed text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10/50 dark:text-rose-300";
 const SCROLL =
   "[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-zinc-300 [&::-webkit-scrollbar-track]:bg-transparent dark:[&::-webkit-scrollbar-thumb]:bg-zinc-700";
 
@@ -132,9 +132,9 @@ function EtaTypeBadge({ type }: { type: string }) {
   const t = (type ?? "").toLowerCase();
   const cls =
     t === "manual"
-      ? "border-violet-300 bg-violet-100 text-violet-800 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300"
+      ? "border-violet-300 bg-violet-100 text-violet-800 dark:border-violet-400/25 dark:bg-violet-400/10 dark:text-violet-300"
       : t === "model"
-        ? "border-teal-300 bg-teal-100 text-teal-800 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300"
+        ? "border-teal-300 bg-teal-100 text-teal-800 dark:border-teal-400/25 dark:bg-teal-400/10 dark:text-teal-300"
         : ZINC_CHIP;
   return <span className={`${CHIP} ${cls}`}>{t || "unknown"}</span>;
 }
@@ -142,8 +142,8 @@ function EtaTypeBadge({ type }: { type: string }) {
 /** Identity status colors per spec: RESOLVED emerald / UNRESOLVED rose / MISSING rose. */
 function identityPillCls(status: string): string {
   if (status === "RESOLVED")
-    return "border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300";
-  return "border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300";
+    return "border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-300";
+  return "border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300";
 }
 
 /** Vessel position recency — stale when older than 12 h (M11 cadence). */
@@ -235,13 +235,13 @@ export function ImportTrackingView({ drillRef }: { drillRef?: string | null }) {
                           {s.supplierPromisedEta ? ` · promised ${fmtDate(s.supplierPromisedEta)}` : ""}
                         </span>
                         {slip != null && (
-                          <span className={`${CHIP} border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300`}>
+                          <span className={`${CHIP} border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300`}>
                             +{slip}d slip
                           </span>
                         )}
                         <FreshnessBadge value={s.freshness} />
                         {s.exceptionCases.length > 0 && (
-                          <span className={`${CHIP} border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/60 dark:text-rose-300`}>
+                          <span className={`${CHIP} border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-400/25 dark:bg-rose-400/10/60 dark:text-rose-300`}>
                             <Siren className="mr-1 h-3 w-3" aria-hidden />
                             {s.exceptionCases.length} exception{s.exceptionCases.length > 1 ? "s" : ""}
                           </span>
@@ -333,7 +333,7 @@ function ShipmentDetail({ s, onDrill }: { s: ShipmentRow; onDrill: (v: ViewName,
                 <>
                   <span className="text-xs">{s.customsStatus}</span>
                   {manualCustoms && (
-                    <span className={`${CHIP} border-violet-300 bg-violet-100 text-violet-800 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300`}>
+                    <span className={`${CHIP} border-violet-300 bg-violet-100 text-violet-800 dark:border-violet-400/25 dark:bg-violet-400/10 dark:text-violet-300`}>
                       MANUAL SOURCE — never imply clearance
                     </span>
                   )}
@@ -353,7 +353,7 @@ function ShipmentDetail({ s, onDrill }: { s: ShipmentRow; onDrill: (v: ViewName,
                     type="button"
                     title={`Open ${b.bolNo} in BOL Intelligence`}
                     onClick={() => onDrill("bol-intelligence", b.bolNo)}
-                    className={`${CHIP} border-zinc-300 bg-zinc-100 font-mono text-zinc-700 hover:bg-zinc-200 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800`}
+                    className={`${CHIP} border-zinc-300 bg-zinc-100 font-mono text-zinc-700 hover:bg-zinc-200 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800`}
                   >
                     {b.bolNo} v{b.version}
                     {!b.isActive && " (superseded)"}
@@ -370,7 +370,7 @@ function ShipmentDetail({ s, onDrill }: { s: ShipmentRow; onDrill: (v: ViewName,
         title="ETA provenance (M11)"
         subtitle="Separate values per source — precedence is visible, never silent"
         right={
-          <code className="rounded-md border border-zinc-300 bg-zinc-100 px-2 py-1 font-mono text-[10px] font-semibold text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+          <code className="rounded-md border border-zinc-300 bg-zinc-100 px-2 py-1 font-mono text-[10px] font-semibold text-zinc-700 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-300">
             {s.etaPrecedencePolicy}
           </code>
         }
@@ -388,7 +388,7 @@ function ShipmentDetail({ s, onDrill }: { s: ShipmentRow; onDrill: (v: ViewName,
               <span className="tabular-nums">
                 supplier promised {fmtDate(s.supplierPromisedEta)}
                 {slip != null && (
-                  <span className={`ml-1.5 ${CHIP} border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300`}>
+                  <span className={`ml-1.5 ${CHIP} border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300`}>
                     +{slip}d slip vs PO commitment
                   </span>
                 )}
@@ -407,7 +407,7 @@ function ShipmentDetail({ s, onDrill }: { s: ShipmentRow; onDrill: (v: ViewName,
                   <EtaTypeBadge type={o.estimateType} />
                   <span className="text-xs font-medium">{o.sourceName}</span>
                   <span className="ml-auto">
-                    <span className={`${CHIP} ${o.isActive ? "border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300" : ZINC_CHIP}`}>
+                    <span className={`${CHIP} ${o.isActive ? "border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-300" : ZINC_CHIP}`}>
                       {o.isActive ? "ACTIVE" : "INACTIVE"}
                     </span>
                   </span>
@@ -520,7 +520,7 @@ function ShipmentDetail({ s, onDrill }: { s: ShipmentRow; onDrill: (v: ViewName,
       {/* d) milestone timeline */}
       <SectionCard title="Milestone timeline" subtitle="Event time and ingestion (received) time shown separately — corrections preserved">
         {s.freshness === "stale" && (
-          <div className="mb-3 rounded-md border border-orange-300 bg-orange-50 p-2.5 text-xs leading-relaxed text-orange-900 dark:border-orange-800 dark:bg-orange-950/50 dark:text-orange-300">
+          <div className="mb-3 rounded-md border border-orange-300 bg-orange-50 p-2.5 text-xs leading-relaxed text-orange-900 dark:border-orange-400/25 dark:bg-orange-400/10/50 dark:text-orange-300">
             Carrier data STALE — last successful sync {fmtDateTime(s.lastEventAt)}. Last-known values shown; provider outage — bounded retries queued
             (failure matrix row 1).
           </div>
@@ -532,16 +532,16 @@ function ShipmentDetail({ s, onDrill }: { s: ShipmentRow; onDrill: (v: ViewName,
             {milestones.map((m) => (
               <li key={m.id} className="relative">
                 <span
-                  className={`absolute -left-[26px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-zinc-950 ${DOT[m.freshness] ?? DOT.unavailable}`}
+                  className={`absolute -left-[26px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-card ${DOT[m.freshness] ?? DOT.unavailable}`}
                   aria-hidden
                 />
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-sm font-medium">{m.label}</span>
-                  <span className={`${CHIP} border-zinc-300 bg-zinc-100 font-mono text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400`}>
+                  <span className={`${CHIP} border-zinc-300 bg-zinc-100 font-mono text-zinc-600 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-400`}>
                     {m.code}
                   </span>
                   {m.isEstimated && (
-                    <span className={`${CHIP} border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300`}>
+                    <span className={`${CHIP} border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300`}>
                       ESTIMATED
                     </span>
                   )}
@@ -558,14 +558,14 @@ function ShipmentDetail({ s, onDrill }: { s: ShipmentRow; onDrill: (v: ViewName,
                   <span className="text-muted-foreground">received:</span> <span className="font-semibold">{fmtDateTime(m.receivedAt)}</span>
                 </p>
                 <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                  <span className={`${CHIP} border-zinc-300 bg-zinc-100 font-mono text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400`}>
+                  <span className={`${CHIP} border-zinc-300 bg-zinc-100 font-mono text-zinc-600 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-400`}>
                     {m.source}
                   </span>
                   {m.confidence != null && (
                     <span className="text-[10px] tabular-nums text-muted-foreground">conf {m.confidence.toFixed(2)}</span>
                   )}
                   {m.correctedByEventId && (
-                    <span className={`${CHIP} border-teal-300 bg-teal-100 font-mono text-teal-800 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300`}>
+                    <span className={`${CHIP} border-teal-300 bg-teal-100 font-mono text-teal-800 dark:border-teal-400/25 dark:bg-teal-400/10 dark:text-teal-300`}>
                       corrects {m.correctedByEventId}
                     </span>
                   )}
@@ -620,7 +620,7 @@ function ShipmentDetail({ s, onDrill }: { s: ShipmentRow; onDrill: (v: ViewName,
             {documents.map((d) => (
               <li key={d.id} className="flex flex-wrap items-center gap-2 text-xs">
                 <FileText className="h-3.5 w-3.5 text-zinc-500" aria-hidden />
-                <span className={`${CHIP} border-zinc-300 bg-zinc-100 font-mono uppercase text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400`}>
+                <span className={`${CHIP} border-zinc-300 bg-zinc-100 font-mono uppercase text-zinc-600 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-400`}>
                   {d.docType}
                 </span>
                 <span className="font-mono font-medium">{d.refNo ?? "—"}</span>

@@ -109,10 +109,10 @@ interface AssetRow {
 /* Monitoring class badge — distinct colors, class is exposed clearly (M15). */
 const CLASS_STYLE: Record<string, string> = {
   TELEMETRY_CONNECTED:
-    "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300",
-  INSPECTION_MONITORED: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300",
+    "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-400/10 dark:text-emerald-300",
+  INSPECTION_MONITORED: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-400/10 dark:text-amber-300",
   REGISTRY_ONLY: "bg-zinc-100 text-zinc-600 border-zinc-300 dark:bg-zinc-900 dark:text-zinc-400",
-  LOCATION_TRACKED: "bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950 dark:text-teal-300",
+  LOCATION_TRACKED: "bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-400/10 dark:text-teal-300",
 };
 
 function AssetClassBadge({ value }: { value: string }) {
@@ -136,10 +136,10 @@ function AssetClassBadge({ value }: { value: string }) {
 /* Condition: FAULT rose, MAINTENANCE_DUE amber, DEGRADED orange, HEALTHY emerald, UNKNOWN zinc. */
 function ConditionPill({ value }: { value: string }) {
   let cls = "bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-900 dark:text-zinc-300";
-  if (value === "FAULT") cls = "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-300";
-  else if (value === "MAINTENANCE_DUE") cls = "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300";
-  else if (value === "DEGRADED") cls = "bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-950 dark:text-orange-300";
-  else if (value === "HEALTHY") cls = "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300";
+  if (value === "FAULT") cls = "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-400/10 dark:text-rose-300";
+  else if (value === "MAINTENANCE_DUE") cls = "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-400/10 dark:text-amber-300";
+  else if (value === "DEGRADED") cls = "bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-400/10 dark:text-orange-300";
+  else if (value === "HEALTHY") cls = "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-400/10 dark:text-emerald-300";
   return (
     <span className={`inline-flex items-center whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[10px] font-semibold tracking-wide ${cls}`}>
       {value.replaceAll("_", " ")}
@@ -151,7 +151,7 @@ function ConditionPill({ value }: { value: string }) {
 function WoStatusPill({ status }: { status: string }) {
   if (status === "PARTS_PENDING")
     return (
-      <span className="inline-flex items-center whitespace-nowrap rounded-md border border-rose-300 bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
+      <span className="inline-flex items-center whitespace-nowrap rounded-md border border-rose-300 bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300">
         PARTS PENDING
       </span>
     );
@@ -161,8 +161,8 @@ function WoStatusPill({ status }: { status: string }) {
 function QualityChip({ quality }: { quality: string }) {
   const cls =
     quality === "BAD"
-      ? "border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300"
-      : "border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300";
+      ? "border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300"
+      : "border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300";
   return (
     <span className={`inline-flex items-center rounded-md border px-1 py-0.5 text-[9px] font-bold tracking-wide ${cls}`}>
       {quality}
@@ -186,7 +186,7 @@ function EvidenceChips({ refs }: { refs: string[] }) {
 function TelemetryBlock({ asset }: { asset: AssetRow }) {
   if (asset.telemetryStale) {
     return (
-      <div className="flex items-start gap-1.5 rounded-md border border-rose-300 bg-rose-50 p-2 text-[11px] leading-relaxed text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300">
+      <div className="flex items-start gap-1.5 rounded-md border border-rose-300 bg-rose-50 p-2 text-[11px] leading-relaxed text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300">
         <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <span>
           <span className="font-bold">TELEMETRY STALE</span> — last reading {fmtRelative(asset.lastTelemetryAt)}. Data-quality issue
@@ -326,10 +326,10 @@ export function AssetsView() {
                           const expired = d !== null && d < 0;
                           const soon = d !== null && d >= 0 && d < 90;
                           const cls = expired
-                            ? "border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300"
+                            ? "border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300"
                             : soon
-                              ? "border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"
-                              : "border-zinc-300 bg-zinc-100 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300";
+                              ? "border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300"
+                              : "border-zinc-300 bg-zinc-100 text-zinc-700 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-300";
                           return (
                             <span key={c.name} className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold tabular-nums ${cls}`}>
                               {c.name} · {fmtDate(c.expiresAt)}
@@ -470,15 +470,15 @@ export function AssetsView() {
                                             </span>
                                           </div>
                                           {covered ? (
-                                            <span className="inline-flex items-center rounded-md border border-emerald-300 bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                                            <span className="inline-flex items-center rounded-md border border-emerald-300 bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-emerald-800 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-300">
                                               in stock ({have}/{need})
                                             </span>
                                           ) : partial ? (
-                                            <span className="inline-flex items-center rounded-md border border-rose-300 bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                                            <span className="inline-flex items-center rounded-md border border-rose-300 bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300">
                                               SHORT {need - have} — {have} on hand vs {need} required; replenishment via procurement approvals (no autonomous PO)
                                             </span>
                                           ) : (
-                                            <span className="inline-flex items-center rounded-md border border-rose-300 bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                                            <span className="inline-flex items-center rounded-md border border-rose-300 bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300">
                                               NOT in stock — replenishment via procurement approvals (no autonomous PO)
                                             </span>
                                           )}

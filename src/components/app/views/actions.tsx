@@ -79,26 +79,26 @@ const ACTION_SIDE = ["FAILED", "COMPENSATION_REQUIRED", "CANCELLED"];
 
 /* ── Chip palettes ── */
 const RISK_CLS: Record<string, string> = {
-  SAFE: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300",
-  HIGH_RISK: "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-300",
+  SAFE: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-400/10 dark:text-emerald-300",
+  HIGH_RISK: "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-400/10 dark:text-rose-300",
 };
 const POLICY_CLS: Record<string, string> = {
-  ALLOW: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300",
-  REVIEW: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300",
-  DENY: "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-300",
+  ALLOW: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-400/10 dark:text-emerald-300",
+  REVIEW: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-400/10 dark:text-amber-300",
+  DENY: "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-400/10 dark:text-rose-300",
 };
 const CHANNEL_CLS: Record<string, string> = {
   IN_APP: "bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-900 dark:text-zinc-300",
-  EMAIL: "bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950 dark:text-teal-300",
-  SMS_WHATSAPP: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300",
-  SUPPLIER_PORTAL: "bg-violet-100 text-violet-800 border-violet-300 dark:bg-violet-950 dark:text-violet-300",
+  EMAIL: "bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-400/10 dark:text-teal-300",
+  SMS_WHATSAPP: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-400/10 dark:text-amber-300",
+  SUPPLIER_PORTAL: "bg-violet-100 text-violet-800 border-violet-300 dark:bg-violet-400/10 dark:text-violet-300",
 };
 const NTF_STATE_CLS: Record<string, string> = {
-  DELIVERED: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300",
-  SENT: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300",
+  DELIVERED: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-400/10 dark:text-emerald-300",
+  SENT: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-400/10 dark:text-amber-300",
   QUEUED: "bg-zinc-100 text-zinc-600 border-zinc-300 dark:bg-zinc-900 dark:text-zinc-400",
-  FAILED: "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-300",
-  BOUNCED: "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-300",
+  FAILED: "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-400/10 dark:text-rose-300",
+  BOUNCED: "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-400/10 dark:text-rose-300",
 };
 
 function chipCls(cls: string | undefined) {
@@ -147,7 +147,7 @@ function DecisionPanel({ action, onDone }: { action: ActionRow; onDone: () => vo
   }
 
   return (
-    <div className="space-y-3 rounded-lg border border-teal-300 bg-teal-50/60 p-3 dark:border-teal-800 dark:bg-teal-950/40">
+    <div className="space-y-3 rounded-lg border border-teal-300 bg-teal-50/60 p-3 dark:border-teal-400/25 dark:bg-teal-400/10">
       <p className="text-xs font-semibold uppercase tracking-wide text-teal-800 dark:text-teal-300">Approval gateway — decide this action</p>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
@@ -174,12 +174,12 @@ function DecisionPanel({ action, onDone }: { action: ActionRow; onDone: () => vo
           {busy === "APPROVED" ? <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}
           Approve
         </Button>
-        <Button type="button" disabled={busy !== null} onClick={() => decide("REJECTED")} variant="outline" className="border-rose-400 text-rose-700 hover:bg-rose-50 hover:text-rose-800 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-950">
+        <Button type="button" disabled={busy !== null} onClick={() => decide("REJECTED")} variant="outline" className="border-rose-400 text-rose-700 hover:bg-rose-50 hover:text-rose-800 dark:border-rose-400/25 dark:text-rose-400 dark:hover:bg-rose-400/10">
           {busy === "REJECTED" ? <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden /> : <X className="h-4 w-4" aria-hidden />}
           Reject
         </Button>
       </div>
-      <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+      <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-xs text-amber-900 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300">
         LLM output is a proposal, not an action authorization — only the action gateway executes after policy, authorization and approval checks (M18).
       </p>
     </div>
@@ -370,7 +370,7 @@ export function ActionsView({ drillRef }: { drillRef?: string | null }) {
                   <TooltipProvider delayDuration={100}>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <span className="inline-flex cursor-help items-center gap-1.5 rounded-md border border-zinc-300 bg-zinc-100 px-1.5 py-0.5 font-mono text-[10px] text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+                        <span className="inline-flex cursor-help items-center gap-1.5 rounded-md border border-zinc-300 bg-zinc-100 px-1.5 py-0.5 font-mono text-[10px] text-zinc-700 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-300">
                           <KeyRound className="h-3 w-3" /> {selected.idempotencyKey}
                         </span>
                       </TooltipTrigger>
@@ -464,12 +464,12 @@ export function ActionsView({ drillRef }: { drillRef?: string | null }) {
                     {selected.verifiedAt ? <span className="text-muted-foreground">verified {fmtDateTime(selected.verifiedAt)}</span> : null}
                   </div>
                   {selected.failureReason ? (
-                    <p className="mt-2 rounded-md border border-rose-300 bg-rose-50 px-2.5 py-2 text-xs font-medium text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                    <p className="mt-2 rounded-md border border-rose-300 bg-rose-50 px-2.5 py-2 text-xs font-medium text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300">
                       Failure reason: {selected.failureReason}
                     </p>
                   ) : null}
                   {selected.compensation ? (
-                    <p className="mt-2 rounded-md border border-orange-300 bg-orange-50 px-2.5 py-2 text-xs text-orange-900 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-300">
+                    <p className="mt-2 rounded-md border border-orange-300 bg-orange-50 px-2.5 py-2 text-xs text-orange-900 dark:border-orange-400/25 dark:bg-orange-400/10 dark:text-orange-300">
                       Compensation: {selected.compensation}
                     </p>
                   ) : null}
@@ -527,7 +527,7 @@ export function ActionsView({ drillRef }: { drillRef?: string | null }) {
                     </td>
                     <td className="py-2 pr-2">{n.recipient}</td>
                     <td className="py-2 pr-2">
-                      <span className={chipCls(n.audienceType === "EXTERNAL" ? "bg-violet-100 text-violet-800 border-violet-300 dark:bg-violet-950 dark:text-violet-300" : "bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-900 dark:text-zinc-300")}>
+                      <span className={chipCls(n.audienceType === "EXTERNAL" ? "bg-violet-100 text-violet-800 border-violet-300 dark:bg-violet-400/10 dark:text-violet-300" : "bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-900 dark:text-zinc-300")}>
                         {n.audienceType}
                       </span>
                     </td>
@@ -544,7 +544,7 @@ export function ActionsView({ drillRef }: { drillRef?: string | null }) {
             </table>
           </ScrollTable>
         )}
-        <p className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+        <p className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-xs text-amber-900 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300">
           Delivery evidence is required before &quot;supplier contacted&quot;; retries are idempotent (M19).
         </p>
       </SectionCard>

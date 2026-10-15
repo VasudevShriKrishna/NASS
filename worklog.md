@@ -148,3 +148,26 @@ Stage Summary:
 - DELIVERED: complete NASS Closed-Loop Supply Chain Intelligence control tower
 - 14 views · 19 API route files · 37 Prisma models fully seeded · M17 state machine interactive · M18 approval gateway interactive · M09 correction flow interactive · M20 grounded assistant (z-ai SDK backend)
 - Every spec rule surfaced in UI: evidence labels, freshness classes, vessel≠container, verified outcomes, idempotency, provenance
+
+---
+Task ID: 7
+Agent: main (Z.ai Code)
+Task: Luxury black-gold dark theme (dark by default) + fix overlapping/bleeding layout
+
+Work Log:
+- User rejected the light "mixture" UI; demanded dark mode by default with luxury black-gold theme; screenshot showed register-table rows bleeding over sibling sections
+- Root-caused the bleed: ScrollTable wrapped wide <table> in Radix ScrollArea (no reliable clip) → replaced with plain overflow-auto div in shared.tsx; added min-w-0 to SectionCard/KpiTile and whitespace-normal to control-tower ETA cell
+- globals.css rewritten: :root IS the black-gold dark palette now (warm near-black oklch(0.135/0.17/0.225) surfaces, gold primary oklch(0.79 0.135 88) #d8b544, gold hairline borders at 14-22% alpha, warm ivory foreground); ivory-gold light palette kept under .light for toggle; body gets fixed radial gold glow; gold ::selection; global thin gold-gradient scrollbars; utilities .text-gold-grad (metallic gradient text), .hairline-gold, .glow-gold
+- layout.tsx: added ThemeProvider (next-themes, attribute=class, defaultTheme=dark, enableSystem=false) + Playfair_Display (--font-playfair) mapped to font-display utility; metadata retitled "NASS · Closed-Loop Supply Chain Intelligence"
+- New src/components/theme-provider.tsx and src/components/theme-toggle.tsx (stateless CSS-driven Sun/Moon toggle — icons swap via .dark class, no mounted-state/hydration issues; passes react-hooks/set-state-in-effect)
+- shared.tsx: all badges (Freshness/Evidence/Reconciliation/CaseState/StatusPill) restyled to translucent dark-gold system (dark:bg-{c}-400/10 dark:text-{c}-300 dark:border-{c}-400/25) with light fallbacks; SeverityBadge CRITICAL gets rose glow shadow; KpiTile now font-display serif numerals + corner gold blur glow + gold hover ring; SectionCard header gains gold accent tick + border-b; PROPOSED TARGET CAPABILITY evidence badge is now gold (brand accent)
+- page.tsx shell: gradient-gold logo box with glow, serif gold brand, gold hairline under sticky header and above footer, sidebar uses bg-sidebar + border-primary/10, active nav gets 2px gold left bar, drill chip now gold, ThemeToggle in header, footer gold hairline
+- control-tower.tsx: serif view title, muted freshness-bar track, gold drill highlights (was amber), translucent SLIPPED chip, ETA cell whitespace-normal
+- Batch-normalized ALL 14 views via sed: dark:bg-*-950 slabs → dark:bg-*-400/10, dark:border-*-800/700 → dark:border-*-400/25, dark:ring-*-800 → /25; architecture.tsx bg-white → bg-card; import-tracking timeline dot dark:border-card; actions hover rose translucent
+- Verified: bun run lint 0 errors, tsc src clean, dev 200s; Agent Browser E2E: dark renders by default (gold serif KPIs, translucent badges, no overlap in exception queue/risk signals area from user's screenshot), footer sticky, theme toggle dark↔light works both ways, KPI drill-through → exceptions view, EX-9001 row click opens dossier (gold highlight + evidence bundle), mobile 390px stacks KPIs 2-col and register table scrolls inside clip; console clean
+
+Stage Summary:
+- App is now dark-by-default luxury black-gold: warm onyx surfaces, metallic gold primary/hairlines/scrollbars, Playfair display serif for brand + KPI numerals, translucent status badges everywhere
+- Fixed the content-bleed bug (Radix ScrollArea → overflow-auto) that caused rows to paint over sections
+- Light ivory-gold theme remains available via header toggle; dark persists via next-themes
+- Files: globals.css, layout.tsx, page.tsx, shared.tsx, control-tower.tsx, architecture.tsx, all view files (batch sed), new theme-provider.tsx + theme-toggle.tsx
