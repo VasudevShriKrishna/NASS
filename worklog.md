@@ -438,3 +438,26 @@ Stage Summary:
 - Public-URL blocker root-caused (OOM-killed unsupervised dev server, kernel-log evidence) and corrected with restart + supervision scripts + documented one-command recovery; "Deploying..." state reproducible only when the box OOMs the server, now auto-covered while the watchdog lives and one-shot recoverable otherwise.
 - Operation map now runs on the requested ArcGIS (Esri World Dark Gray Canvas) basemap inside the black-gold theme, with the bundled world geometry retained as a graceful offline fallback and full Esri attribution; zero regressions across camera, dossier, tooltips, PDFs, assistant, 14 views, 390px.
 - Files: EDIT src/components/app/map/operation-map.tsx (baseStyle raster source+layer, header comments), src/components/app/views/live.tsx (legend Esri credit); NEW scripts/dev-watchdog.sh, scripts/dev-guard-once.sh, watchdog.log (runtime log). No other files touched; no data, schema, API-contract, or design changes.
+
+---
+Task ID: 12-r1
+Agent: main (Z.ai Code)
+Task: Post-Task-12 continuity pass — session resumed with port 3000 dead again; restore service, root-cause the recurring death pattern, and harden the recovery recipe (no application-code changes).
+
+Work Log:
+- Confirmed Task 12 deliverables intact in worklog; uploaded Master Prompt file re-read (same spec, no new requirements).
+- Found port 3000 with NO listener and zero dev processes. watchdog.log showed cron-guard relaunches at 10:39:49 and 11:29:24 claiming "relaunched OK" — both servers subsequently died.
+- dmesg evidence: OOM kills at [23491] and [35592] (next-server anon-rss 2,313,820 kB and 2,206,028 kB) — these are the two cron-guard-launched servers, killed by kernel BEFORE this session's work. Root-cause refinement: the killer is not only parallel API bursts; anything that stacks Turbopack compile jobs (public preview panel hammering `/` right after boot + monitor sweeps) pushes RSS past ~2.2GB on this 4GB/0-swap box.
+- My own restarts A and B both compiled `/` successfully (HTTP 200) then died SILENTLY within ~1–2 min with no fresh OOM entry → harness-reaping pattern (documented in Task 12) remains the second killer.
+- Attempted swap as durable fix: mkswap+swapon → "Operation not permitted" (sandbox denies). Discarded.
+- NEW scripts/dev-warmup.sh: discovers all 28 API routes from src/app/api/**/route.ts + root; curls them ONE AT A TIME (1.2s gap, 2 retries on 000, --max-time 120); GETs only (POST-only routes answer 405 which still compiles them — zero side effects); logs to watchdog.log; exit 2 when server dies mid-warmup.
+- EDIT scripts/dev-guard-once.sh (2 lines): after a successful relaunch it now fires dev-warmup.sh detached, so every automatic relaunch self-warms instead of re-entering the OOM window.
+- NEW scripts/dev-up.sh: the durable one-command recovery — up to 6 cycles of (guard-once → sleep 6 → warmup), resuming across deaths since compiled routes return instantly. Ran it: **SUCCESS attempt 1, 29/29 routes warm (root + 28 APIs), zero deaths during warmup**.
+- Verified steady state: next-server RSS 2,431MB fully warm (vs 2.2–2.4GB kernel kill zone during compiles — safe because no compiles remain), 1,094MB available, root HTTP 200, no new OOM kills.
+- Browser E2E (agent-browser): page loads, title "NASS · Closed-Loop Control Tower", zero page errors; Control Tower landing shows live KPIs (7 active shipments, 10 open exceptions, connector health 7/10, BOL review 2, asset faults 1). Live Traceability: maplibre canvas mounts, 8 vessel aria-labels, **21 Esri World_Dark_Gray_Base tile requests all HTTP 200** (ArcGIS basemap live). Fleet-rail click SHP-8801 → full dossier: IN TRANSIT/FRESH chips, MSC AURORA 70.1% slider, DESTINATION VERIFIED · KHALIFA BIN SALMAN PORT BH, estimated corridor 6,042 NM (per-vessel waypoint geometry — SHP-8801's own value; Task 12's 3,864 NM belonged to another vessel), leg chain L1 ROAD/L2 OCEAN/L3 ROAD, arrival countdown 9d 19h 33m, SLIPPED vs PROMISE chip. 390px viewport: scrollWidth-clientWidth = 0 (zero overflow), dossier intact. Screenshots: e2e-mobile-restore.png (kept as evidence). Server survived entire browser session (root 200, RSS stable 2,403MB).
+- Removed misnamed screenshot artifact ("--viewport" file) left by a CLI flag slip.
+
+Stage Summary:
+- Recurring-death root cause refined: kernel OOM from stacked Turbopack compiles (evidence: two cron-guard servers at 2.2–2.3GB anon-rss) + silent harness reaping. Mitigation implemented and VERIFIED: sequential warmup removes the OOM burst factor; dev-up.sh retries across silent deaths; cron-guard now self-warms after every relaunch. swapon denied by sandbox — documented.
+- Recovery recipe is now a single command: `bash scripts/dev-up.sh`. Application code untouched: only scripts/dev-warmup.sh (NEW), scripts/dev-up.sh (NEW), scripts/dev-guard-once.sh (+2 lines warmup hook). No schema, API, UI, or design changes; zero regressions in E2E.
+- Operational note: fully-warm steady-state RSS ≈ 2.4GB with ~1.1GB free — do NOT trigger recompiles (no `touch` of app files, no hard reloads of never-visited routes) or the OOM window re-opens; if it does, rerun dev-up.sh.
