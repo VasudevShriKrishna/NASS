@@ -615,7 +615,7 @@ function BolDetail({ b, onDrill, onCorrected }: { b: BolRow; onDrill: (v: ViewNa
       </SectionCard>
 
       {/* c) reconciliation results */}
-      <SectionCard title="Reconciliation results" subtitle="Cross-document rules with versions — PASS / WARN / FAIL / NOT_CHECKED (§15)">
+      <SectionCard title="Reconciliation results" subtitle="Cross-document rules with versions — PASS / WARN / FAIL / NOT_CHECKED">
         {anyFail && (
           <div className="mb-3 rounded-md border border-rose-300 bg-rose-50 p-2.5 text-xs leading-relaxed text-rose-900 dark:border-rose-400/25 dark:bg-rose-400/10/50 dark:text-rose-300">
             Reconciliation FAIL present — discrepancies require human review before this BOL can be published as verified (M09).
@@ -667,7 +667,7 @@ function BolDetail({ b, onDrill, onCorrected }: { b: BolRow; onDrill: (v: ViewNa
         </div>
         {anyNotChecked && (
           <p className="mt-3 rounded-md border border-zinc-300 bg-muted/50 p-2 text-[11px] text-muted-foreground dark:border-zinc-400/25">
-            NOT_CHECKED must not be treated as PASS (§15).
+            NOT_CHECKED must not be treated as PASS.
           </p>
         )}
       </SectionCard>

@@ -143,7 +143,7 @@ export function ArchitectureView() {
         <AccordionItem value="s-purpose" className="rounded-lg border bg-card px-4">
           <AccordionTrigger className="hover:no-underline">
             <span className="flex items-center gap-2 text-sm font-semibold">
-              <Badge variant="outline" className="font-mono">§2</Badge> 1. Purpose &amp; operating context
+              <Badge variant="outline" className="font-mono">2</Badge> 1. Purpose &amp; operating context
             </span>
           </AccordionTrigger>
           <AccordionContent className="space-y-3">
@@ -168,7 +168,7 @@ export function ArchitectureView() {
         <AccordionItem value="s-rules" className="rounded-lg border bg-card px-4">
           <AccordionTrigger className="hover:no-underline">
             <span className="flex items-center gap-2 text-sm font-semibold">
-              <Badge variant="outline" className="font-mono">§3</Badge> 2. Non-negotiable design rules
+              <Badge variant="outline" className="font-mono">3</Badge> 2. Non-negotiable design rules
             </span>
           </AccordionTrigger>
           <AccordionContent>
@@ -184,7 +184,7 @@ export function ArchitectureView() {
         <AccordionItem value="s-arch" className="rounded-lg border bg-card px-4">
           <AccordionTrigger className="hover:no-underline">
             <span className="flex items-center gap-2 text-sm font-semibold">
-              <Badge variant="outline" className="font-mono">§7</Badge> 3. Reference architecture
+              <Badge variant="outline" className="font-mono">7</Badge> 3. Reference architecture
             </span>
           </AccordionTrigger>
           <AccordionContent className="space-y-4">
@@ -206,7 +206,7 @@ export function ArchitectureView() {
         <AccordionItem value="s-entities" className="rounded-lg border bg-card px-4">
           <AccordionTrigger className="hover:no-underline">
             <span className="flex items-center gap-2 text-sm font-semibold">
-              <Badge variant="outline" className="font-mono">§8.1</Badge> 4. Canonical entities &amp; relationship rules
+              <Badge variant="outline" className="font-mono">8.1</Badge> 4. Canonical entities &amp; relationship rules
             </span>
           </AccordionTrigger>
           <AccordionContent className="space-y-4">
@@ -231,7 +231,7 @@ export function ArchitectureView() {
               </table>
             </div>
             <div>
-              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Relationship rules (§8.2)</p>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Relationship rules (spec 8.2)</p>
               <ul className="list-disc space-y-1 pl-5">
                 {RELATIONSHIP_RULES.map((r) => (
                   <li key={r} className="text-sm leading-relaxed">
@@ -247,7 +247,7 @@ export function ArchitectureView() {
         <AccordionItem value="s-modules" className="rounded-lg border bg-card px-4">
           <AccordionTrigger className="hover:no-underline">
             <span className="flex items-center gap-2 text-sm font-semibold">
-              <Badge variant="outline" className="font-mono">§9</Badge> 5. Modules M01–M23
+              <Badge variant="outline" className="font-mono">9</Badge> 5. Modules M01–M23
             </span>
           </AccordionTrigger>
           <AccordionContent>
@@ -299,7 +299,7 @@ export function ArchitectureView() {
         <AccordionItem value="s-workflows" className="rounded-lg border bg-card px-4">
           <AccordionTrigger className="hover:no-underline">
             <span className="flex items-center gap-2 text-sm font-semibold">
-              <Badge variant="outline" className="font-mono">§10</Badge> 6. Closed-loop workflows A–E
+              <Badge variant="outline" className="font-mono">10</Badge> 6. Closed-loop workflows A–E
             </span>
           </AccordionTrigger>
           <AccordionContent className="space-y-4">
@@ -343,11 +343,11 @@ export function ArchitectureView() {
         <AccordionItem value="s-contracts" className="rounded-lg border bg-card px-4">
           <AccordionTrigger className="hover:no-underline">
             <span className="flex items-center gap-2 text-sm font-semibold">
-              <Badge variant="outline" className="font-mono">§11</Badge> 7. Event &amp; API contracts
+              <Badge variant="outline" className="font-mono">11</Badge> 7. Event &amp; API contracts
             </span>
           </AccordionTrigger>
           <AccordionContent className="space-y-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Event envelope (§11.1)</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Event envelope (spec 11.1)</p>
             <pre className="overflow-auto rounded-md border bg-muted/40 p-3 font-mono text-xs leading-relaxed">{EVENT_ENVELOPE}</pre>
             <div>
               <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">API groups</p>
@@ -366,7 +366,7 @@ export function ArchitectureView() {
         <AccordionItem value="s-machines" className="rounded-lg border bg-card px-4">
           <AccordionTrigger className="hover:no-underline">
             <span className="flex items-center gap-2 text-sm font-semibold">
-              <Badge variant="outline" className="font-mono">§13.1</Badge> 8. State machines per domain
+              <Badge variant="outline" className="font-mono">13.1</Badge> 8. State machines per domain
             </span>
           </AccordionTrigger>
           <AccordionContent className="space-y-4">
@@ -391,7 +391,7 @@ export function ArchitectureView() {
         <AccordionItem value="s-failure" className="rounded-lg border bg-card px-4">
           <AccordionTrigger className="hover:no-underline">
             <span className="flex items-center gap-2 text-sm font-semibold">
-              <Badge variant="outline" className="font-mono">§12</Badge> 9. Runtime failure matrix
+              <Badge variant="outline" className="font-mono">12</Badge> 9. Runtime failure matrix
             </span>
           </AccordionTrigger>
           <AccordionContent>
@@ -422,12 +422,12 @@ export function ArchitectureView() {
         <AccordionItem value="s-quality" className="rounded-lg border bg-card px-4">
           <AccordionTrigger className="hover:no-underline">
             <span className="flex items-center gap-2 text-sm font-semibold">
-              <Badge variant="outline" className="font-mono">§15/§16</Badge> 10. Data quality rules &amp; metrics
+              <Badge variant="outline" className="font-mono">15/16</Badge> 10. Data quality rules &amp; metrics
             </span>
           </AccordionTrigger>
           <AccordionContent className="space-y-4">
             <div>
-              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Data quality rules (§15)</p>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Data quality rules (spec 15)</p>
               <ul className="list-disc space-y-1 pl-5">
                 {DATA_QUALITY_RULES.map((r) => (
                   <li key={r} className="text-sm leading-relaxed">
@@ -437,7 +437,7 @@ export function ArchitectureView() {
               </ul>
             </div>
             <div>
-              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Metrics (§16)</p>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Metrics (spec 16)</p>
               <ul className="list-disc space-y-1 pl-5">
                 {METRICS.map((m) => (
                   <li key={m} className="text-sm leading-relaxed">
@@ -453,7 +453,7 @@ export function ArchitectureView() {
         <AccordionItem value="s-phases" className="rounded-lg border bg-card px-4">
           <AccordionTrigger className="hover:no-underline">
             <span className="flex items-center gap-2 text-sm font-semibold">
-              <Badge variant="outline" className="font-mono">§17</Badge> 11. Implementation phases &amp; decision gates
+              <Badge variant="outline" className="font-mono">17</Badge> 11. Implementation phases &amp; decision gates
             </span>
           </AccordionTrigger>
           <AccordionContent>
@@ -475,7 +475,7 @@ export function ArchitectureView() {
         <AccordionItem value="s-evidence" className="rounded-lg border bg-card px-4">
           <AccordionTrigger className="hover:no-underline">
             <span className="flex items-center gap-2 text-sm font-semibold">
-              <Badge variant="outline" className="font-mono">§18</Badge> 12. Evidence map &amp; vocabulary
+              <Badge variant="outline" className="font-mono">18</Badge> 12. Evidence map &amp; vocabulary
             </span>
           </AccordionTrigger>
           <AccordionContent className="space-y-4">
@@ -521,7 +521,7 @@ export function ArchitectureView() {
         <AccordionItem value="s-twopass" className="rounded-lg border bg-card px-4">
           <AccordionTrigger className="hover:no-underline">
             <span className="flex items-center gap-2 text-sm font-semibold">
-              <Badge variant="outline" className="font-mono">§20</Badge> 13. Two-pass review
+              <Badge variant="outline" className="font-mono">20</Badge> 13. Two-pass review
             </span>
           </AccordionTrigger>
           <AccordionContent>
@@ -547,7 +547,7 @@ export function ArchitectureView() {
         <AccordionItem value="s-output" className="rounded-lg border bg-card px-4">
           <AccordionTrigger className="hover:no-underline">
             <span className="flex items-center gap-2 text-sm font-semibold">
-              <Badge variant="outline" className="font-mono">§21</Badge> 14. Output format
+              <Badge variant="outline" className="font-mono">21</Badge> 14. Output format
             </span>
           </AccordionTrigger>
           <AccordionContent>

@@ -39,7 +39,7 @@ export function FreshnessBadge({ value, className }: { value: string | null | un
   );
 }
 
-/* ── Evidence labels (Rule 2 / §18.1) ── */
+/* ── Evidence labels (Rule 2) ── */
 export function EvidenceBadge({ label, className }: { label: string | null | undefined; className?: string }) {
   const map: Record<string, string> = {
     "PUBLICLY EVIDENCED": "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-400/10 dark:text-emerald-300 dark:border-emerald-400/25",
@@ -56,7 +56,7 @@ export function EvidenceBadge({ label, className }: { label: string | null | und
   );
 }
 
-/* ── Reconciliation result (§15): PASS | WARN | FAIL | NOT_CHECKED ── */
+/* ── Reconciliation result: PASS | WARN | FAIL | NOT_CHECKED ── */
 export function ReconciliationBadge({ result, className }: { result: string; className?: string }) {
   const map: Record<string, string> = {
     PASS: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-400/10 dark:text-emerald-300 dark:border-emerald-400/25",

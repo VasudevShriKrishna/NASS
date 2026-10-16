@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-/** Standard API helpers — every endpoint returns correlation id + consistent errors (§11.1). */
+/** Standard API helpers — every endpoint returns correlation id + consistent errors. */
 export function corrId(): string {
   return `corr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
