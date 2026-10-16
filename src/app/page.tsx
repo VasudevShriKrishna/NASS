@@ -12,6 +12,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { LiveTraceabilityView } from "@/components/app/views/live";
 import { PageFade, PulsingDot } from "@/components/app/motion";
 import { LiveClock } from "@/components/app/live-clock";
+import { AmbientGoldField } from "@/components/app/ambient";
 import {
   Activity,
   Anchor,
@@ -151,8 +152,17 @@ function Brand() {
 }
 
 export default function Home() {
-  const { view, drill, drillTo, clearDrill } = useAppStore();
+  const { view, setView, drill, drillTo, clearDrill, openTrace } = useAppStore();
   const [navOpen, setNavOpen] = useState(false);
+
+  // Deep links: /?view=trace[&ship=SHP-8801] opens the Live Command overlay (shareable, new-tab safe)
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("view") === "trace") {
+      const ship = q.get("ship");
+      openTrace(ship);
+    }
+  }, [openTrace]);
 
   // Consume cross-view drill once the target view mounts.
   useEffect(() => {
@@ -162,7 +172,10 @@ export default function Home() {
   const drillRef = drill?.view === view ? drill.ref : null;
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="isolate flex min-h-screen flex-col bg-background">
+      {/* Ambient gold field — drifting glow + specks (behind all content) */}
+      <AmbientGoldField />
+
       {/* Top bar */}
       <header className="sticky top-0 z-40 border-b border-primary/15 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="flex h-14 items-center gap-3 px-4">
@@ -195,9 +208,14 @@ export default function Home() {
             <h1 className="text-sm font-semibold tracking-tight">
               {NAV.flatMap((g) => g.items).find((i) => i.id === view)?.label ?? "Control Tower"}
             </h1>
-            <span className="ml-1 hidden items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-primary md:inline-flex">
-              <PulsingDot /> live
-            </span>
+            <button
+              type="button"
+              onClick={() => openTrace()}
+              title="Open the Live Traceability Command View"
+              className="ml-1 hidden cursor-pointer items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-primary transition-colors hover:bg-primary/20 md:inline-flex"
+            >
+              <PulsingDot /> live map
+            </button>
             <LiveClock
               prefix="ops"
               className="hidden xl:inline-flex items-center rounded-md border border-border/70 bg-card/60 px-2 py-1 text-[11px] font-semibold"
@@ -238,7 +256,6 @@ export default function Home() {
               <XCircle className="h-3.5 w-3.5" /> Focused on <span className="font-mono font-semibold">{drillRef}</span> — click to clear
             </button>
           ) : null}
-          {view === "live" && <LiveTraceabilityView drillRef={drillRef} />}
           {view === "control-tower" && <ControlTowerView drillRef={drillRef} />}
           {view === "procurement" && <ProcurementView />}
           {view === "suppliers" && <SuppliersView />}
@@ -271,6 +288,11 @@ export default function Home() {
           </p>
         </div>
       </footer>
+
+      {/* Live Traceability Command View — full-screen overlay.
+          Rendered OUTSIDE PageFade/main: framer-motion's filter on PageFade
+          would trap position:fixed inside a transformed containing block. */}
+      {view === "live" && <LiveTraceabilityView drillRef={drillRef} />}
     </div>
   );
 }

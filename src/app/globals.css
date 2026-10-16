@@ -215,3 +215,57 @@
     background-position: -200% center;
   }
 }
+
+/* ─── Live map theme variables ──────────────────────────────────────────── */
+:root,
+.dark {
+  --map-land: oklch(0.215 0.012 85);
+  --map-land-hover: oklch(0.25 0.018 85);
+  --map-land-stroke: oklch(0.79 0.135 88 / 12%);
+  --map-graticule: oklch(0.79 0.135 88 / 5.5%);
+  --map-ocean-a: oklch(0.15 0.008 85 / 0%);
+  --map-ocean-b: oklch(0.79 0.135 88 / 4%);
+}
+.light,
+:root:not(.dark) {
+  --map-land: oklch(0.9 0.018 88);
+  --map-land-hover: oklch(0.86 0.028 88);
+  --map-land-stroke: oklch(0.55 0.09 85 / 22%);
+  --map-graticule: oklch(0.55 0.09 85 / 7%);
+  --map-ocean-a: oklch(0.97 0.01 90 / 0%);
+  --map-ocean-b: oklch(0.55 0.09 85 / 5%);
+}
+
+/* ─── Ambient gold field (drifting glow blobs + floating specks) ────────── */
+@keyframes ambient-drift-a {
+  0% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.75; }
+  100% { transform: translate3d(4%, 7%, 0) scale(1.14); opacity: 1; }
+}
+@keyframes ambient-drift-b {
+  0% { transform: translate3d(0, 0, 0) scale(1.06); opacity: 0.6; }
+  100% { transform: translate3d(-7%, -6%, 0) scale(0.94); opacity: 0.9; }
+}
+@keyframes ambient-drift-c {
+  0% { transform: translate3d(0, 0, 0) scale(0.95); opacity: 0.7; }
+  100% { transform: translate3d(-5%, 8%, 0) scale(1.1); opacity: 1; }
+}
+@keyframes speck-float {
+  0% { transform: translateY(0); opacity: 0; }
+  14% { opacity: 0.85; }
+  86% { opacity: 0.35; }
+  100% { transform: translateY(-72px); opacity: 0; }
+}
+
+/* Hourly snapshot landing pulse over the map */
+@keyframes map-flash {
+  0% { opacity: 0; }
+  20% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ambient-field *,
+  .map-flash-layer {
+    animation: none !important;
+  }
+}

@@ -6,6 +6,7 @@ import {
   BellRing,
   FileWarning,
   PlugZap,
+  RadioTower,
   RefreshCw,
   Ship,
   Wrench,
@@ -145,6 +146,7 @@ function FreshnessBar({ counts }: { counts: OverviewPayload["kpis"]["freshness"]
 export function ControlTowerView({ drillRef }: { drillRef?: string | null }) {
   const { data, loading, error, asOf, refresh } = useApi<OverviewPayload>("/api/overview", [], 60_000);
   const drillTo = useAppStore((s) => s.drillTo);
+  const openTrace = useAppStore((s) => s.openTrace);
 
   const stockOrder = useMemo(
     () => ["available", "reserved", "quarantined", "damaged", "inTransit", "inspectionPending"],
@@ -162,9 +164,20 @@ export function ControlTowerView({ drillRef }: { drillRef?: string | null }) {
             row-level records
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={refresh}>
-          <RefreshCw className="h-4 w-4" /> Refresh
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 border-primary/30 text-primary hover:bg-primary/10 hover:text-primary"
+            onClick={() => openTrace()}
+            title="Open the Live Traceability Command View (animated world map)"
+          >
+            <RadioTower className="h-4 w-4" /> Live Map
+          </Button>
+          <Button variant="outline" size="sm" onClick={refresh}>
+            <RefreshCw className="h-4 w-4" /> Refresh
+          </Button>
+        </div>
       </div>
 
       {loading && !data ? <LoadingState /> : null}
@@ -175,12 +188,14 @@ export function ControlTowerView({ drillRef }: { drillRef?: string | null }) {
           {/* KPI tiles — M21: every tile drills to row-level records */}
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
             <KpiTile
+              index={0}
               label="Active shipments"
               value={data.kpis.activeShipments}
               icon={<Ship className="h-4 w-4 text-muted-foreground" />}
               onClick={() => drillTo("import-tracking")}
             />
             <KpiTile
+              index={1}
               label="Open exceptions"
               value={data.kpis.openExceptions}
               tone={data.kpis.openExceptions > 0 ? "bad" : "good"}
@@ -189,6 +204,7 @@ export function ControlTowerView({ drillRef }: { drillRef?: string | null }) {
               onClick={() => drillTo("exceptions")}
             />
             <KpiTile
+              index={2}
               label="Overdue cases"
               value={data.kpis.overdueCases.length}
               tone={data.kpis.overdueCases.length > 0 ? "bad" : "good"}
@@ -197,6 +213,7 @@ export function ControlTowerView({ drillRef }: { drillRef?: string | null }) {
               onClick={() => drillTo("exceptions")}
             />
             <KpiTile
+              index={3}
               label="Connector health"
               value={`${data.kpis.connectorHealth.healthy}/${data.kpis.connectorHealth.total}`}
               tone={data.kpis.connectorHealth.outage > 0 ? "warn" : data.kpis.connectorHealth.total > 0 ? "good" : "default"}
@@ -205,6 +222,7 @@ export function ControlTowerView({ drillRef }: { drillRef?: string | null }) {
               onClick={() => drillTo("governance")}
             />
             <KpiTile
+              index={4}
               label="BOL needs review"
               value={data.kpis.bolStats.needsReview}
               tone={data.kpis.bolStats.needsReview > 0 ? "warn" : "good"}
@@ -213,6 +231,7 @@ export function ControlTowerView({ drillRef }: { drillRef?: string | null }) {
               onClick={() => drillTo("bol-intelligence")}
             />
             <KpiTile
+              index={5}
               label="Asset faults"
               value={data.kpis.assetsFault}
               tone={data.kpis.assetsFault > 0 ? "bad" : "good"}

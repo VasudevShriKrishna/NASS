@@ -1,0 +1,841 @@
+     1→     1→// NASS Closed-Loop Supply Chain Intelligence — canonical data model
+     2→     2→// Implements §8.1 Core entities and §8.2 relationship rules of the skill spec.
+     3→     3→// SQLite: enums are modeled as strings with documented allowed values.
+     4→     4→
+     5→     5→generator client {
+     6→     6→  provider = "prisma-client-js"
+     7→     7→}
+     8→     8→
+     9→     9→datasource db {
+    10→    10→  provider = "sqlite"
+    11→    11→  url      = env("DATABASE_URL")
+    12→    12→}
+    13→    13→
+    14→    14→// ─── 8.1 #1 LegalEntity / BusinessUnit ───────────────────────────────────────
+    15→    15→model LegalEntity {
+    16→    16→  id       String @id @default(cuid())
+    17→    17→  code     String @unique
+    18→    18→  name     String
+    19→    19→  country  String
+    20→    20→  role     String // owner operating unit
+    21→    21→
+    22→    22→  purchaseOrders PurchaseOrder[]
+    23→    23→}
+    24→    24→
+    25→    25→// ─── 8.1 #2 Project / Site ───────────────────────────────────────────────────
+    26→    26→model Project {
+    27→    27→  id           String  @id @default(cuid())
+    28→    28→  code         String  @unique
+    29→    29→  name         String
+    30→    30→  site         String
+    31→    31→  legalEntityId String?
+    32→    32→  workPackage  String?
+    33→    33→  costCode     String?
+    34→    34→  status       String  @default("ACTIVE")
+    35→    35→  purchaseRequests     PurchaseRequest[]
+    36→    36→  inventoryLots        InventoryLot[]
+    37→    37→  purchaseOrders       PurchaseOrder[]
+    38→    38→  materialRequirements MaterialRequirement[]
+    39→    39→}
+    40→    40→
+    41→    41→// ─── 8.1 #3 Supplier / Vendor ────────────────────────────────────────────────
+    42→    42→model Supplier {
+    43→    43→  id             String   @id @default(cuid())
+    44→    44→  code           String   @unique
+    45→    45→  name           String
+    46→    46→  aliases        String? // JSON array of alias names
+    47→    47→  country        String
+    48→    48→  city           String?
+    49→    49→  status         String   @default("APPROVED") // APPROVED | PENDING | INACTIVE | BLACKLISTED
+    50→    50→  categories     String? // JSON array
+    51→    51→  incoterms      String?
+    52→    52→  leadTimeDays   Int?
+    53→    53→  paymentTerms   String?
+    54→    54→  certifications String? // JSON array {name, expiresAt}
+    55→    55→  contacts       String? // JSON array
+    56→    56→  evidenceLabel  String   @default("PROPOSED TARGET CAPABILITY")
+    57→    57→  createdAt      DateTime @default(now())
+    58→    58→
+    59→    59→  quotes    Quote[]
+    60→    60→  contracts Contract[]
+    61→    61→  pos       PurchaseOrder[]
+    62→    62→  shipments Shipment[]
+    63→    63→  scoreSnapshots SupplierScoreSnapshot[]
+    64→    64→  riskSignals RiskSignal[]
+    65→    65→  exceptionCases ExceptionCase[]
+    66→    66→}
+    67→    67→
+    68→    68→// ─── 8.1 #4 Material / SKU / Part ────────────────────────────────────────────
+    69→    69→model Material {
+    70→    70→  id          String @id @default(cuid())
+    71→    71→  sku         String @unique
+    72→    72→  name        String
+    73→    73→  description String?
+    74→    74→  uom         String
+    75→    75→  category    String?
+    76→    76→  criticality String  @default("STANDARD") // CRITICAL | HIGH | STANDARD
+    77→    77→  mpn         String? // manufacturer part number
+    78→    78→  storageConditions String?
+    79→    79→  aliases     String? // JSON array of controlled aliases
+    80→    80→
+    81→    81→  prLines      PRLine[]
+    82→    82→  poLines      POLine[]
+    83→    83→  inventoryLots InventoryLot[]
+    84→    84→  receipts     GoodsReceipt[]
+    85→    85→  materialRequirements MaterialRequirement[]
+    86→    86→}
+    87→    87→
+    88→    88→// ─── 8.1 #5 PurchaseRequest ──────────────────────────────────────────────────
+    89→    89→// PR states: DRAFT, SUBMITTED, NEEDS_INFO, PENDING_APPROVAL, APPROVED, SOURCING,
+    90→    90→//            ORDERED, PARTIALLY_FULFILLED, FULFILLED, CANCELLED
+    91→    91→model PurchaseRequest {
+    92→    92→  id             String   @id @default(cuid())
+    93→    93→  ref            String   @unique
+    94→    94→  requester      String
+    95→    95→  projectId      String?
+    96→    96→  channel        String   @default("FORM") // FORM | ERP | EMAIL | SPREADSHEET
+    97→    97→  status         String   @default("DRAFT")
+    98→    98→  priority       String   @default("NORMAL") // CRITICAL | HIGH | NORMAL | LOW
+    99→    99→  requiredOnSite DateTime?
+   100→   100→  justification  String?
+   101→   101→  costCode       String?
+   102→   102→  sourceRef      String? // original email/form reference
+   103→   103→  duplicateOfId  String? // duplicate detection links to existing PR
+   104→   104→  evidenceLabel  String   @default("PROPOSED TARGET CAPABILITY")
+   105→   105→  createdAt      DateTime @default(now())
+   106→   106→  updatedAt      DateTime @updatedAt
+   107→   107→
+   108→   108→  project Project? @relation(fields: [projectId], references: [id])
+   109→   109→  lines   PRLine[]
+   110→   110→  rfqs    RFQ[]
+   111→   111→}
+   112→   112→
+   113→   113→// (PRLine.material relation declared below Material)
+   114→   114→
+   115→   115→model PRLine {
+   116→   116→  id         String  @id @default(cuid())
+   117→   117→  prId       String
+   118→   118→  materialId String
+   119→   119→  quantity   Float
+   120→   120→  uom        String
+   121→   121→  note       String?
+   122→   122→
+   123→   123→  pr       PurchaseRequest @relation(fields: [prId], references: [id])
+   124→   124→  material Material        @relation(fields: [materialId], references: [id])
+   125→   125→}
+   126→   126→
+   127→   127→// ─── 8.1 #6 RFQ / SupplierResponse ───────────────────────────────────────────
+   128→   128→model RFQ {
+   129→   129→  id        String   @id @default(cuid())
+   130→   130→  ref       String   @unique
+   131→   131→  prId      String
+   132→   132→  status    String   @default("ISSUED") // ISSUED | RESPONDED | AWARDED | CANCELLED | EXPIRED
+   133→   133→  dueDate   DateTime?
+   134→   134→  criteria  String? // JSON: authorized/approved criteria for shortlist
+   135→   135→  createdAt DateTime @default(now())
+   136→   136→
+   137→   137→  pr     PurchaseRequest @relation(fields: [prId], references: [id])
+   138→   138→  quotes Quote[]
+   139→   139→}
+   140→   140→
+   141→   141→model Quote {
+   142→   142→  id           String   @id @default(cuid())
+   143→   143→  rfqId        String
+   144→   144→  supplierId   String
+   145→   145→  version      Int      @default(1)
+   146→   146→  currency     String   @default("USD")
+   147→   147→  unitPrice    Float
+   148→   148→  leadTimeDays Int
+   149→   149→  incoterms    String?
+   150→   150→  validity     DateTime?
+   151→   151→  deviations   String? // JSON: technical/compliance deviations
+   152→   152→  landedCost   Float?
+   153→   153→  rank         Int?
+   154→   154→  recommendation String? // explanation of every rank and criterion
+   155→   155→  extractionConfidence Float? // LLM extraction confidence — links to source
+   156→   156→  status       String   @default("RECEIVED") // RECEIVED | SHORTLISTED | AWARDED | REJECTED | EXPIRED
+   157→   157→  receivedAt   DateTime @default(now())
+   158→   158→
+   159→   159→  rfq      RFQ      @relation(fields: [rfqId], references: [id])
+   160→   160→  supplier Supplier @relation(fields: [supplierId], references: [id])
+   161→   161→}
+   162→   162→
+   163→   163→// ─── 8.1 #7 PurchaseOrder ────────────────────────────────────────────────────
+   164→   164→model PurchaseOrder {
+   165→   165→  id            String   @id @default(cuid())
+   166→   166→  ref           String   @unique
+   167→   167→  supplierId    String
+   168→   168→  projectId     String?
+   169→   169→  legalEntityId String?
+   170→   170→  status        String   @default("OPEN") // OPEN | AMENDED | PARTIALLY_RECEIVED | CLOSED | CANCELLED
+   171→   171→  currency      String   @default("USD")
+   172→   172→  totalAmount   Float
+   173→   173→  deliveryTerms String? // Incoterms
+   174→   174→  deliveryLocation String?
+   175→   175→  promisedDate  DateTime?
+   176→   176→  amendmentNo   Int      @default(0)
+   177→   177→  baselineRef   String? // approved baseline for change comparison
+   178→   178→  createdAt     DateTime @default(now())
+   179→   179→
+   180→   180→  supplier    Supplier   @relation(fields: [supplierId], references: [id])
+   181→   181→  project     Project?   @relation(fields: [projectId], references: [id])
+   182→   182→  legalEntity LegalEntity? @relation(fields: [legalEntityId], references: [id])
+   183→   183→  lines       POLine[]
+   184→   184→  shipments   Shipment[]
+   185→   185→  contracts   Contract[]
+   186→   186→}
+   187→   187→
+   188→   188→model POLine {
+   189→   189→  id           String  @id @default(cuid())
+   190→   190→  poId         String
+   191→   191→  materialId   String
+   192→   192→  quantity     Float
+   193→   193→  uom          String
+   194→   194→  unitPrice    Float
+   195→   195→  promisedDate DateTime?
+   196→   196→  receivedQty  Float   @default(0)
+   197→   197→  lineStatus   String  @default("OPEN") // OPEN | PARTIAL | RECEIVED | CLOSED | CANCELLED
+   198→   198→
+   199→   199→  po       PurchaseOrder @relation(fields: [poId], references: [id])
+   200→   200→  material Material      @relation(fields: [materialId], references: [id])
+   201→   201→  receipts GoodsReceipt[]
+   202→   202→}
+   203→   203→
+   204→   204→// ─── 8.1 #8 Contract / Obligation ────────────────────────────────────────────
+   205→   205→model Contract {
+   206→   206→  id          String   @id @default(cuid())
+   207→   207→  ref         String   @unique
+   208→   208→  supplierId  String
+   209→   209→  poId        String?
+   210→   210→  title       String
+   211→   211→  version     Int      @default(1)
+   212→   212→  status      String   @default("ACTIVE") // ACTIVE | EXPIRING | EXPIRED | SUPERSEDED
+   213→   213→  validFrom   DateTime?
+   214→   214→  validTo     DateTime?
+   215→   215→  obligations String? // JSON: committed dates, delivery terms, penalties, insurance/cert obligations
+   216→   216→  summary     String? // navigational aid — not legal advice
+   217→   217→  approvedBy  String?
+   218→   218→  createdAt   DateTime @default(now())
+   219→   219→
+   220→   220→  supplier Supplier      @relation(fields: [supplierId], references: [id])
+   221→   221→  po       PurchaseOrder? @relation(fields: [poId], references: [id])
+   222→   222→}
+   223→   223→
+   224→   224→// ─── 8.1 #9 Shipment / ShipmentLeg ───────────────────────────────────────────
+   225→   225→// Shipment states: PLANNED, BOOKED, READY, IN_TRANSIT, AT_TRANSIT_POINT, ARRIVED,
+   226→   226→// CUSTOMS_HOLD, RELEASED, OUT_FOR_DELIVERY, DELIVERED, PARTIALLY_DELIVERED,
+   227→   227→// CANCELLED, TRACKING_STALE, STATUS_UNKNOWN
+   228→   228→model Shipment {
+   229→   229→  id             String   @id @default(cuid())
+   230→   230→  ref            String   @unique
+   231→   231→  importFileRef  String? // import dossier reference
+   232→   232→  mode           String   @default("OCEAN") // OCEAN | AIR | ROAD
+   233→   233→  status         String   @default("PLANNED")
+   234→   234→  carrier        String?
+   235→   235→  forwarder      String?
+   236→   236→  originPort     String?
+   237→   237→  destinationPort String?
+   238→   238→  podCountry     String?
+   239→   239→  // Separate ETA values (M11): never silently replace one source with another
+   240→   240→  supplierPromisedEta  DateTime?
+   241→   241→  carrierEta           DateTime?
+   242→   242→  carrierEtaAt         DateTime? // when carrier reported it
+   243→   243→  carrierEtaFreshness  String    @default("unknown") // fresh | aging | stale | unavailable
+   244→   244→  portScheduleEta      DateTime?
+   245→   245→  modelPredictedEta    DateTime?
+   246→   246→  modelConfidence      Float?
+   247→   247→  modelInputAsOf       DateTime?
+   248→   248→  actualArrival        DateTime?
+   249→   249→  manualEta            DateTime?
+   250→   250→  etaPrecedencePolicy  String    @default("CARRIER > PORT > MODEL > MANUAL") // visible precedence
+   251→   251→  displayEta           DateTime? // derived per precedence — shown in UI
+   252→   252→  displayEtaSource     String?
+   253→   253→  displayEtaType       String?   // supplier|carrier|forwarder|port|model|manual|actual
+   254→   254→  // Vessel identity — linked ONLY from booking/carrier event/manifest (Rule 4: vessel ≠ container)
+   255→   255→  vesselName     String?
+   256→   256→  vesselVoyage   String?
+   257→   257→  vesselPositionLat Float?
+   258→   258→  vesselPositionLng Float?
+   259→   259→  vesselPositionAt  DateTime?
+   260→   260→  vesselSource      String?
+   261→   261→  vesselLinkEvidence String? // booking/carrier event reference establishing relationship
+   262→   262→  lastEventAt      DateTime?
+   263→   263→  lastEventSource  String?
+   264→   264→  freshness        String    @default("unavailable") // fresh | aging | stale | unavailable
+   265→   265→  customsStatus    String?   // submitted | released | held | unknown | manually_reported
+   266→   266→  poId             String?
+   267→   267→  supplierId       String?
+   268→   268→  projectId        String?
+   269→   269→  created          DateTime  @default(now())
+   270→   270→
+   271→   271→  legs         ShipmentLeg[]
+   272→   272→  containers   Container[]
+   273→   273→  milestones   Milestone[]
+   274→   274→  etaObservations EtaObservation[]
+   275→   275→  bols         BillOfLading[]
+   276→   276→  po           PurchaseOrder? @relation(fields: [poId], references: [id])
+   277→   277→  supplier     Supplier?      @relation(fields: [supplierId], references: [id])
+   278→   278→  documents    ShippingDocument[]
+   279→   279→  receipts     GoodsReceipt[]
+   280→   280→  exceptionCases ExceptionCase[]
+   281→   281→}
+   282→   282→
+   283→   283→model ShipmentLeg {
+   284→   284→  id          String  @id @default(cuid())
+   285→   285→  shipmentId  String
+   286→   286→  seq         Int
+   287→   287→  mode        String
+   288→   288→  fromPoint   String?
+   289→   289→  toPoint     String?
+   290→   290→  status      String  @default("PLANNED")
+   291→   291→  carrier     String?
+   292→   292→
+   293→   293→  shipment Shipment @relation(fields: [shipmentId], references: [id])
+   294→   294→}
+   295→   295→
+   296→   296→// ─── 8.1 #10 Container / Package / Seal ──────────────────────────────────────
+   297→   297→// Identity status: RESOLVED | UNRESOLVED | MISSING (never fabricated from AIS)
+   298→   298→model Container {
+   299→   299→  id            String  @id @default(cuid())
+   300→   300→  containerNo   String?
+   301→   301→  sizeType      String?
+   302→   302→  sealNo        String?
+   303→   303→  packageCount  Int?
+   304→   304→  grossWeightKg Float?
+   305→   305→  shipmentId    String?
+   306→   306→  bolId         String?
+   307→   307→  identityStatus String @default("UNRESOLVED") // RESOLVED | UNRESOLVED | MISSING
+   308→   308→  identitySource String? // BOL | BOOKING | CARRIER_EVENT | MANIFEST
+   309→   309→  note          String?
+   310→   310→
+   311→   311→  shipment Shipment? @relation(fields: [shipmentId], references: [id])
+   312→   312→  bol      BillOfLading? @relation(fields: [bolId], references: [id])
+   313→   313→  milestones Milestone[]
+   314→   314→}
+   315→   315→
+   316→   316→// ─── 8.1 #11 BillOfLading ────────────────────────────────────────────────────
+   317→   317→// BOL states: RECEIVED, PARSED, NEEDS_REVIEW, RECONCILIATION_FAILED, VERIFIED,
+   318→   318→//             SUPERSEDED, REJECTED
+   319→   319→model BillOfLading {
+   320→   320→  id             String   @id @default(cuid())
+   321→   321→  bolNo          String
+   322→   322→  docType        String   @default("MASTER") // MASTER | HOUSE
+   323→   323→  issuer         String?
+   324→   324→  version        Int      @default(1)
+   325→   325→  isActive       Boolean  @default(true)
+   326→   326→  status         String   @default("RECEIVED")
+   327→   327→  issueDate      DateTime?
+   328→   328→  shipper        String?
+   329→   329→  consignee      String?
+   330→   330→  notifyParty    String?
+   331→   331→  vesselName     String?
+   332→   332→  voyage         String?
+   333→   333→  portOfReceipt  String?
+   334→   334→  portOfLoading  String?
+   335→   335→  transshipPort  String?
+   336→   336→  portOfDischarge String?
+   337→   337→  finalDelivery  String?
+   338→   338→  packageCount   Int?
+   339→   339→  packageType    String?
+   340→   340→  grossWeightKg  Float?
+   341→   341→  netWeightKg    Float?
+   342→   342→  volumeM3       Float?
+   343→   343→  goodsDescription String?
+   344→   344→  freightTerms   String? // PREPAID | COLLECT
+   345→   345→  contentHash    String   @unique // immutable document ID — duplicate uploads rejected
+   346→   346→  fileName       String?
+   347→   347→  matchStatus    String   @default("UNMATCHED") // MATCHED | UNMATCHED | PARTIAL
+   348→   348→  shipmentId     String?
+   349→   349→  poRefs         String? // JSON array of PO numbers
+   350→   350→  amendmentIndicator Boolean @default(false)
+   351→   351→  supersedesId   String?
+   352→   352→  createdAt      DateTime @default(now())
+   353→   353→
+   354→   354→  shipment   Shipment?  @relation(fields: [shipmentId], references: [id])
+   355→   355→  supersedes BillOfLading? @relation("BOLVersions", fields: [supersedesId], references: [id])
+   356→   356→  supersededBy BillOfLading[] @relation("BOLVersions")
+   357→   357→  fields     BOLField[]
+   358→   358→  containers Container[]
+   359→   359→  documents  ShippingDocument[]
+   360→   360→  reconciliations BOLReconciliation[]
+   361→   361→  exceptionCases ExceptionCase[]
+   362→   362→}
+   363→   363→
+   364→   364→// Field-level extraction with page provenance (M08/M09 controls)
+   365→   365→// validationStatus: PASS | WARN | FAIL | NOT_CHECKED
+   366→   366→model BOLField {
+   367→   367→  id             String  @id @default(cuid())
+   368→   368→  bolId          String
+   369→   369→  fieldName      String
+   370→   370→  rawValue       String?
+   371→   371→  normalizedValue String?
+   372→   372→  sourcePage     Int?
+   373→   373→  sourceCoords   String? // page coordinates
+   374→   374→  extractionEngine String?
+   375→   375→  confidence     Float?
+   376→   376→  validationStatus String @default("NOT_CHECKED")
+   377→   377→  validationNote String?
+   378→   378→  correctedValue String? // human correction stored separately; extracted value retained
+   379→   379→  correctedBy    String?
+   380→   380→  correctedAt    DateTime?
+   381→   381→  correctionReason String?
+   382→   382→
+   383→   383→  bol BillOfLading @relation(fields: [bolId], references: [id])
+   384→   384→
+   385→   385→  @@unique([bolId, fieldName])
+   386→   386→}
+   387→   387→
+   388→   388→// Cross-document reconciliation results (§15): PASS | WARN | FAIL | NOT_CHECKED
+   389→   389→model BOLReconciliation {
+   390→   390→  id          String  @id @default(cuid())
+   391→   391→  bolId       String
+   392→   392→  ruleCode    String // e.g. BOL_PKGLIST_CONTAINER, BOL_PO_QUANTITY
+   393→   393→  ruleVersion String  @default("v1.2")
+   394→   394→  result      String  @default("NOT_CHECKED")
+   395→   395→  recordsCompared String? // JSON of records compared
+   396→   396→  differences String? // JSON of normalized differences
+   397→   397→  nextAction  String?
+   398→   398→  checkedAt   DateTime?
+   399→   399→
+   400→   400→  bol BillOfLading @relation(fields: [bolId], references: [id])
+   401→   401→}
+   402→   402→
+   403→   403→// ─── 8.1 #12 ShippingDocument ────────────────────────────────────────────────
+   404→   404→model ShippingDocument {
+   405→   405→  id          String   @id @default(cuid())
+   406→   406→  docType     String // commercial_invoice | packing_list | certificate_of_origin | arrival_notice | delivery_order | customs_declaration | import_permit | insurance | inspection_report
+   407→   407→  refNo       String?
+   408→   408→  fileName    String
+   409→   409→  contentHash String   @unique
+   410→   410→  shipmentId  String?
+   411→   411→  bolId       String?
+   412→   412→  issuer      String?
+   413→   413→  receivedAt  DateTime @default(now())
+   414→   414→  ocrStatus   String   @default("PARSED") // RECEIVED | PARSING | PARSED | FAILED
+   415→   415→  note        String?
+   416→   416→
+   417→   417→  shipment Shipment?     @relation(fields: [shipmentId], references: [id])
+   418→   418→  bol      BillOfLading? @relation(fields: [bolId], references: [id])
+   419→   419→}
+   420→   420→
+   421→   421→// ─── 8.1 #13 TrackingObservation / ShipmentMilestone ─────────────────────────
+   422→   422→model Milestone {
+   423→   423→  id             String   @id @default(cuid())
+   424→   424→  shipmentId     String
+   425→   425→  containerId    String?
+   426→   426→  code           String // booking_confirmed | picked_up | gate_in | loaded | departed | transshipment | port_arrival | discharged | customs_released | gate_out | delivered ...
+   427→   427→  label          String
+   428→   428→  location       String?
+   429→   429→  eventTime      DateTime // event time
+   430→   430→  receivedAt     DateTime // ingestion time — displayed separately (M11 acceptance)
+   431→   431→  source         String // carrier_api | forwarder_portal | port_system | ais | manual | supplier_notice | warehouse_scan
+   432→   432→  providerEventId String? @unique // idempotency/dedupe key
+   433→   433→  isEstimated    Boolean  @default(false)
+   434→   434→  freshness      String   @default("fresh") // fresh | aging | stale | unavailable
+   435→   435→  confidence     Float?
+   436→   436→  correctedByEventId String? // correction/retraction link
+   437→   437→  note           String?
+   438→   438→
+   439→   439→  shipment  Shipment  @relation(fields: [shipmentId], references: [id])
+   440→   440→  container Container? @relation(fields: [containerId], references: [id])
+   441→   441→}
+   442→   442→
+   443→   443→// ─── 8.1 #14 ETAObservation ──────────────────────────────────────────────────
+   444→   444→// estimateType: supplier | carrier | forwarder | port | model | manual
+   445→   445→model EtaObservation {
+   446→   446→  id           String   @id @default(cuid())
+   447→   447→  shipmentId   String
+   448→   448→  estimateType String
+   449→   449→  sourceName   String
+   450→   450→  etaValue     DateTime? // null = "not enough data"
+   451→   451→  etaRangeFrom DateTime?
+   452→   452→  etaRangeTo   DateTime?
+   453→   453→  calculatedAt DateTime
+   454→   454→  validForHours Int?
+   455→   455→  confidence   Float?
+   456→   456→  inputLineage String? // what data the estimate was derived from
+   457→   457→  isActive     Boolean  @default(true)
+   458→   458→  note         String?
+   459→   459→
+   460→   460→  shipment Shipment @relation(fields: [shipmentId], references: [id])
+   461→   461→}
+   462→   462→
+   463→   463→// ─── 8.1 #15 Warehouse / Location ────────────────────────────────────────────
+   464→   464→model Warehouse {
+   465→   465→  id        String @id @default(cuid())
+   466→   466→  code      String @unique
+   467→   467→  name      String
+   468→   468→  site      String
+   469→   469→  warehouseType String @default("MAIN") // MAIN | SITE_STORE | TRANSIT
+   470→   470→  bins      String? // JSON hierarchy
+   471→   471→
+   472→   472→  inventoryLots InventoryLot[]
+   473→   473→  receipts      GoodsReceipt[]
+   474→   474→}
+   475→   475→
+   476→   476→// ─── 8.1 #16 InventoryLot / StockPosition ────────────────────────────────────
+   477→   477→// status: AVAILABLE | RESERVED | QUARANTINED | DAMAGED | IN_TRANSIT | INSPECTION_PENDING | ISSUED
+   478→   478→// "available" = on-hand minus reservations and quarantined — never counts in-transit (M12)
+   479→   479→model InventoryLot {
+   480→   480→  id             String   @id @default(cuid())
+   481→   481→  materialId     String
+   482→   482→  warehouseId    String
+   483→   483→  projectId      String? // owner/project reservation
+   484→   484→  status         String   @default("AVAILABLE")
+   485→   485→  quantity       Float
+   486→   486→  uom            String
+   487→   487→  lotNo          String?
+   488→   488→  serials        String?
+   489→   489→  poId           String?
+   490→   490→  shipmentId     String?
+   491→   491→  lastVerifiedAt DateTime?
+   492→   492→  note           String?
+   493→   493→  createdAt      DateTime @default(now())
+   494→   494→
+   495→   495→  material  Material  @relation(fields: [materialId], references: [id])
+   496→   496→  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+   497→   497→  project   Project?  @relation(fields: [projectId], references: [id])
+   498→   498→}
+   499→   499→
+   500→   500→// ─── 8.1 #17 GoodsReceipt / Inspection / Discrepancy ─────────────────────────
+   501→   501→// status: EXPECTED | PARTIALLY_RECEIVED | RECEIVED_PENDING_QC | AVAILABLE | QUARANTINED | DAMAGED | SHORT | CLOSED
+   502→   502→model GoodsReceipt {
+   503→   503→  id           String   @id @default(cuid())
+   504→   504→  ref          String   @unique
+   505→   505→  poLineId     String?
+   506→   506→  shipmentId   String?
+   507→   507→  warehouseId  String
+   508→   508→  materialId   String
+   509→   509→  expectedQty  Float
+   510→   510→  receivedQty  Float
+   511→   511→  uom          String
+   512→   512→  status       String   @default("RECEIVED_PENDING_QC")
+   513→   513→  qcResult     String? // PASS | FAIL | PENDING
+   514→   514→  discrepancyType String? // SHORT | DAMAGED | OVER | WRONG_ITEM | NONE
+   515→   515→  discrepancyQty  Float?
+   516→   516→  photos       String? // JSON array of evidence refs
+   517→   517→  lotNo        String?
+   518→   518→  receivedBy   String?
+   519→   519→  receivedAt   DateTime @default(now())
+   520→   520→  note         String?
+   521→   521→  grnNo        String?
+   522→   522→
+   523→   523→  poLine   POLine?    @relation(fields: [poLineId], references: [id])
+   524→   524→  shipment Shipment?  @relation(fields: [shipmentId], references: [id])
+   525→   525→  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+   526→   526→  material Material   @relation(fields: [materialId], references: [id])
+   527→   527→}
+   528→   528→
+   529→   529→// ─── 8.1 #18 Asset / Equipment / Sensor ──────────────────────────────────────
+   530→   530→// Monitoring class (M15 — exposed clearly, never mislabeled):
+   531→   531→// REGISTRY_ONLY | INSPECTION_MONITORED | TELEMETRY_CONNECTED | LOCATION_TRACKED
+   532→   532→model Asset {
+   533→   533→  id           String  @id @default(cuid())
+   534→   534→  tag          String  @unique
+   535→   535→  name         String
+   536→   536→  assetClass   String  @default("REGISTRY_ONLY")
+   537→   537→  site         String
+   538→   538→  location     String?
+   539→   539→  owner        String?
+   540→   540→  criticality  String  @default("STANDARD") // CRITICAL | HIGH | STANDARD
+   541→   541→  make         String?
+   542→   542→  model        String?
+   543→   543→  serialNo     String?
+   544→   544→  condition    String  @default("UNKNOWN") // HEALTHY | DEGRADED | FAULT | MAINTENANCE_DUE | UNKNOWN
+   545→   545→  meterReading Float?
+   546→   546→  meterUnit    String?
+   547→   547→  warrantyTo   DateTime?
+   548→   548→  certificates String? // JSON [{name, expiresAt}]
+   549→   549→  lastTelemetryAt DateTime?
+   550→   550→  telemetryStale  Boolean @default(false)
+   551→   551→  sensors      String? // JSON: [{type, unit, threshold}]
+   552→   552→  spareParts   String? // JSON: [{materialId, qty}]
+   553→   553→  projectId    String?
+   554→   554→  note         String?
+   555→   555→
+   556→   556→  telemetry TelemetryObservation[]
+   557→   557→  inspections Inspection[]
+   558→   558→  workOrders MaintenanceWorkOrder[]
+   559→   559→}
+   560→   560→
+   561→   561→model TelemetryObservation {
+   562→   562→  id         String   @id @default(cuid())
+   563→   563→  assetId    String
+   564→   564→  metric     String
+   565→   565→  value      Float
+   566→   566→  unit       String
+   567→   567→  eventTime  DateTime
+   568→   568→  receivedAt DateTime
+   569→   569→  quality    String   @default("GOOD") // GOOD | SUSPECT | BAD
+   570→   570→  note       String?
+   571→   571→
+   572→   572→  asset Asset @relation(fields: [assetId], references: [id])
+   573→   573→}
+   574→   574→
+   575→   575→model Inspection {
+   576→   576→  id         String   @id @default(cuid())
+   577→   577→  assetId    String
+   578→   578→  type       String   @default("SCHEDULED")
+   579→   579→  dueDate    DateTime?
+   580→   580→  status     String   @default("PENDING") // PENDING | IN_PROGRESS | AWAITING_EVIDENCE | COMPLETED | REJECTED
+   581→   581→  checklist  String? // JSON
+   582→   582→  findings   String?
+   583→   583→  evidence   String? // JSON: photos/reports — completion without evidence stays pending (M15)
+   584→   584→  completedAt DateTime?
+   585→   585→  completedBy String?
+   586→   586→
+   587→   587→  asset Asset @relation(fields: [assetId], references: [id])
+   588→   588→}
+   589→   589→
+   590→   590→// ─── 8.1 #19 MaintenanceWorkOrder ────────────────────────────────────────────
+   591→   591→model MaintenanceWorkOrder {
+   592→   592→  id          String   @id @default(cuid())
+   593→   593→  ref         String   @unique
+   594→   594→  assetId     String
+   595→   595→  type        String   @default("CORRECTIVE") // PREVENTIVE | CORRECTIVE | INSPECTION
+   596→   596→  status      String   @default("OPEN") // OPEN | PARTS_PENDING | IN_PROGRESS | POST_REPAIR_TEST | CLOSED | CANCELLED
+   597→   597→  priority    String   @default("NORMAL")
+   598→   598→  dueDate     DateTime?
+   599→   599→  findings    String?
+   600→   600→  partsRequired String? // JSON: [{materialId, description, qty, stockAvailable}]
+   601→   601→  owner       String?
+   602→   602→  approvals   String?
+   603→   603→  closeoutEvidence String?
+   604→   604→  rootCause   String?
+   605→   605→  createdAt   DateTime @default(now())
+   606→   606→  closedAt    DateTime?
+   607→   607→
+   608→   608→  asset Asset @relation(fields: [assetId], references: [id])
+   609→   609→}
+   610→   610→
+   611→   611→// ─── 8.1 #20 ExceptionCase / Task / Approval ─────────────────────────────────
+   612→   612→// State pattern (M17): DETECTED → TRIAGED → ASSIGNED → INVESTIGATING →
+   613→   613→// ACTION_PROPOSED → AWAITING_APPROVAL → ACTION_SUBMITTED → OUTCOME_PENDING_VERIFICATION
+   614→   614→// → RESOLVED | CANCELLED (reopen on regression)
+   615→   615→model ExceptionCase {
+   616→   616→  id             String   @id @default(cuid())
+   617→   617→  ref            String   @unique
+   618→   618→  title          String
+   619→   619→  category       String // BOL_IDENTITY | ETA_SLIP | RECEIVING_MISMATCH | ASSET_FAULT | SUPPLIER_BREACH | CUSTOMS_HOLD | DATA_QUALITY | INTEGRATION
+   620→   620→  severity       String   @default("MEDIUM") // CRITICAL | HIGH | MEDIUM | LOW
+   621→   621→  state          String   @default("DETECTED")
+   622→   622→  trigger        String? // what detected it (rule name/version or source event)
+   623→   623→  ruleVersion    String?
+   624→   624→  entityType     String? // shipment | bol | po | receipt | asset | supplier
+   625→   625→  entityId       String?
+   626→   626→  entityRef      String? // human ref for drill-down
+   627→   627→  ownerTeam      String?
+   628→   628→  ownerUser      String?
+   629→   629→  slaHours       Int?
+   630→   630→  dueDate        DateTime?
+   631→   631→  evidenceRefs   String? // JSON array of evidence IDs
+   632→   632→  recommendedAction String?
+   633→   633→  resolutionCode String?
+   634→   634→  closureProof   String? // verified postcondition reference
+   635→   635→  reopenReason   String?
+   636→   636→  supplierId     String?
+   637→   637→  shipmentId     String?
+   638→   638→  bolId          String?
+   639→   639→  createdAt      DateTime @default(now())
+   640→   640→  updatedAt      DateTime @updatedAt
+   641→   641→  closedAt       DateTime?
+   642→   642→
+   643→   643→  events  CaseEvent[]
+   644→   644→  actions ActionCommand[]
+   645→   645→  supplier Supplier?  @relation(fields: [supplierId], references: [id])
+   646→   646→  shipment Shipment?  @relation(fields: [shipmentId], references: [id])
+   647→   647→  bol      BillOfLading? @relation(fields: [bolId], references: [id])
+   648→   648→  notifications Notification[]
+   649→   649→}
+   650→   650→
+   651→   651→model CaseEvent {
+   652→   652→  id        String   @id @default(cuid())
+   653→   653→  caseId    String
+   654→   654→  type      String // STATE_TRANSITION | COMMENT | EVIDENCE | ASSIGNMENT | COMMUNICATION
+   655→   655→  fromState String?
+   656→   656→  toState   String?
+   657→   657→  actor     String // actor/service identity
+   658→   658→  actorType String   @default("USER") // USER | RULE | SERVICE | SYSTEM
+   659→   659→  note      String?
+   660→   660→  at        DateTime @default(now())
+   661→   661→
+   662→   662→  case ExceptionCase @relation(fields: [caseId], references: [id])
+   663→   663→}
+   664→   664→
+   665→   665→// ─── 8.1 #22 ActionCommand / ActionResult ────────────────────────────────────
+   666→   666→// Action states: DRAFT, POLICY_CHECK, AWAITING_APPROVAL, AUTHORIZED, SUBMITTED,
+   667→   667→// ACKNOWLEDGED, PENDING_VERIFICATION, VERIFIED, FAILED, COMPENSATION_REQUIRED, CANCELLED
+   668→   668→model ActionCommand {
+   669→   669→  id             String   @id @default(cuid())
+   670→   670→  ref            String   @unique
+   671→   671→  caseId         String?
+   672→   672→  commandType    String // draft_supplier_followup | request_bol_data | open_count_task | po_amendment_proposal | replenish_part | claim | erp_requisition
+   673→   673→  riskLevel      String   @default("SAFE") // SAFE | HIGH_RISK (supplier award, PO release, financial commitment, bank change, contract amendment, booking cancellation, stock adjustment, customs, safety)
+   674→   674→  targetType     String?
+   675→   675→  targetRef      String?
+   676→   676→  payload        String? // JSON
+   677→   677→  state          String   @default("DRAFT")
+   678→   678→  policyDecision String? // ALLOW | DENY | REVIEW — with rule version
+   679→   679→  policyRule     String?
+   680→   680→  idempotencyKey String   @unique // stable source-derived key (Rule 7)
+   681→   681→  requestedBy    String
+   682→   682→  approvalId     String?
+   683→   683→  submittedAt    DateTime?
+   684→   684→  ackAt          DateTime?
+   685→   685→  postcondition  String? // verified postcondition description
+   686→   686→  verifiedAt     DateTime?
+   687→   687→  result         String? // JSON result/response reference
+   688→   688→  failureReason  String?
+   689→   689→  compensation   String?
+   690→   690→  createdAt      DateTime @default(now())
+   691→   691→
+   692→   692→  case      ExceptionCase? @relation(fields: [caseId], references: [id])
+   693→   693→  approvals Approval[]
+   694→   694→}
+   695→   695→
+   696→   696→model Approval {
+   697→   697→  id        String   @id @default(cuid())
+   698→   698→  actionId  String
+   699→   699→  approver  String
+   700→   700→  role      String
+   701→   701→  decision  String // APPROVED | REJECTED
+   702→   702→  comment   String?
+   703→   703→  at        DateTime @default(now())
+   704→   704→
+   705→   705→  action ActionCommand @relation(fields: [actionId], references: [id])
+   706→   706→}
+   707→   707→
+   708→   708→// ─── 8.1 #23 SupplierScoreSnapshot / RiskSignal ──────────────────────────────
+   709→   709→model SupplierScoreSnapshot {
+   710→   710→  id         String   @id @default(cuid())
+   711→   711→  supplierId String
+   712→   712→  metric     String // on_time_delivery | quantity_accuracy | quality | documentation | responsiveness | contract_compliance
+   713→   713→  definition String
+   714→   714→  version    String   @default("v1.0")
+   715→   715→  period     String // e.g. 2026-Q1
+   716→   716→  value      Float
+   717→   717→  unit       String   @default("%")
+   718→   718→  sampleSize Int?
+   719→   719→  exclusions String?
+   720→   720→  sourceLineage String?
+   721→   721→  uncertainty  String?
+   722→   722→  calculatedAt DateTime @default(now())
+   723→   723→
+   724→   724→  supplier Supplier @relation(fields: [supplierId], references: [id])
+   725→   725→}
+   726→   726→
+   727→   727→model RiskSignal {
+   728→   728→  id          String   @id @default(cuid())
+   729→   729→  supplierId  String?
+   730→   730→  signalCode  String // PO_LATE | ETA_SLIP | PROMISE_DRIFT | DOC_MISSING | LOW_STOCK | STOCKOUT_RISK | CUSTOMS_HOLD | LEAD_TIME_VARIANCE | REPEAT_DISCREPANCY | ASSET_CRITICAL | DEADLINE_EXPOSURE
+   731→   731→  entityType  String?
+   732→   732→  entityRef   String?
+   733→   733→  fact        String // the FACT — kept separate from interpretation (M16)
+   734→   734→  interpretation String? // the INTERPRETATION
+   735→   735→  severity    String   @default("INFO") // CRITICAL | HIGH | MEDIUM | LOW | INFO
+   736→   736→  definition  String?
+   737→   737→  version     String   @default("v1.0")
+   738→   738→  threshold   String?
+   739→   739→  sourceFields String? // JSON
+   740→   740→  calculatedAt DateTime @default(now())
+   741→   741→  suppressed  Boolean  @default(false)
+   742→   742→
+   743→   743→  supplier Supplier? @relation(fields: [supplierId], references: [id])
+   744→   744→}
+   745→   745→
+   746→   746→// ─── 8.1 #14 Project material demand (M14) ───────────────────────────────────
+   747→   747→model MaterialRequirement {
+   748→   748→  id             String   @id @default(cuid())
+   749→   749→  projectId      String
+   750→   750→  materialId     String
+   751→   751→  workPackage    String?
+   752→   752→  quantity       Float
+   753→   753→  uom            String
+   754→   754→  requiredOnSite DateTime
+   755→   755→  leadTimeDays   Int?
+   756→   756→  criticality    String   @default("STANDARD")
+   757→   757→  demandType     String   @default("PLANNED") // PLANNED | APPROVED | CONSUMED — never conflated (M14)
+   758→   758→  status         String   @default("OPEN") // OPEN | ALLOCATED | AT_RISK | SHORT | SATISFIED | CANCELLED
+   759→   759→  note           String?
+   760→   760→  createdAt      DateTime @default(now())
+   761→   761→
+   762→   762→  project  Project  @relation(fields: [projectId], references: [id])
+   763→   763→  material Material @relation(fields: [materialId], references: [id])
+   764→   764→}
+   765→   765→
+   766→   766→// ─── 8.1 #21 SourceEvidence / DocumentVersion ────────────────────────────────
+   767→   767→// label: PUBLICLY EVIDENCED | PROPOSED TARGET CAPABILITY | REQUIRES CUSTOMER DATA/INTEGRATION |
+   768→   768→//        REQUIRES DEMO/VALIDATION | NOT CONFIRMED
+   769→   769→model SourceEvidence {
+   770→   770→  id          String   @id @default(cuid())
+   771→   771→  entityType  String
+   772→   772→  entityId    String
+   773→   773→  entityRef   String?
+   774→   774→  sourceSystem String
+   775→   775→  sourceRef   String?
+   776→   776→  contentHash String?
+   777→   777→  issuer      String?
+   778→   778→  receivedAt  DateTime
+   779→   779→  label       String   @default("PROPOSED TARGET CAPABILITY")
+   780→   780→  extractionVersion String?
+   781→   781→  fieldConfidence String? // JSON
+   782→   782→  originalOrDerived String @default("ORIGINAL")
+   783→   783→  retentionClass String  @default("STANDARD")
+   784→   784→  note        String?
+   785→   785→}
+   786→   786→
+   787→   787→// ─── 8.1 #24 AuditEvent (append-only) ────────────────────────────────────────
+   788→   788→model AuditEvent {
+   789→   789→  id            String   @id @default(cuid())
+   790→   790→  at            DateTime @default(now())
+   791→   791→  actor         String
+   792→   792→  actorType     String   @default("USER") // USER | SERVICE | RULE | SYSTEM
+   793→   793→  action        String
+   794→   794→  entityType    String
+   795→   795→  entityId      String
+   796→   796→  entityRef     String?
+   797→   797→  previousState String?
+   798→   798→  newState      String?
+   799→   799→  diff          String? // JSON diff
+   800→   800→  reason        String?
+   801→   801→  correlationId String?
+   802→   802→  sourceRecord  String?
+   803→   803→  ruleVersion   String?
+   804→   804→  approvalId    String?
+   805→   805→}
+   806→   806→
+   807→   807→// ─── M23 Integration health ──────────────────────────────────────────────────
+   808→   808→model Connector {
+   809→   809→  id            String   @id @default(cuid())
+   810→   810→  name          String
+   811→   811→  category      String // ERP | WMS | CARRIER | AIS | PORT | EMAIL | IOT | CUSTOMS | FORWARDER | CMMS
+   812→   812→  mode          String   @default("POLL") // WEBHOOK | POLL | BATCH | MANUAL
+   813→   813→  status        String   @default("HEALTHY") // HEALTHY | DEGRADED | OUTAGE | DISABLED
+   814→   814→  freshnessClass String  @default("fresh") // fresh | aging | stale | unavailable
+   815→   815→  lastSyncAt    DateTime?
+   816→   816→  latencyMs     Int?
+   817→   817→  failedRecords Int      @default(0)
+   818→   818→  retryQueue    Int      @default(0)
+   819→   819→  deadLetter    Int      @default(0)
+   820→   820→  apiQuotaPct   Int?
+   821→   821→  coverageNote  String?
+   822→   822→  evidenceLabel String   @default("REQUIRES CUSTOMER DATA/INTEGRATION")
+   823→   823→}
+   824→   824→
+   825→   825→model Notification {
+   826→   826→  id            String   @id @default(cuid())
+   827→   827→  caseId        String?
+   828→   828→  channel       String   @default("IN_APP") // IN_APP | EMAIL | SMS_WHATSAPP | SUPPLIER_PORTAL
+   829→   829→  template      String
+   830→   830→  templateVersion String @default("v1.0")
+   831→   831→  recipient     String
+   832→   832→  audienceType  String   @default("INTERNAL") // INTERNAL | EXTERNAL — separate notes from external comms (M19)
+   833→   833→  state         String   @default("QUEUED") // QUEUED | SENT | DELIVERED | FAILED | BOUNCED
+   834→   834→  idempotencyKey String  @unique
+   835→   835→  urgency       String   @default("NORMAL")
+   836→   836→  at            DateTime @default(now())
+   837→   837→  note          String?
+   838→   838→
+   839→   839→  case ExceptionCase? @relation(fields: [caseId], references: [id])
+   840→   840→}
+   841→   841→

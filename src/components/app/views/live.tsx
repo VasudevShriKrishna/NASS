@@ -1,530 +1,742 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Anchor, RadioTower, RefreshCw, Ship, TimerReset } from "lucide-react";
+import {
+  Anchor,
+  Building2,
+  Container,
+  ExternalLink,
+  Factory,
+  FileDown,
+  FileText,
+  Gauge,
+  MapPin,
+  Package,
+  RadioTower,
+  RefreshCw,
+  ShieldCheck,
+  Ship,
+  Siren,
+  Timer,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useApi } from "@/lib/client";
-import { EmptyState, ErrorState, FreshnessBadge, LoadingState, SectionCard, StatusPill, fmtDate, fmtDateTime } from "@/components/app/shared";
+import { useAppStore } from "@/lib/app-state";
+import { clamp01 } from "@/lib/geo";
+import type { TraceShip, TraceSnapshot } from "@/lib/trace-types";
+import {
+  CaseStateBadge,
+  EmptyState,
+  ErrorState,
+  EvidenceBadge,
+  FreshnessBadge,
+  LoadingState,
+  ReconciliationBadge,
+  SeverityBadge,
+  StatusPill,
+  ScrollTable,
+  fmtDate,
+  fmtDateTime,
+} from "@/components/app/shared";
 import { LiveClock, fmtCountdown, useNow } from "@/components/app/live-clock";
-import { CountUp, PulsingDot } from "@/components/app/motion";
+import { PulsingDot } from "@/components/app/motion";
+import { MapLegend, STATUS_COLOR, STATUS_LABEL, WorldMap } from "@/components/app/world-map";
 import { cn } from "@/lib/utils";
 
-/* ── API types (mirror /api/shipments, /api/shipments/[ref], /api/audit) ──── */
-interface ShipmentLite {
-  ref: string;
-  status: string;
-  mode: string;
-  carrier: string | null;
-  vesselName: string | null;
-  vesselVoyage: string | null;
-  originPort: string | null;
-  destinationPort: string | null;
-  freshness: string;
-  displayEta: string | null;
-  displayEtaType: string | null;
-  supplierPromisedEta: string | null;
-  carrierEta: string | null;
-  lastEventAt: string | null;
-  created: string;
-  actualArrival: string | null;
-}
-interface Milestone {
-  id: string;
-  code: string;
-  label: string;
-  location: string | null;
-  eventTime: string;
-  receivedAt: string | null;
-  isEstimated: boolean;
-  freshness: string;
-  source: string;
-  confidence: number | null;
-}
-interface ShipmentDetail extends ShipmentLite {
-  milestones: Milestone[];
-  etaPrecedencePolicy: string;
-  displayEtaSource: string | null;
-}
-interface AuditRow {
-  id: string;
-  at: string;
-  actor: string;
-  actorType: string;
-  action: string;
-  entityType: string | null;
-  entityRef: string | null;
-  previousState: string | null;
-  newState: string | null;
-  correlationId: string | null;
-}
+const SIM_PRESETS = [1, 60, 600] as const;
 
-const HOUR = 3_600_000;
-const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+const fmtMoney = (v: number, ccy: string) => `${ccy} ${v.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+const fmtPct = (p: number) => `${(p * 100).toFixed(1)}%`;
 
-/* ── Live countdown chip (ticks every second) ────────────────────────────── */
-function EtaCountdown({ target, now, label }: { target: string | null; now: number; label: string }) {
-  if (!target) return <span className="text-xs text-muted-foreground">{label}: —</span>;
-  const diff = new Date(target).getTime() - now;
-  const slipped = diff < 0;
+/* ── small dossier building blocks ─────────────────────────────────────── */
+function MiniTitle({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-      <span className="text-[10px] uppercase tracking-widest text-muted-foreground">{label}</span>
-      <span className={cn("font-display text-sm font-semibold tabular-nums", slipped ? "text-rose-400" : "text-primary")}>
-        {fmtCountdown(diff)}
-      </span>
+    <p className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+      <span className="inline-block h-3.5 w-0.5 rounded-full bg-primary/70" aria-hidden />
+      <span className="text-primary/70">{icon}</span>
+      {children}
+    </p>
+  );
+}
+
+function KV({ k, v }: { k: string; v: React.ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 border-b border-border/40 py-1.5 last:border-0">
+      <span className="shrink-0 text-[11px] text-muted-foreground">{k}</span>
+      <span className="min-w-0 text-right text-[12px] font-medium">{v}</span>
+    </div>
+  );
+}
+
+function LiveStatusChip({ ship }: { ship: TraceShip }) {
+  const c = STATUS_COLOR[ship.liveStatus];
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[10px] font-bold tracking-wide"
+      style={{ borderColor: `${c}55`, background: `${c}14`, color: c }}
+    >
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: c, boxShadow: `0 0 6px ${c}` }} />
+      {STATUS_LABEL[ship.liveStatus].toUpperCase()}
     </span>
   );
 }
 
-/* ── Journey route: time-proportional comet + milestone stations ─────────── */
-function JourneyRoute({ detail, now }: { detail: ShipmentDetail; now: number }) {
-  const ms = [...detail.milestones].sort((a, b) => +new Date(a.eventTime) - +new Date(b.eventTime));
-  const start = ms.length ? +new Date(ms[0].eventTime) : +new Date(detail.created);
-  const end = detail.actualArrival ? +new Date(detail.actualArrival) : detail.displayEta ? +new Date(detail.displayEta) : start + 30 * 24 * HOUR;
-  const progress = clamp01((now - start) / Math.max(1, end - start));
-
-  const stations = ms
-    .map((m) => ({ ...m, pos: clamp01((+new Date(m.eventTime) - start) / Math.max(1, end - start)) * 100 }))
-    .filter((m) => Number.isFinite(m.pos));
-
-  return (
-    <div className="pt-2">
-      {/* ports */}
-      <div className="mb-1.5 flex items-baseline justify-between gap-2 text-xs">
-        <span className="font-semibold">{detail.originPort ?? "Origin"}</span>
-        <span className="hidden text-[10px] uppercase tracking-widest text-muted-foreground sm:inline">
-          {detail.vesselName ?? detail.carrier ?? detail.mode} {detail.vesselVoyage ? `· ${detail.vesselVoyage}` : ""}
-        </span>
-        <span className="font-semibold">{detail.destinationPort ?? "Destination"}</span>
-      </div>
-
-      {/* track */}
-      <div className="relative h-12">
-        {/* base line (remaining) */}
-        <div className="absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full border-b border-dashed border-zinc-500/40 dark:border-zinc-400/20" />
-        {/* traveled line (gold gradient, grows in real time) */}
-        <div
-          className="absolute left-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-gradient-to-r from-[#8a6a1f] via-[#d4af37] to-[#f3dc8e] shadow-[0_0_12px_oklch(0.79_0.135_88/45%)]"
-          style={{ width: `${progress * 100}%` }}
-        />
-        {/* milestone stations */}
-        {stations.map((s) => {
-          const done = +new Date(s.eventTime) <= now;
-          return (
-            <div
-              key={s.id}
-              className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2"
-              style={{ left: `${s.pos}%` }}
-              title={`${s.label} — ${fmtDateTime(s.eventTime)}${s.isEstimated ? " (estimated)" : ""}`}
-            >
-              <span
-                className={cn(
-                  "block h-3 w-3 rounded-full border-2",
-                  done
-                    ? "border-primary bg-primary shadow-[0_0_10px_oklch(0.79_0.135_88/70%)]"
-                    : "border-zinc-400/50 bg-background"
-                )}
-              />
-            </div>
-          );
-        })}
-        {/* destination node */}
-        <div className="absolute right-0 top-1/2 -translate-y-1/2">
-          <Anchor className={cn("h-4 w-4", progress >= 1 ? "text-primary" : "text-muted-foreground/60")} />
-        </div>
-        {/* comet — time-proportional, drifts slowly with real time */}
-        <div
-          className="absolute top-1/2 z-10 -translate-x-1/2 -translate-y-1/2"
-          style={{ left: `${progress * 100}%` }}
-        >
-          <div className="relative">
-            <span className="absolute -inset-3 -z-10 animate-pulse rounded-full bg-primary/25 blur-md" aria-hidden />
-            <span className="relative block h-4 w-4 rounded-full bg-gradient-to-br from-[#f3dc8e] to-[#b8860b] shadow-[0_0_18px_oklch(0.79_0.135_88/80%)] ring-2 ring-background" />
-            <span className="absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap font-mono text-[10px] tabular-nums text-primary">
-              {(progress * 100).toFixed(1)}%
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* route meta */}
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
-        <span>
-          departed booking <span className="tabular-nums text-foreground">{fmtDate(ms.length ? ms[0].eventTime : detail.created)}</span>
-        </span>
-        <span>
-          ETA <span className="tabular-nums text-foreground">{fmtDate(detail.displayEta)}</span>
-          {detail.displayEtaType ? <span className="ml-1.5 rounded border border-primary/30 bg-primary/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-primary">{detail.displayEtaType}</span> : null}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-/* ── 24-hour strip: hour ticks update live, NOW cursor slides slowly ─────── */
-function HourStrip({ shipments, focusRef, now }: { shipments: ShipmentLite[]; focusRef: string | null; now: number }) {
-  const windowStart = Math.floor(now / HOUR) * HOUR;
-  const etaMarkers = shipments
-    .filter((s) => s.displayEta)
-    .map((s) => ({ ref: s.ref, t: +new Date(s.displayEta as string) }))
-    .filter((m) => m.t >= windowStart && m.t <= windowStart + 24 * HOUR);
-
-  const hours = Array.from({ length: 25 }, (_, i) => new Date(windowStart + i * HOUR));
-
+/* ── journey progress bar (drawer) ─────────────────────────────────────── */
+function RouteBar({ ship, p }: { ship: TraceShip; p: number }) {
+  const c = STATUS_COLOR[ship.liveStatus];
   return (
     <div className="pt-1">
-      <div className="mb-1 flex items-center justify-between text-[10px] uppercase tracking-widest text-muted-foreground">
-        <span>next 24 hours</span>
-        <span className="normal-case tracking-normal">gold markers = arrival ETA within window</span>
+      <div className="mb-1 flex items-baseline justify-between gap-2 text-[11px]">
+        <span className="min-w-0 truncate font-semibold">
+          {ship.from?.label ?? ship.originPort}
+          <span className="ml-1 font-normal text-muted-foreground">{ship.originCountry}</span>
+        </span>
+        <span className="font-display text-sm font-bold tabular-nums text-gold-grad">{fmtPct(p)}</span>
+        <span className="min-w-0 truncate text-right font-semibold">
+          <span className="mr-1 font-normal text-muted-foreground">{ship.destCountry}</span>
+          {ship.to?.label ?? ship.destPort}
+        </span>
       </div>
-      <div className="relative h-14 overflow-hidden rounded-lg border border-border/70 bg-muted/30">
-        {/* hour grid */}
-        <div className="absolute inset-0 flex">
-          {hours.slice(0, 24).map((h, i) => (
-            <div key={i} className="relative flex-1 border-r border-border/40 last:border-r-0">
-              <span className={cn("absolute bottom-1 left-1 text-[9px] tabular-nums text-muted-foreground", i % 3 !== 0 && "hidden sm:inline")}>
-                {String(h.getHours()).padStart(2, "0")}:00
-              </span>
+      <div className="relative h-2.5">
+        <div className="absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full border-b border-dashed border-zinc-500/40 dark:border-zinc-400/20" />
+        <div
+          className="absolute left-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full shadow-[0_0_12px_oklch(0.79_0.135_88/45%)]"
+          style={{ width: `${p * 100}%`, background: `linear-gradient(90deg, #8a6a1f, ${c}, #f3dc8e)` }}
+        />
+        <div
+          className="absolute top-1/2 z-10 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-background"
+          style={{ left: `${p * 100}%`, background: `linear-gradient(135deg, #f3dc8e, #b8860b)`, boxShadow: `0 0 14px ${c}aa` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/* ── per-ship PDF + new-tab actions ────────────────────────────────────── */
+function DossierActions({ ship }: { ship: TraceShip }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-8 gap-1.5 border-primary/30 text-primary hover:bg-primary/10 hover:text-primary"
+        onClick={() => window.open(`/?view=trace&ship=${ship.ref}`, "_blank", "noopener")}
+      >
+        <ExternalLink className="h-3.5 w-3.5" /> Open in new tab
+      </Button>
+      <a href={`/api/live-trace/report?ref=${ship.ref}`} download aria-label={`Download PDF report for ${ship.ref}`}>
+        <Button variant="outline" size="sm" className="h-8 gap-1.5 border-primary/30 text-primary hover:bg-primary/10 hover:text-primary">
+          <FileDown className="h-3.5 w-3.5" /> Ship PDF report
+        </Button>
+      </a>
+    </div>
+  );
+}
+
+/* ── THE DOSSIER — full ship picture on click ──────────────────────────── */
+function Dossier({ ship, p, now, onClose }: { ship: TraceShip; p: number; now: number | null; onClose: () => void }) {
+  const comp = ship.compliance;
+  const slipped = !!(ship.carrierEta && ship.supplierPromisedEta && +new Date(ship.carrierEta) > +new Date(ship.supplierPromisedEta));
+  return (
+    <div className="flex h-full flex-col">
+      {/* header */}
+      <div className="border-b border-primary/15 bg-gradient-to-br from-primary/10 via-transparent to-transparent px-4 py-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Ship className="h-4 w-4 shrink-0 text-primary" />
+              <span className="font-mono text-sm font-bold">{ship.ref}</span>
+              <LiveStatusChip ship={ship} />
+              <StatusPill value={ship.status} />
+              <FreshnessBadge value={ship.freshness} />
             </div>
-          ))}
+            <p className="mt-1 truncate font-display text-lg font-semibold leading-tight">
+              {ship.vesselName ?? ship.carrier ?? "Vessel unlinked"}
+              {ship.vesselVoyage ? <span className="ml-1.5 text-xs font-normal text-muted-foreground">Voyage {ship.vesselVoyage}</span> : null}
+            </p>
+          </div>
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground" onClick={onClose} aria-label="Close dossier">
+            <X className="h-4 w-4" />
+          </Button>
         </div>
-        {/* ETA markers */}
-        {etaMarkers.map((m) => (
-          <div
-            key={m.ref}
-            className="absolute top-2 -translate-x-1/2"
-            style={{ left: `${clamp01((m.t - windowStart) / (24 * HOUR)) * 100}%` }}
-            title={`${m.ref} ETA ${fmtDateTime(new Date(m.t).toISOString())}`}
-          >
-            <span
-              className={cn(
-                "block h-2.5 w-2.5 rotate-45 border",
-                m.ref === focusRef
-                  ? "border-primary bg-primary shadow-[0_0_10px_oklch(0.79_0.135_88/80%)]"
-                  : "border-primary/40 bg-primary/30"
-              )}
+        <div className="mt-2.5">
+          <DossierActions ship={ship} />
+        </div>
+      </div>
+
+      {/* scrollable body */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+        {/* vessel & route */}
+        <section className="mb-4">
+          <MiniTitle icon={<Anchor className="h-3 w-3" />}>Vessel &amp; route</MiniTitle>
+          <RouteBar ship={ship} p={p} />
+          <div className="mt-2 grid grid-cols-2 gap-x-4">
+            <KV k="Mode" v={ship.mode} />
+            <KV k="Carrier" v={ship.carrier ?? "—"} />
+            <KV k="Forwarder" v={ship.forwarder ?? "—"} />
+            <KV k="Speed" v={ship.speedKn ? <span className="tabular-nums">≈ {ship.speedKn} kn</span> : "—"} />
+            <KV k="Departed" v={<span className="tabular-nums">{fmtDate(ship.departure)}</span>} />
+            <KV
+              k="Live position"
+              v={
+                ship.vesselName ? (
+                  <span className="tabular-nums">
+                    {Math.round(p * 100)}% of voyage
+                  </span>
+                ) : (
+                  "position unlinked"
+                )
+              }
             />
           </div>
-        ))}
-        {/* NOW cursor — key on hour so it flashes softly on each hour update */}
-        <motion.div
-          key={new Date(windowStart).getHours()}
-          className="absolute inset-y-0 z-10"
-          style={{ left: `${clamp01((now - windowStart) / (24 * HOUR)) * 100}%` }}
-          initial={{ opacity: 0.4 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 1.2 }}
-        >
-          <div className="relative h-full w-px bg-primary/70 shadow-[0_0_8px_oklch(0.79_0.135_88/60%)]">
-            <span className="absolute top-1 left-1/2 -translate-x-1/2 rounded-sm bg-primary px-1 text-[8px] font-bold text-primary-foreground">NOW</span>
+          <div className="mt-2 rounded-lg border border-primary/20 bg-primary/5 p-2.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Arrival countdown</span>
+              <span className="font-display text-xl font-bold tabular-nums text-gold-grad">
+                {ship.eta && now ? fmtCountdown(+new Date(ship.eta) - now) : "no carrier ETA"}
+              </span>
+            </div>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              ETA {fmtDateTime(ship.eta)}
+              {ship.etaType ? <span className="ml-1.5 rounded border border-primary/30 bg-primary/10 px-1 py-px text-[9px] font-semibold uppercase text-primary">{ship.etaType}</span> : null}
+              {ship.etaSource ? <span className="ml-1">· {ship.etaSource}</span> : null}
+            </p>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
+              <span className="text-muted-foreground">
+                supplier promise <span className="tabular-nums text-foreground">{fmtDate(ship.supplierPromisedEta)}</span>
+              </span>
+              <span className="text-muted-foreground">
+                carrier <span className="tabular-nums text-foreground">{fmtDate(ship.carrierEta)}</span>
+              </span>
+              {slipped ? <span className="rounded border border-rose-400/25 bg-rose-400/10 px-1.5 py-0.5 text-[9px] font-bold text-rose-300">ETA SLIPPED vs PROMISE</span> : null}
+            </div>
           </div>
-        </motion.div>
+        </section>
+
+        {/* materials & import value */}
+        <section className="mb-4">
+          <MiniTitle icon={<Package className="h-3 w-3" />}>Material · country · cost</MiniTitle>
+          {ship.materials.length === 0 ? (
+            <EmptyState message="No PO lines linked to this shipment" />
+          ) : (
+            <>
+              <ScrollTable maxHeight="max-h-[240px]">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="h-8 text-[10px]">SKU / Material</TableHead>
+                      <TableHead className="h-8 text-[10px]">Origin</TableHead>
+                      <TableHead className="h-8 text-right text-[10px]">Qty</TableHead>
+                      <TableHead className="h-8 text-right text-[10px]">Unit</TableHead>
+                      <TableHead className="h-8 text-right text-[10px]">Line value</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {ship.materials.map((m) => (
+                      <TableRow key={m.sku}>
+                        <TableCell className="py-1.5">
+                          <p className="font-mono text-[11px] font-semibold">{m.sku}</p>
+                          <p className="max-w-[180px] truncate text-[11px] text-muted-foreground" title={`${m.name}${m.workPackage ? ` — ${m.workPackage}` : ""}`}>
+                            {m.name}
+                            {m.criticality === "CRITICAL" ? <span className="ml-1 text-[9px] font-bold text-rose-400">CRITICAL</span> : null}
+                          </p>
+                        </TableCell>
+                        <TableCell className="py-1.5 text-[11px]">{m.countryOfOrigin}</TableCell>
+                        <TableCell className="py-1.5 text-right text-[11px] tabular-nums">
+                          {m.quantity.toLocaleString()} {m.uom}
+                        </TableCell>
+                        <TableCell className="py-1.5 text-right text-[11px] tabular-nums">{fmtMoney(m.unitPrice, ship.currency)}</TableCell>
+                        <TableCell className="py-1.5 text-right text-[11px] font-semibold tabular-nums">{fmtMoney(m.extended, ship.currency)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </ScrollTable>
+              <div className="mt-2 flex items-baseline justify-between rounded-lg border border-primary/25 bg-primary/5 px-3 py-2">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Total import value</span>
+                <span className="font-display text-2xl font-bold tabular-nums text-gold-grad">{fmtMoney(ship.importValue, ship.currency)}</span>
+              </div>
+            </>
+          )}
+        </section>
+
+        {/* where to use */}
+        <section className="mb-4">
+          <MiniTitle icon={<Factory className="h-3 w-3" />}>Where to use</MiniTitle>
+          <div className="grid grid-cols-2 gap-x-4">
+            <KV
+              k="Project"
+              v={ship.project ? (
+                <span>
+                  <span className="font-mono text-[11px] font-semibold">{ship.project.code}</span> · {ship.project.name}
+                  <span className="block text-[10px] text-muted-foreground">site: {ship.project.site}</span>
+                </span>
+              ) : "—"}
+            />
+            <KV
+              k="Warehouse"
+              v={ship.destinationWarehouse ? (
+                <span>
+                  <span className="font-mono text-[11px] font-semibold">{ship.destinationWarehouse.code}</span> · {ship.destinationWarehouse.name}
+                  <span className="block text-[10px] text-muted-foreground">{ship.destinationWarehouse.site}</span>
+                </span>
+              ) : "not yet assigned"}
+            />
+            <KV k="Delivery location" v={ship.po?.deliveryLocation ?? "—"} />
+            <KV k="Incoterms" v={ship.po?.deliveryTerms ?? ship.supplier?.incoterms ?? "—"} />
+          </div>
+          {ship.materials.some((m) => m.workPackage) ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {ship.materials
+                .filter((m) => m.workPackage)
+                .map((m) => (
+                  <span key={m.sku} className="inline-flex max-w-full items-center gap-1 rounded-md border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[10px]" title={`${m.name} → ${m.workPackage}`}>
+                    <MapPin className="h-3 w-3 shrink-0 text-primary/70" />
+                    <span className="truncate">{m.workPackage}</span>
+                  </span>
+                ))}
+            </div>
+          ) : null}
+        </section>
+
+        {/* procurement */}
+        <section className="mb-4">
+          <MiniTitle icon={<Building2 className="h-3 w-3" />}>Procurement chain</MiniTitle>
+          <div className="grid grid-cols-2 gap-x-4">
+            <KV
+              k="Supplier"
+              v={ship.supplier ? (
+                <span>
+                  {ship.supplier.name} <StatusPill value={ship.supplier.status} className="ml-1" />
+                  <span className="block font-mono text-[10px] text-muted-foreground">
+                    {ship.supplier.code} · {ship.supplier.city ? `${ship.supplier.city}, ` : ""}
+                    {ship.supplier.country}
+                  </span>
+                </span>
+              ) : "—"}
+            />
+            <KV
+              k="Purchase order"
+              v={ship.po ? (
+                <span>
+                  <span className="font-mono text-[11px] font-semibold">{ship.po.ref}</span> <StatusPill value={ship.po.status} className="ml-1" />
+                  <span className="block text-[10px] tabular-nums text-muted-foreground">
+                    {fmtMoney(ship.po.totalAmount, ship.po.currency)} · promised {fmtDate(ship.po.promisedDate)}
+                  </span>
+                </span>
+              ) : "—"}
+            />
+          </div>
+          {ship.po?.contracts.length ? (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Contracts:</span>
+              {ship.po.contracts.map((c) => (
+                <span key={c} className="rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-primary">
+                  {c}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </section>
+
+        {/* compliance */}
+        <section>
+          <MiniTitle icon={<ShieldCheck className="h-3 w-3" />}>Compliance &amp; risk</MiniTitle>
+          <div className="grid grid-cols-2 gap-x-4">
+            <KV
+              k="Customs"
+              v={comp.customsHold ? (
+                <span className="font-semibold text-rose-400">HOLD — {comp.customsStatus}</span>
+              ) : (
+                <span className="capitalize">{comp.customsStatus ?? "not reported"}</span>
+              )}
+            />
+            <KV k="Import dossier" v={comp.importFileRef ? <span className="font-mono text-[11px] font-semibold">{comp.importFileRef}</span> : "—"} />
+            <KV k="Reconciliation" v={<span className="inline-flex items-center gap-1.5"><ReconciliationBadge result={comp.overallReconciliation} /><span className="text-[10px] tabular-nums text-muted-foreground">{comp.reconciliation.PASS}✓ {comp.reconciliation.WARN}! {comp.reconciliation.FAIL}✗</span></span>} />
+            <KV k="Evidence" v={comp.evidence.length ? <span className="text-[10px]">{comp.evidence.length} source record{comp.evidence.length > 1 ? "s" : ""}</span> : "—"} />
+          </div>
+
+          {comp.bol.length > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {comp.bol.map((b) => (
+                <span key={`${b.bolNo}-${b.version}`} className="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[10px]">
+                  <FileText className="h-3 w-3 text-primary/70" />
+                  <span className="font-mono font-semibold">{b.bolNo}</span>
+                  <span className="text-muted-foreground">v{b.version}</span>
+                  <StatusPill value={b.status} />
+                </span>
+              ))}
+            </div>
+          ) : null}
+
+          {comp.exceptions.length > 0 ? (
+            <div className="mt-2.5 space-y-1.5">
+              {comp.exceptions.map((x) => (
+                <div key={x.ref} className="flex flex-wrap items-center gap-1.5 rounded-md border border-rose-400/20 bg-rose-400/5 px-2 py-1.5 text-[11px]">
+                  <SeverityBadge value={x.severity} />
+                  <Siren className="h-3 w-3 shrink-0 text-rose-400" />
+                  <span className="font-mono font-semibold">{x.ref}</span>
+                  <span className="min-w-0 flex-1 truncate">{x.title}</span>
+                  <CaseStateBadge state={x.state} />
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {comp.risks.length > 0 ? (
+            <div className="mt-2.5 space-y-1.5">
+              {comp.risks.map((r, i) => (
+                <div key={`${r.signalCode}-${i}`} className="rounded-md border border-border/70 bg-muted/30 px-2 py-1.5 text-[11px]">
+                  <div className="flex items-center gap-1.5">
+                    <SeverityBadge value={r.severity} />
+                    <span className="font-mono text-[10px] font-bold">{r.signalCode}</span>
+                  </div>
+                  <p className="mt-1 text-muted-foreground">{r.fact}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {comp.evidence.length > 0 ? (
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              {comp.evidence.map((e, i) => (
+                <EvidenceBadge key={`${e.entityRef}-${i}`} label={`${e.sourceSystem} · ${e.label}`} />
+              ))}
+            </div>
+          ) : null}
+        </section>
       </div>
     </div>
   );
 }
 
-/* ── Live event stream (real audit records, replayed on a live cadence) ──── */
-function EventStream({ events, now }: { events: AuditRow[]; now: number }) {
-  const [cursor, setCursor] = useState(0);
-  const len = events.length;
-  useEffect(() => {
-    if (len <= 6) return;
-    const id = setInterval(() => setCursor((c) => c + 1), 4000);
-    return () => clearInterval(id);
-  }, [len]);
-
-  const visible = useMemo(() => {
-    if (len === 0) return [];
-    const take = Math.min(6, len);
-    return Array.from({ length: take }, (_, i) => events[(cursor + i) % len]);
-  }, [cursor, events, len]);
-
-  if (len === 0) return <EmptyState message="No audit events yet" />;
-
-  return (
-    <div className="flex flex-col gap-2">
-      <AnimatePresence mode="popLayout" initial={false}>
-        {visible.map((e) => (
-          <motion.div
-            key={`${cursor}-${e.id}`}
-            layout
-            initial={{ opacity: 0, x: 28 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -28 }}
-            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-            className="rounded-lg border border-border/70 bg-card/60 px-3 py-2"
-          >
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
-              <span className="tabular-nums text-muted-foreground">
-                {new Date(e.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
-              </span>
-              <span
-                className={cn(
-                  "rounded px-1 py-px text-[9px] font-bold uppercase tracking-wide",
-                  e.actorType === "USER"
-                    ? "bg-primary/15 text-primary"
-                    : e.actorType === "SERVICE"
-                      ? "bg-teal-400/15 text-teal-300"
-                      : "bg-zinc-400/15 text-zinc-300"
-                )}
-              >
-                {e.actorType}
-              </span>
-              <span className="font-mono text-[11px] font-bold">{e.action}</span>
-              {e.entityRef ? <span className="font-mono text-muted-foreground">{e.entityType} {e.entityRef}</span> : null}
-              {e.previousState || e.newState ? (
-                <span className="tabular-nums">
-                  {e.previousState ? <span className="text-rose-400/80">{e.previousState.replaceAll("_", " ")}</span> : <span className="text-muted-foreground">—</span>}
-                  <span className="mx-1 text-muted-foreground">→</span>
-                  {e.newState ? <span className="text-emerald-400">{e.newState.replaceAll("_", " ")}</span> : <span className="text-muted-foreground">—</span>}
-                </span>
-              ) : null}
-              <span className="ml-auto text-[10px] tabular-nums text-muted-foreground/70">
-                {Math.max(0, Math.round((now - +new Date(e.at)) / 60000))}m ago
-              </span>
-            </div>
-          </motion.div>
-        ))}
-      </AnimatePresence>
-      <p className="text-[10px] italic text-muted-foreground">real audit records · replayed on a live cadence · append-only (M22)</p>
-    </div>
-  );
-}
-
-/* ── Fleet strip: every active shipment with ticking countdown ───────────── */
-function FleetCard({ s, now, active, onClick }: { s: ShipmentLite; now: number; active: boolean; onClick: () => void }) {
-  const start = +new Date(s.lastEventAt ?? s.created);
-  const end = s.actualArrival ? +new Date(s.actualArrival) : s.displayEta ? +new Date(s.displayEta) : start;
-  const progress = clamp01((now - start) / Math.max(1, end - start));
-  const slipped = !!(s.carrierEta && s.supplierPromisedEta && +new Date(s.carrierEta) > +new Date(s.supplierPromisedEta));
-
+/* ── fleet rail chip ───────────────────────────────────────────────────── */
+function FleetChip({ ship, p, active, onClick }: { ship: TraceShip; p: number; active: boolean; onClick: () => void }) {
+  const c = STATUS_COLOR[ship.liveStatus];
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "group relative w-[240px] shrink-0 rounded-xl border p-3 text-left transition-all duration-300",
+        "group relative w-[220px] shrink-0 rounded-xl border p-2.5 text-left transition-all duration-300",
         active
           ? "border-primary/60 bg-primary/10 shadow-[0_0_24px_oklch(0.79_0.135_88/15%)]"
-          : "border-border/70 bg-card/60 hover:border-primary/35 hover:bg-card"
+          : "border-border/70 bg-card/70 hover:border-primary/35 hover:bg-card"
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="font-mono text-xs font-bold">{s.ref}</span>
-        <StatusPill value={s.status} />
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: c, boxShadow: `0 0 6px ${c}` }} />
+          <span className="truncate font-mono text-xs font-bold">{ship.ref}</span>
+        </span>
+        <span className="text-[9px] font-bold uppercase tracking-wide" style={{ color: c }}>
+          {STATUS_LABEL[ship.liveStatus]}
+        </span>
       </div>
-      <p className="mt-1 truncate text-[11px] text-muted-foreground">
-        {s.originPort?.split(",").pop()?.trim() ?? "?"} → {s.destinationPort?.split(",").pop()?.trim() ?? "?"}
-        {s.vesselName ? <span className="ml-1 text-primary/70">· {s.vesselName}</span> : null}
+      <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+        {ship.from?.label ?? ship.originPort} → {ship.to?.label ?? ship.destPort}
+        {ship.vesselName ? <span className="ml-1 text-primary/70">· {ship.vesselName}</span> : null}
       </p>
-      <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted">
-        <div
-          className="h-full rounded-full bg-gradient-to-r from-[#8a6a1f] via-[#d4af37] to-[#f3dc8e]"
-          style={{ width: `${progress * 100}%` }}
-        />
+      <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full" style={{ width: `${p * 100}%`, background: `linear-gradient(90deg, #8a6a1f, ${c}, #f3dc8e)` }} />
       </div>
-      <div className="mt-1.5 flex items-center justify-between">
-        <EtaCountdown target={s.displayEta} now={now} label="eta" />
-        {slipped ? <span className="text-[9px] font-bold text-rose-400">SLIP</span> : null}
+      <div className="mt-1 flex items-center justify-between text-[10px]">
+        <span className="tabular-nums text-primary">{fmtPct(p)}</span>
+        <span className="tabular-nums text-muted-foreground">{fmtMoney(ship.importValue, ship.currency)}</span>
       </div>
     </button>
   );
 }
 
-/* ── View ────────────────────────────────────────────────────────────────── */
+/* ══ LIVE TRACEABILITY COMMAND VIEW (full-screen overlay) ════════════════ */
 export function LiveTraceabilityView({ drillRef }: { drillRef?: string | null }) {
-  const { data: shipments, loading, error, refresh, syncedAt } = useApi<ShipmentLite[]>("/api/shipments", [], 60_000);
-  const now = useNow(1000); // number | null — ticks every second
-
-  const list = shipments ?? [];
+  const setView = useAppStore((s) => s.setView);
+  const clearDrill = useAppStore((s) => s.clearDrill);
+  const traceShip = useAppStore((s) => s.traceShip);
+  const clearTraceShip = useAppStore((s) => s.clearTraceShip);
+  const { data: snap, loading, error, refresh, syncedAt } = useApi<TraceSnapshot>("/api/live-trace", [], 0);
   const [picked, setPicked] = useState<string | null>(null);
-  const focus = picked ?? drillRef ?? list.find((s) => s.status === "IN_TRANSIT")?.ref ?? list[0]?.ref ?? null;
-  const { data: detail } = useApi<ShipmentDetail>(focus ? `/api/shipments/${focus}` : null, [focus]);
+  const [factor, setFactor] = useState<number>(600);
+  const now = useNow(1000);
 
-  const { data: audit } = useApi<AuditRow[]>("/api/audit", [], 60_000);
-  // derived sync pulse — no effect state needed (view re-renders every second)
-  const syncPulse = now !== null && syncedAt > 0 && now - syncedAt < 1200;
+  const activeRef = picked ?? traceShip ?? drillRef ?? null;
 
-  const upcoming = useMemo(() => {
-    if (!detail || now === null) return [];
-    return [...detail.milestones]
-      .filter((m) => +new Date(m.eventTime) > now)
-      .sort((a, b) => +new Date(a.eventTime) - +new Date(b.eventTime))
-      .slice(0, 3);
-  }, [detail, now]);
+  /* sim clock: server snapshot + real elapsed × time-lapse factor */
+  const baseRef = useRef<{ server: number; wall: number } | null>(null);
+  useEffect(() => {
+    if (snap) baseRef.current = { server: +new Date(snap.serverTime), wall: Date.now() };
+  }, [snap]);
+  const [simNow, setSimNow] = useState<number | null>(null);
+  useEffect(() => {
+    const id = setInterval(() => {
+      const b = baseRef.current;
+      if (b) setSimNow(b.server + (Date.now() - b.wall) * factor);
+    }, 150);
+    return () => clearInterval(id);
+  }, [factor]);
 
-  const lastDone = useMemo(() => {
-    if (!detail || now === null) return null;
-    const done = detail.milestones.filter((m) => +new Date(m.eventTime) <= now).sort((a, b) => +new Date(b.eventTime) - +new Date(a.eventTime));
-    return done[0] ?? null;
-  }, [detail, now]);
+  /* hourly cadence: refetch exactly at the next top-of-hour + pulse */
+  const [flash, setFlash] = useState(0);
+  useEffect(() => {
+    if (!snap) return;
+    const delay = Math.max(1500, +new Date(snap.nextUpdateAt) - Date.now());
+    const id = setTimeout(() => {
+      refresh();
+      setFlash((f) => f + 1);
+    }, delay);
+    return () => clearTimeout(id);
+  }, [snap, refresh]);
+  const syncPulse = now !== null && syncedAt > 0 && now - syncedAt < 1600;
+
+  /* per-ship live progress at simNow */
+  const progress = useMemo(() => {
+    const m = new Map<string, number>();
+    if (!snap || simNow === null) return m;
+    for (const s of snap.ships) {
+      if (s.liveStatus === "ARRIVED") {
+        m.set(s.ref, 1);
+        continue;
+      }
+      if (s.liveStatus === "BOOKED") {
+        m.set(s.ref, 0);
+        continue;
+      }
+      const end = s.actualArrival ? +new Date(s.actualArrival) : s.eta ? +new Date(s.eta) : null;
+      const start = s.departure ? +new Date(s.departure) : 0;
+      m.set(s.ref, !end ? 0 : clamp01((simNow - start) / Math.max(1, end - start)));
+    }
+    return m;
+  }, [snap, simNow]);
+
+  const byRef = useMemo(() => new Map((snap?.ships ?? []).map((s) => [s.ref, s])), [snap]);
+  const sel = activeRef ? byRef.get(activeRef) ?? null : null;
+
+  /* deep-link URL sync: /?view=trace&ship=SHP-8801 */
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    q.set("view", "trace");
+    if (activeRef) q.set("ship", activeRef);
+    else q.delete("ship");
+    window.history.replaceState(null, "", `/?${q.toString()}`);
+  }, [activeRef]);
+
+  const closeOverlay = () => {
+    const q = new URLSearchParams(window.location.search);
+    q.delete("view");
+    q.delete("ship");
+    window.history.replaceState(null, "", q.size ? `/?${q.toString()}` : "/");
+    setView("control-tower");
+  };
+  const closeDrawer = () => {
+    setPicked(null);
+    clearTraceShip();
+    if (drillRef) clearDrill();
+  };
+
+  /* Esc: drawer first, then overlay */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (sel) closeDrawer();
+      else closeOverlay();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sel, drillRef]);
+
+  const countdown = snap && now !== null ? +new Date(snap.nextUpdateAt) - now : null;
+  const totals = snap?.totals;
 
   return (
-    <div className="space-y-4">
-      {/* header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <h2 className="font-display text-xl font-semibold tracking-wide">Live Traceability</h2>
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-primary">
-            <PulsingDot /> Live
-          </span>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <LiveClock
-            prefix="ops time"
-            className="rounded-md border border-border/70 bg-card/60 px-2.5 py-1 text-xs font-semibold"
-          />
-          <span
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-semibold transition-colors duration-700",
-              syncPulse ? "border-primary/60 bg-primary/15 text-primary" : "border-border/70 bg-card/60 text-muted-foreground"
-            )}
-          >
-            <RadioTower className="h-3 w-3" /> auto-sync 60s
-          </span>
-          <Button variant="outline" size="sm" onClick={refresh}>
-            <RefreshCw className="h-4 w-4" /> Sync now
-          </Button>
-        </div>
-      </div>
+    <motion.div
+      initial={{ opacity: 0, y: 26, scale: 0.995 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+      className="fixed inset-0 z-[70] flex flex-col bg-background"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Live Traceability Command View"
+    >
+      {/* ambient gold + hourly pulse */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(1100px_480px_at_50%_-12%,oklch(0.79_0.135_88/9%),transparent_62%)]" />
+      {flash > 0 ? (
+        <div
+          key={flash}
+          aria-hidden
+          className="map-flash-layer pointer-events-none absolute inset-0 bg-[radial-gradient(900px_430px_at_50%_42%,oklch(0.79_0.135_88/11%),transparent_66%)] [animation:map-flash_1.5s_ease-out_1]"
+        />
+      ) : null}
 
-      {loading && !shipments ? <LoadingState label="Linking to live feeds…" /> : null}
-      {error ? <ErrorState message={error} /> : null}
+      {/* ── top bar ── */}
+      <header className="relative z-10 border-b border-primary/15 bg-background/90 backdrop-blur">
+        <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 sm:px-4">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#f3dc8e] via-[#d4af37] to-[#8a6a1f] text-[#1a1408] shadow-[0_0_16px_oklch(0.79_0.135_88/30%)]">
+              <RadioTower className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 leading-tight">
+              <p className="truncate font-display text-sm font-bold tracking-wide">
+                Live Traceability <span className="text-gold-grad">Command</span>
+              </p>
+              <p className="flex items-center gap-1.5 text-[9px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
+                <PulsingDot /> every ship · same picture · hourly snapshot
+              </p>
+            </div>
+          </div>
 
-      {list.length === 0 && !loading ? <EmptyState message="No shipments to trace" /> : null}
+          {/* live counters */}
+          {totals ? (
+            <div className="hidden items-center gap-2.5 rounded-lg border border-border/70 bg-card/60 px-3 py-1.5 md:flex">
+              {(
+                [
+                  ["in transit", totals.inTransit, STATUS_COLOR.IN_TRANSIT],
+                  ["at port", totals.atPort, STATUS_COLOR.AT_PORT],
+                  ["hold", totals.customsHold, STATUS_COLOR.CUSTOMS_HOLD],
+                  ["delayed", totals.delayed, STATUS_COLOR.DELAYED],
+                  ["arrived", totals.arrived, STATUS_COLOR.ARRIVED],
+                ] as const
+              ).map(([label, value, color]) => (
+                <span key={label} className="flex items-center gap-1 text-[10px] font-semibold text-muted-foreground">
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: color, boxShadow: `0 0 5px ${color}` }} />
+                  {label} <span className="font-display text-[13px] font-bold tabular-nums text-foreground">{value}</span>
+                </span>
+              ))}
+              <span className="border-l border-border/60 pl-2.5 text-[10px] font-semibold text-muted-foreground">
+                fleet value <span className="font-display text-[13px] font-bold tabular-nums text-gold-grad">{fmtMoney(totals.importValue, totals.currency)}</span>
+              </span>
+            </div>
+          ) : null}
 
-      {!now ? <LoadingState label="Starting operational clock…" /> : null}
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            {/* hourly cadence chip */}
+            <span
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-[10px] font-semibold transition-colors duration-700",
+                syncPulse ? "border-primary/60 bg-primary/15 text-primary" : "border-border/70 bg-card/60 text-muted-foreground"
+              )}
+              title={snap ? `Snapshot recomputed every hour (${snap.snapshotHourLabel}) — positions keep gliding between snapshots` : undefined}
+            >
+              <Timer className="h-3 w-3" />
+              Hourly sync {snap ? `· ${snap.snapshotHourLabel}` : ""}
+              {countdown !== null ? <span className="tabular-nums text-primary">· next in {fmtCountdown(countdown)}</span> : null}
+            </span>
 
-      {/* fleet strip */}
-      {list.length > 0 && now ? (
-        <div className="relative">
-          <div className="flex gap-3 overflow-x-auto pb-2">
-            {list.map((s) => (
-              <FleetCard key={s.ref} s={s} now={now} active={s.ref === focus} onClick={() => setPicked(s.ref)} />
-            ))}
+            {/* time-lapse control */}
+            <div className="flex items-center overflow-hidden rounded-md border border-border/70 bg-card/60" role="group" aria-label="Time-lapse factor">
+              <span className="border-r border-border/60 px-2 py-1.5 text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
+                <Gauge className="mr-1 inline h-3 w-3" />sim
+              </span>
+              {SIM_PRESETS.map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setFactor(f)}
+                  aria-pressed={factor === f}
+                  className={cn(
+                    "px-2 py-1.5 text-[10px] font-bold tabular-nums transition-colors",
+                    factor === f ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                  )}
+                >
+                  ×{f}
+                </button>
+              ))}
+            </div>
+
+            <LiveClock prefix="ops" className="hidden items-center rounded-md border border-border/70 bg-card/60 px-2 py-1.5 text-[11px] font-semibold lg:inline-flex" />
+
+            <a href="/api/live-trace/report" download aria-label="Download full live scenario PDF">
+              <Button variant="outline" size="sm" className="h-8 gap-1.5 border-primary/30 text-primary hover:bg-primary/10 hover:text-primary">
+                <FileDown className="h-3.5 w-3.5" /> Scenario PDF
+              </Button>
+            </a>
+
+            {/* CLOSE — pinned top-right */}
+            <Button
+              size="sm"
+              className="h-9 gap-1.5 border border-primary/40 bg-primary/10 px-3 font-semibold text-primary hover:bg-primary/20 hover:text-primary"
+              onClick={closeOverlay}
+              aria-label="Close live traceability view"
+              title="Close (Esc)"
+            >
+              <X className="h-4 w-4" /> Close
+            </Button>
           </div>
         </div>
-      ) : null}
+        <div className="hairline-gold h-px w-full" aria-hidden />
+      </header>
 
-      {/* journey + stream */}
-      {now ? (
-        <div className="grid gap-4 xl:grid-cols-[1fr_400px]">
-        <SectionCard
-          title={
-            <span className="inline-flex items-center gap-2">
-              <Ship className="h-3.5 w-3.5 text-primary/70" /> Journey — {focus ?? "no focus"}
-            </span>
-          }
-          subtitle="position is time-proportional to the evidenced route — it drifts slowly, in real time"
-        >
-          {detail ? (
-            <div className="space-y-5">
-              <JourneyRoute detail={detail} now={now} />
-
-              {/* big ETA countdown */}
-              <div className="flex flex-wrap items-end justify-between gap-4 rounded-xl border border-primary/20 bg-gradient-to-br from-primary/10 via-transparent to-transparent p-4">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Arrival countdown</p>
-                  <p className="mt-1 font-display text-4xl font-bold tabular-nums text-gold-grad">
-                    {detail.displayEta ? fmtCountdown(+new Date(detail.displayEta) - now) : "—"}
-                  </p>
-                  <p className="mt-1 text-[11px] text-muted-foreground">
-                    ETA {fmtDateTime(detail.displayEta)} · source {detail.displayEtaSource ?? "—"}
-                  </p>
-                </div>
-                <div className="flex flex-col items-end gap-1.5 text-right">
-                  <EtaCountdown target={detail.supplierPromisedEta} now={now} label="supplier promise" />
-                  <FreshnessBadge value={detail.freshness} />
-                  {detail.carrierEta && detail.supplierPromisedEta && +new Date(detail.carrierEta) > +new Date(detail.supplierPromisedEta) ? (
-                    <span className="rounded border border-rose-400/25 bg-rose-400/10 px-1.5 py-0.5 text-[10px] font-bold text-rose-300">ETA SLIPPED vs PROMISE</span>
-                  ) : null}
-                </div>
+      {/* ── map ── */}
+      <div className="relative min-h-0 flex-1">
+        {!snap ? (
+          <div className="flex h-full items-center justify-center">
+            {error ? (
+              <div className="space-y-3 text-center">
+                <ErrorState message={error} />
+                <Button variant="outline" size="sm" onClick={refresh}>
+                  <RefreshCw className="h-4 w-4" /> Retry
+                </Button>
               </div>
+            ) : (
+              <LoadingState label="Establishing live feed — plotting every vessel…" />
+            )}
+          </div>
+        ) : (
+          <>
+            <WorldMap ships={snap.ships} progress={progress} selectedRef={activeRef} onPick={(ref) => setPicked(ref)} onBackgroundClick={closeDrawer} />
 
-              {/* hour strip */}
-              <HourStrip shipments={list} focusRef={focus} now={now} />
-
-              {/* milestone rail */}
-              <div className="grid gap-2 sm:grid-cols-2">
-                <div className="rounded-lg border border-border/70 p-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Last completed</p>
-                  {lastDone ? (
-                    <div className="mt-1.5 text-sm">
-                      <p className="font-medium">{lastDone.label} <span className="ml-1 text-xs text-muted-foreground">{lastDone.location}</span></p>
-                      <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
-                        event {fmtDateTime(lastDone.eventTime)} · received {fmtDateTime(lastDone.receivedAt)}
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="mt-1.5 text-xs text-muted-foreground">none yet</p>
-                  )}
-                </div>
-                <div className="rounded-lg border border-border/70 p-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Upcoming</p>
-                  <div className="mt-1.5 flex flex-col gap-1.5">
-                    {upcoming.length === 0 ? (
-                      <p className="text-xs text-muted-foreground">no estimated milestones ahead</p>
-                    ) : (
-                      upcoming.map((m) => (
-                        <div key={m.id} className="flex items-center justify-between gap-2 text-xs">
-                          <span className="truncate font-medium">{m.label}</span>
-                          <span className="whitespace-nowrap font-mono text-[11px] tabular-nums text-primary">{fmtCountdown(+new Date(m.eventTime) - now)}</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
+            {/* legend */}
+            <div className="pointer-events-none absolute left-3 top-3 rounded-lg border border-border/70 bg-card/80 px-3 py-2 backdrop-blur">
+              <p className="mb-1 text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Fleet status</p>
+              <MapLegend className="max-w-[240px]" />
             </div>
-          ) : (
-            <LoadingState label="Loading journey…" />
-          )}
-        </SectionCard>
 
-        {/* live stream + stats */}
-        <div className="space-y-4">
-          <SectionCard
-            title={
-              <span className="inline-flex items-center gap-2">
-                <TimerReset className="h-3.5 w-3.5 text-primary/70" /> Live event stream
-              </span>
-            }
-            subtitle="audit trail replayed as it happened"
-          >
-            <EventStream events={audit ?? []} now={now} />
-          </SectionCard>
-
-          <SectionCard title="Network pulse" subtitle="operational snapshot, refreshed every 60 s">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-lg border border-border/70 p-3 text-center">
-                <p className="text-[10px] uppercase tracking-widest text-muted-foreground">In transit</p>
-                <p className="mt-1 font-display text-3xl font-semibold text-primary tabular-nums">
-                  <CountUp value={list.filter((s) => s.status === "IN_TRANSIT").length} />
-                </p>
-              </div>
-              <div className="rounded-lg border border-border/70 p-3 text-center">
-                <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Fresh feeds</p>
-                <p className="mt-1 font-display text-3xl font-semibold text-emerald-400 tabular-nums">
-                  <CountUp value={list.filter((s) => s.freshness === "fresh").length} />
-                </p>
-              </div>
-              <div className="col-span-2 rounded-lg border border-border/70 p-3 text-center">
-                <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Tracing</p>
-                <p className="mt-1 font-display text-3xl font-semibold tabular-nums">
-                  <CountUp value={list.length} />
-                </p>
-                <p className="mt-0.5 text-[10px] text-muted-foreground">
-                  synced {syncedAt ? `${Math.max(0, Math.round((now - syncedAt) / 1000))}s ago` : "—"}
-                </p>
-              </div>
+            {/* sim note */}
+            <div className="pointer-events-none absolute right-3 top-3 hidden rounded-lg border border-border/70 bg-card/80 px-3 py-2 text-[10px] text-muted-foreground backdrop-blur sm:block">
+              <span className="font-semibold text-primary">sim ×{factor}</span> · markers glide continuously, data recomputed hourly
+              {snap.ships.length === 0 ? <span className="mt-1 block"><EmptyState message="No shipments to trace" /></span> : null}
             </div>
-          </SectionCard>
-        </div>
-        </div>
-      ) : null}
-    </div>
+
+            {/* fleet rail */}
+            {snap.ships.length > 0 ? (
+              <div className="absolute inset-x-0 bottom-0 z-10 border-t border-primary/10 bg-background/85 px-3 py-2 backdrop-blur">
+                <div className="mb-1.5 flex items-center justify-between text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <Container className="h-3 w-3" /> Fleet — {snap.ships.length} consignments · click any ship on map or below
+                  </span>
+                  <span className="hidden sm:inline">{fmtMoney(totals?.importValue ?? 0, totals?.currency ?? "USD")} total import value</span>
+                </div>
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {snap.ships.map((s) => (
+                    <FleetChip key={s.ref} ship={s} p={progress.get(s.ref) ?? s.progress} active={s.ref === activeRef} onClick={() => setPicked(s.ref)} />
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {/* ── dossier drawer ── */}
+            <AnimatePresence>
+              {sel ? (
+                <motion.aside
+                  key={sel.ref}
+                  initial={{ x: "100%" }}
+                  animate={{ x: 0 }}
+                  exit={{ x: "100%" }}
+                  transition={{ type: "spring", stiffness: 280, damping: 32 }}
+                  className="absolute right-0 top-0 z-20 h-full w-full border-l border-primary/20 bg-card/95 shadow-[-30px_0_60px_oklch(0_0_0/35%)] backdrop-blur-xl sm:w-[480px]"
+                  role="complementary"
+                  aria-label={`Dossier — ${sel.ref}`}
+                >
+                  <Dossier ship={sel} p={progress.get(sel.ref) ?? sel.progress} now={now} onClose={closeDrawer} />
+                </motion.aside>
+              ) : null}
+            </AnimatePresence>
+          </>
+        )}
+      </div>
+    </motion.div>
   );
 }

@@ -26,6 +26,10 @@ interface AppState {
   drill: { view: ViewId; ref?: string } | null;
   drillTo: (view: ViewId, ref?: string) => void;
   clearDrill: () => void;
+  /** ship ref preselected for the Live Traceability command view (deep links, cross-view entries) */
+  traceShip: string | null;
+  openTrace: (ship?: string | null) => void;
+  clearTraceShip: () => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -34,4 +38,7 @@ export const useAppStore = create<AppState>((set) => ({
   drill: null,
   drillTo: (view, ref) => set({ view, drill: { view, ref } }),
   clearDrill: () => set({ drill: null }),
+  traceShip: null,
+  openTrace: (ship) => set({ view: "live", traceShip: ship ?? null }),
+  clearTraceShip: () => set({ traceShip: null }),
 }));

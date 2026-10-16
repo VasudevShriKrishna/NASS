@@ -111,7 +111,7 @@ export function SeverityBadge({ value }: { value: string }) {
 }
 
 /* ── KPI tile with drill hint (M21: every tile drills to row-level records) ── */
-export function KpiTile({ label, value, sub, tone = "default", onClick, icon }: { label: string; value: ReactNode; sub?: ReactNode; tone?: "default" | "good" | "warn" | "bad"; onClick?: () => void; icon?: ReactNode }) {
+export function KpiTile({ label, value, sub, tone = "default", onClick, icon, index = 0 }: { label: string; value: ReactNode; sub?: ReactNode; tone?: "default" | "good" | "warn" | "bad"; onClick?: () => void; icon?: ReactNode; index?: number }) {
   const toneCls = {
     default: "text-foreground",
     good: "text-emerald-600 dark:text-emerald-300",
@@ -119,27 +119,36 @@ export function KpiTile({ label, value, sub, tone = "default", onClick, icon }: 
     bad: "text-rose-600 dark:text-rose-300",
   }[tone];
   return (
-    <Card
-      className={cn(
-        "relative min-w-0 overflow-hidden p-4 transition-all duration-200",
-        onClick && "cursor-pointer hover:border-primary/40 hover:shadow-[0_0_24px_oklch(0.79_0.135_88/12%)]"
-      )}
-      onClick={onClick}
-      role={onClick ? "button" : undefined}
-      tabIndex={onClick ? 0 : undefined}
-      onKeyDown={onClick ? (e) => e.key === "Enter" && onClick() : undefined}
+    <motion.div
+      className="min-w-0"
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, delay: Math.min(index * 0.05, 0.4), ease: [0.22, 1, 0.36, 1] }}
+      whileHover={onClick ? { y: -3 } : undefined}
+      whileTap={onClick ? { scale: 0.985 } : undefined}
     >
-      {/* corner gold glow */}
-      <div className="pointer-events-none absolute -right-8 -top-12 h-24 w-24 rounded-full bg-primary/10 blur-2xl" aria-hidden />
-      <div className="relative flex items-start justify-between gap-2">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
-        {icon ? <span className="text-primary/70">{icon}</span> : null}
-      </div>
-      <p className={cn("relative mt-1.5 font-display text-[26px] font-semibold leading-none tabular-nums", toneCls)}>
-        {typeof value === "number" ? <CountUp value={value} /> : value}
-      </p>
-      {sub ? <p className="relative mt-1.5 text-[11px] leading-snug text-muted-foreground">{sub}</p> : null}
-    </Card>
+      <Card
+        className={cn(
+          "relative h-full min-w-0 overflow-hidden p-4 transition-all duration-200",
+          onClick && "cursor-pointer hover:border-primary/40 hover:shadow-[0_0_24px_oklch(0.79_0.135_88/12%)]"
+        )}
+        onClick={onClick}
+        role={onClick ? "button" : undefined}
+        tabIndex={onClick ? 0 : undefined}
+        onKeyDown={onClick ? (e) => e.key === "Enter" && onClick() : undefined}
+      >
+        {/* corner gold glow */}
+        <div className="pointer-events-none absolute -right-8 -top-12 h-24 w-24 rounded-full bg-primary/10 blur-2xl" aria-hidden />
+        <div className="relative flex items-start justify-between gap-2">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+          {icon ? <span className="text-primary/70">{icon}</span> : null}
+        </div>
+        <p className={cn("relative mt-1.5 font-display text-[26px] font-semibold leading-none tabular-nums", toneCls)}>
+          {typeof value === "number" ? <CountUp value={value} /> : value}
+        </p>
+        {sub ? <p className="relative mt-1.5 text-[11px] leading-snug text-muted-foreground">{sub}</p> : null}
+      </Card>
+    </motion.div>
   );
 }
 
