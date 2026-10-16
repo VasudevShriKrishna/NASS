@@ -1,5 +1,5 @@
 // NASS Closed-Loop Supply Chain Intelligence — canonical data model
-// Implements §8.1 Core entities and §8.2 relationship rules of the skill spec.
+// Implements the core entities and relationship rules of the skill spec.
 // SQLite: enums are modeled as strings with documented allowed values.
 
 generator client {
@@ -387,7 +387,7 @@ model BOLField {
   @@unique([bolId, fieldName])
 }
 
-// Cross-document reconciliation results (§15): PASS | WARN | FAIL | NOT_CHECKED
+// Cross-document reconciliation results: PASS | WARN | FAIL | NOT_CHECKED
 model BOLReconciliation {
   id          String  @id @default(cuid())
   bolId       String

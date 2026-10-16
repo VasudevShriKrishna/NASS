@@ -1,0 +1,743 @@
+     1→     1→"use client";
+     2→     2→
+     3→     3→import { useEffect, useMemo, useRef, useState } from "react";
+     4→     4→import { AnimatePresence, motion } from "framer-motion";
+     5→     5→import {
+     6→     6→  Anchor,
+     7→     7→  Building2,
+     8→     8→  Container,
+     9→     9→  ExternalLink,
+    10→    10→  Factory,
+    11→    11→  FileDown,
+    12→    12→  FileText,
+    13→    13→  Gauge,
+    14→    14→  MapPin,
+    15→    15→  Package,
+    16→    16→  RadioTower,
+    17→    17→  RefreshCw,
+    18→    18→  ShieldCheck,
+    19→    19→  Ship,
+    20→    20→  Siren,
+    21→    21→  Timer,
+    22→    22→  X,
+    23→    23→} from "lucide-react";
+    24→    24→import { Button } from "@/components/ui/button";
+    25→    25→import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+    26→    26→import { useApi } from "@/lib/client";
+    27→    27→import { useAppStore } from "@/lib/app-state";
+    28→    28→import { clamp01 } from "@/lib/geo";
+    29→    29→import type { TraceShip, TraceSnapshot } from "@/lib/trace-types";
+    30→    30→import {
+    31→    31→  CaseStateBadge,
+    32→    32→  EmptyState,
+    33→    33→  ErrorState,
+    34→    34→  EvidenceBadge,
+    35→    35→  FreshnessBadge,
+    36→    36→  LoadingState,
+    37→    37→  ReconciliationBadge,
+    38→    38→  SeverityBadge,
+    39→    39→  StatusPill,
+    40→    40→  ScrollTable,
+    41→    41→  fmtDate,
+    42→    42→  fmtDateTime,
+    43→    43→} from "@/components/app/shared";
+    44→    44→import { LiveClock, fmtCountdown, useNow } from "@/components/app/live-clock";
+    45→    45→import { PulsingDot } from "@/components/app/motion";
+    46→    46→import { MapLegend, STATUS_COLOR, STATUS_LABEL, WorldMap } from "@/components/app/world-map";
+    47→    47→import { cn } from "@/lib/utils";
+    48→    48→
+    49→    49→const SIM_PRESETS = [1, 60, 600] as const;
+    50→    50→
+    51→    51→const fmtMoney = (v: number, ccy: string) => `${ccy} ${v.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+    52→    52→const fmtPct = (p: number) => `${(p * 100).toFixed(1)}%`;
+    53→    53→
+    54→    54→/* ── small dossier building blocks ─────────────────────────────────────── */
+    55→    55→function MiniTitle({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
+    56→    56→  return (
+    57→    57→    <p className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+    58→    58→      <span className="inline-block h-3.5 w-0.5 rounded-full bg-primary/70" aria-hidden />
+    59→    59→      <span className="text-primary/70">{icon}</span>
+    60→    60→      {children}
+    61→    61→    </p>
+    62→    62→  );
+    63→    63→}
+    64→    64→
+    65→    65→function KV({ k, v }: { k: string; v: React.ReactNode }) {
+    66→    66→  return (
+    67→    67→    <div className="flex items-baseline justify-between gap-3 border-b border-border/40 py-1.5 last:border-0">
+    68→    68→      <span className="shrink-0 text-[11px] text-muted-foreground">{k}</span>
+    69→    69→      <span className="min-w-0 text-right text-[12px] font-medium">{v}</span>
+    70→    70→    </div>
+    71→    71→  );
+    72→    72→}
+    73→    73→
+    74→    74→function LiveStatusChip({ ship }: { ship: TraceShip }) {
+    75→    75→  const c = STATUS_COLOR[ship.liveStatus];
+    76→    76→  return (
+    77→    77→    <span
+    78→    78→      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[10px] font-bold tracking-wide"
+    79→    79→      style={{ borderColor: `${c}55`, background: `${c}14`, color: c }}
+    80→    80→    >
+    81→    81→      <span className="h-1.5 w-1.5 rounded-full" style={{ background: c, boxShadow: `0 0 6px ${c}` }} />
+    82→    82→      {STATUS_LABEL[ship.liveStatus].toUpperCase()}
+    83→    83→    </span>
+    84→    84→  );
+    85→    85→}
+    86→    86→
+    87→    87→/* ── journey progress bar (drawer) ─────────────────────────────────────── */
+    88→    88→function RouteBar({ ship, p }: { ship: TraceShip; p: number }) {
+    89→    89→  const c = STATUS_COLOR[ship.liveStatus];
+    90→    90→  return (
+    91→    91→    <div className="pt-1">
+    92→    92→      <div className="mb-1 flex items-baseline justify-between gap-2 text-[11px]">
+    93→    93→        <span className="min-w-0 truncate font-semibold">
+    94→    94→          {ship.from?.label ?? ship.originPort}
+    95→    95→          <span className="ml-1 font-normal text-muted-foreground">{ship.originCountry}</span>
+    96→    96→        </span>
+    97→    97→        <span className="font-display text-sm font-bold tabular-nums text-gold-grad">{fmtPct(p)}</span>
+    98→    98→        <span className="min-w-0 truncate text-right font-semibold">
+    99→    99→          <span className="mr-1 font-normal text-muted-foreground">{ship.destCountry}</span>
+   100→   100→          {ship.to?.label ?? ship.destPort}
+   101→   101→        </span>
+   102→   102→      </div>
+   103→   103→      <div className="relative h-2.5">
+   104→   104→        <div className="absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full border-b border-dashed border-zinc-500/40 dark:border-zinc-400/20" />
+   105→   105→        <div
+   106→   106→          className="absolute left-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full shadow-[0_0_12px_oklch(0.79_0.135_88/45%)]"
+   107→   107→          style={{ width: `${p * 100}%`, background: `linear-gradient(90deg, #8a6a1f, ${c}, #f3dc8e)` }}
+   108→   108→        />
+   109→   109→        <div
+   110→   110→          className="absolute top-1/2 z-10 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-background"
+   111→   111→          style={{ left: `${p * 100}%`, background: `linear-gradient(135deg, #f3dc8e, #b8860b)`, boxShadow: `0 0 14px ${c}aa` }}
+   112→   112→        />
+   113→   113→      </div>
+   114→   114→    </div>
+   115→   115→  );
+   116→   116→}
+   117→   117→
+   118→   118→/* ── per-ship PDF + new-tab actions ────────────────────────────────────── */
+   119→   119→function DossierActions({ ship }: { ship: TraceShip }) {
+   120→   120→  return (
+   121→   121→    <div className="flex flex-wrap items-center gap-2">
+   122→   122→      <Button
+   123→   123→        variant="outline"
+   124→   124→        size="sm"
+   125→   125→        className="h-8 gap-1.5 border-primary/30 text-primary hover:bg-primary/10 hover:text-primary"
+   126→   126→        onClick={() => window.open(`/?view=trace&ship=${ship.ref}`, "_blank", "noopener")}
+   127→   127→      >
+   128→   128→        <ExternalLink className="h-3.5 w-3.5" /> Open in new tab
+   129→   129→      </Button>
+   130→   130→      <a href={`/api/live-trace/report?ref=${ship.ref}`} download aria-label={`Download PDF report for ${ship.ref}`}>
+   131→   131→        <Button variant="outline" size="sm" className="h-8 gap-1.5 border-primary/30 text-primary hover:bg-primary/10 hover:text-primary">
+   132→   132→          <FileDown className="h-3.5 w-3.5" /> Ship PDF report
+   133→   133→        </Button>
+   134→   134→      </a>
+   135→   135→    </div>
+   136→   136→  );
+   137→   137→}
+   138→   138→
+   139→   139→/* ── THE DOSSIER — full ship picture on click ──────────────────────────── */
+   140→   140→function Dossier({ ship, p, now, onClose }: { ship: TraceShip; p: number; now: number | null; onClose: () => void }) {
+   141→   141→  const comp = ship.compliance;
+   142→   142→  const slipped = !!(ship.carrierEta && ship.supplierPromisedEta && +new Date(ship.carrierEta) > +new Date(ship.supplierPromisedEta));
+   143→   143→  return (
+   144→   144→    <div className="flex h-full flex-col">
+   145→   145→      {/* header */}
+   146→   146→      <div className="border-b border-primary/15 bg-gradient-to-br from-primary/10 via-transparent to-transparent px-4 py-3">
+   147→   147→        <div className="flex items-start justify-between gap-2">
+   148→   148→          <div className="min-w-0">
+   149→   149→            <div className="flex flex-wrap items-center gap-2">
+   150→   150→              <Ship className="h-4 w-4 shrink-0 text-primary" />
+   151→   151→              <span className="font-mono text-sm font-bold">{ship.ref}</span>
+   152→   152→              <LiveStatusChip ship={ship} />
+   153→   153→              <StatusPill value={ship.status} />
+   154→   154→              <FreshnessBadge value={ship.freshness} />
+   155→   155→            </div>
+   156→   156→            <p className="mt-1 truncate font-display text-lg font-semibold leading-tight">
+   157→   157→              {ship.vesselName ?? ship.carrier ?? "Vessel unlinked"}
+   158→   158→              {ship.vesselVoyage ? <span className="ml-1.5 text-xs font-normal text-muted-foreground">Voyage {ship.vesselVoyage}</span> : null}
+   159→   159→            </p>
+   160→   160→          </div>
+   161→   161→          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground" onClick={onClose} aria-label="Close dossier">
+   162→   162→            <X className="h-4 w-4" />
+   163→   163→          </Button>
+   164→   164→        </div>
+   165→   165→        <div className="mt-2.5">
+   166→   166→          <DossierActions ship={ship} />
+   167→   167→        </div>
+   168→   168→      </div>
+   169→   169→
+   170→   170→      {/* scrollable body */}
+   171→   171→      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+   172→   172→        {/* vessel & route */}
+   173→   173→        <section className="mb-4">
+   174→   174→          <MiniTitle icon={<Anchor className="h-3 w-3" />}>Vessel &amp; route</MiniTitle>
+   175→   175→          <RouteBar ship={ship} p={p} />
+   176→   176→          <div className="mt-2 grid grid-cols-2 gap-x-4">
+   177→   177→            <KV k="Mode" v={ship.mode} />
+   178→   178→            <KV k="Carrier" v={ship.carrier ?? "—"} />
+   179→   179→            <KV k="Forwarder" v={ship.forwarder ?? "—"} />
+   180→   180→            <KV k="Speed" v={ship.speedKn ? <span className="tabular-nums">≈ {ship.speedKn} kn</span> : "—"} />
+   181→   181→            <KV k="Departed" v={<span className="tabular-nums">{fmtDate(ship.departure)}</span>} />
+   182→   182→            <KV
+   183→   183→              k="Live position"
+   184→   184→              v={
+   185→   185→                ship.vesselName ? (
+   186→   186→                  <span className="tabular-nums">
+   187→   187→                    {Math.round(p * 100)}% of voyage
+   188→   188→                  </span>
+   189→   189→                ) : (
+   190→   190→                  "position unlinked"
+   191→   191→                )
+   192→   192→              }
+   193→   193→            />
+   194→   194→          </div>
+   195→   195→          <div className="mt-2 rounded-lg border border-primary/20 bg-primary/5 p-2.5">
+   196→   196→            <div className="flex items-baseline justify-between gap-2">
+   197→   197→              <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Arrival countdown</span>
+   198→   198→              <span className="font-display text-xl font-bold tabular-nums text-gold-grad">
+   199→   199→                {ship.eta && now ? fmtCountdown(+new Date(ship.eta) - now) : "no carrier ETA"}
+   200→   200→              </span>
+   201→   201→            </div>
+   202→   202→            <p className="mt-1 text-[11px] text-muted-foreground">
+   203→   203→              ETA {fmtDateTime(ship.eta)}
+   204→   204→              {ship.etaType ? <span className="ml-1.5 rounded border border-primary/30 bg-primary/10 px-1 py-px text-[9px] font-semibold uppercase text-primary">{ship.etaType}</span> : null}
+   205→   205→              {ship.etaSource ? <span className="ml-1">· {ship.etaSource}</span> : null}
+   206→   206→            </p>
+   207→   207→            <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
+   208→   208→              <span className="text-muted-foreground">
+   209→   209→                supplier promise <span className="tabular-nums text-foreground">{fmtDate(ship.supplierPromisedEta)}</span>
+   210→   210→              </span>
+   211→   211→              <span className="text-muted-foreground">
+   212→   212→                carrier <span className="tabular-nums text-foreground">{fmtDate(ship.carrierEta)}</span>
+   213→   213→              </span>
+   214→   214→              {slipped ? <span className="rounded border border-rose-400/25 bg-rose-400/10 px-1.5 py-0.5 text-[9px] font-bold text-rose-300">ETA SLIPPED vs PROMISE</span> : null}
+   215→   215→            </div>
+   216→   216→          </div>
+   217→   217→        </section>
+   218→   218→
+   219→   219→        {/* materials & import value */}
+   220→   220→        <section className="mb-4">
+   221→   221→          <MiniTitle icon={<Package className="h-3 w-3" />}>Material · country · cost</MiniTitle>
+   222→   222→          {ship.materials.length === 0 ? (
+   223→   223→            <EmptyState message="No PO lines linked to this shipment" />
+   224→   224→          ) : (
+   225→   225→            <>
+   226→   226→              <ScrollTable maxHeight="max-h-[240px]">
+   227→   227→                <Table>
+   228→   228→                  <TableHeader>
+   229→   229→                    <TableRow className="hover:bg-transparent">
+   230→   230→                      <TableHead className="h-8 text-[10px]">SKU / Material</TableHead>
+   231→   231→                      <TableHead className="h-8 text-[10px]">Origin</TableHead>
+   232→   232→                      <TableHead className="h-8 text-right text-[10px]">Qty</TableHead>
+   233→   233→                      <TableHead className="h-8 text-right text-[10px]">Unit</TableHead>
+   234→   234→                      <TableHead className="h-8 text-right text-[10px]">Line value</TableHead>
+   235→   235→                    </TableRow>
+   236→   236→                  </TableHeader>
+   237→   237→                  <TableBody>
+   238→   238→                    {ship.materials.map((m) => (
+   239→   239→                      <TableRow key={m.sku}>
+   240→   240→                        <TableCell className="py-1.5">
+   241→   241→                          <p className="font-mono text-[11px] font-semibold">{m.sku}</p>
+   242→   242→                          <p className="max-w-[180px] truncate text-[11px] text-muted-foreground" title={`${m.name}${m.workPackage ? ` — ${m.workPackage}` : ""}`}>
+   243→   243→                            {m.name}
+   244→   244→                            {m.criticality === "CRITICAL" ? <span className="ml-1 text-[9px] font-bold text-rose-400">CRITICAL</span> : null}
+   245→   245→                          </p>
+   246→   246→                        </TableCell>
+   247→   247→                        <TableCell className="py-1.5 text-[11px]">{m.countryOfOrigin}</TableCell>
+   248→   248→                        <TableCell className="py-1.5 text-right text-[11px] tabular-nums">
+   249→   249→                          {m.quantity.toLocaleString()} {m.uom}
+   250→   250→                        </TableCell>
+   251→   251→                        <TableCell className="py-1.5 text-right text-[11px] tabular-nums">{fmtMoney(m.unitPrice, ship.currency)}</TableCell>
+   252→   252→                        <TableCell className="py-1.5 text-right text-[11px] font-semibold tabular-nums">{fmtMoney(m.extended, ship.currency)}</TableCell>
+   253→   253→                      </TableRow>
+   254→   254→                    ))}
+   255→   255→                  </TableBody>
+   256→   256→                </Table>
+   257→   257→              </ScrollTable>
+   258→   258→              <div className="mt-2 flex items-baseline justify-between rounded-lg border border-primary/25 bg-primary/5 px-3 py-2">
+   259→   259→                <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Total import value</span>
+   260→   260→                <span className="font-display text-2xl font-bold tabular-nums text-gold-grad">{fmtMoney(ship.importValue, ship.currency)}</span>
+   261→   261→              </div>
+   262→   262→            </>
+   263→   263→          )}
+   264→   264→        </section>
+   265→   265→
+   266→   266→        {/* where to use */}
+   267→   267→        <section className="mb-4">
+   268→   268→          <MiniTitle icon={<Factory className="h-3 w-3" />}>Where to use</MiniTitle>
+   269→   269→          <div className="grid grid-cols-2 gap-x-4">
+   270→   270→            <KV
+   271→   271→              k="Project"
+   272→   272→              v={ship.project ? (
+   273→   273→                <span>
+   274→   274→                  <span className="font-mono text-[11px] font-semibold">{ship.project.code}</span> · {ship.project.name}
+   275→   275→                  <span className="block text-[10px] text-muted-foreground">site: {ship.project.site}</span>
+   276→   276→                </span>
+   277→   277→              ) : "—"}
+   278→   278→            />
+   279→   279→            <KV
+   280→   280→              k="Warehouse"
+   281→   281→              v={ship.destinationWarehouse ? (
+   282→   282→                <span>
+   283→   283→                  <span className="font-mono text-[11px] font-semibold">{ship.destinationWarehouse.code}</span> · {ship.destinationWarehouse.name}
+   284→   284→                  <span className="block text-[10px] text-muted-foreground">{ship.destinationWarehouse.site}</span>
+   285→   285→                </span>
+   286→   286→              ) : "not yet assigned"}
+   287→   287→            />
+   288→   288→            <KV k="Delivery location" v={ship.po?.deliveryLocation ?? "—"} />
+   289→   289→            <KV k="Incoterms" v={ship.po?.deliveryTerms ?? ship.supplier?.incoterms ?? "—"} />
+   290→   290→          </div>
+   291→   291→          {ship.materials.some((m) => m.workPackage) ? (
+   292→   292→            <div className="mt-2 flex flex-wrap gap-1.5">
+   293→   293→              {ship.materials
+   294→   294→                .filter((m) => m.workPackage)
+   295→   295→                .map((m) => (
+   296→   296→                  <span key={m.sku} className="inline-flex max-w-full items-center gap-1 rounded-md border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[10px]" title={`${m.name} → ${m.workPackage}`}>
+   297→   297→                    <MapPin className="h-3 w-3 shrink-0 text-primary/70" />
+   298→   298→                    <span className="truncate">{m.workPackage}</span>
+   299→   299→                  </span>
+   300→   300→                ))}
+   301→   301→            </div>
+   302→   302→          ) : null}
+   303→   303→        </section>
+   304→   304→
+   305→   305→        {/* procurement */}
+   306→   306→        <section className="mb-4">
+   307→   307→          <MiniTitle icon={<Building2 className="h-3 w-3" />}>Procurement chain</MiniTitle>
+   308→   308→          <div className="grid grid-cols-2 gap-x-4">
+   309→   309→            <KV
+   310→   310→              k="Supplier"
+   311→   311→              v={ship.supplier ? (
+   312→   312→                <span>
+   313→   313→                  {ship.supplier.name} <StatusPill value={ship.supplier.status} className="ml-1" />
+   314→   314→                  <span className="block font-mono text-[10px] text-muted-foreground">
+   315→   315→                    {ship.supplier.code} · {ship.supplier.city ? `${ship.supplier.city}, ` : ""}
+   316→   316→                    {ship.supplier.country}
+   317→   317→                  </span>
+   318→   318→                </span>
+   319→   319→              ) : "—"}
+   320→   320→            />
+   321→   321→            <KV
+   322→   322→              k="Purchase order"
+   323→   323→              v={ship.po ? (
+   324→   324→                <span>
+   325→   325→                  <span className="font-mono text-[11px] font-semibold">{ship.po.ref}</span> <StatusPill value={ship.po.status} className="ml-1" />
+   326→   326→                  <span className="block text-[10px] tabular-nums text-muted-foreground">
+   327→   327→                    {fmtMoney(ship.po.totalAmount, ship.po.currency)} · promised {fmtDate(ship.po.promisedDate)}
+   328→   328→                  </span>
+   329→   329→                </span>
+   330→   330→              ) : "—"}
+   331→   331→            />
+   332→   332→          </div>
+   333→   333→          {ship.po?.contracts.length ? (
+   334→   334→            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+   335→   335→              <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Contracts:</span>
+   336→   336→              {ship.po.contracts.map((c) => (
+   337→   337→                <span key={c} className="rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-primary">
+   338→   338→                  {c}
+   339→   339→                </span>
+   340→   340→              ))}
+   341→   341→            </div>
+   342→   342→          ) : null}
+   343→   343→        </section>
+   344→   344→
+   345→   345→        {/* compliance */}
+   346→   346→        <section>
+   347→   347→          <MiniTitle icon={<ShieldCheck className="h-3 w-3" />}>Compliance &amp; risk</MiniTitle>
+   348→   348→          <div className="grid grid-cols-2 gap-x-4">
+   349→   349→            <KV
+   350→   350→              k="Customs"
+   351→   351→              v={comp.customsHold ? (
+   352→   352→                <span className="font-semibold text-rose-400">HOLD — {comp.customsStatus}</span>
+   353→   353→              ) : (
+   354→   354→                <span className="capitalize">{comp.customsStatus ?? "not reported"}</span>
+   355→   355→              )}
+   356→   356→            />
+   357→   357→            <KV k="Import dossier" v={comp.importFileRef ? <span className="font-mono text-[11px] font-semibold">{comp.importFileRef}</span> : "—"} />
+   358→   358→            <KV k="Reconciliation" v={<span className="inline-flex items-center gap-1.5"><ReconciliationBadge result={comp.overallReconciliation} /><span className="text-[10px] tabular-nums text-muted-foreground">{comp.reconciliation.PASS}✓ {comp.reconciliation.WARN}! {comp.reconciliation.FAIL}✗</span></span>} />
+   359→   359→            <KV k="Evidence" v={comp.evidence.length ? <span className="text-[10px]">{comp.evidence.length} source record{comp.evidence.length > 1 ? "s" : ""}</span> : "—"} />
+   360→   360→          </div>
+   361→   361→
+   362→   362→          {comp.bol.length > 0 ? (
+   363→   363→            <div className="mt-2 flex flex-wrap gap-1.5">
+   364→   364→              {comp.bol.map((b) => (
+   365→   365→                <span key={`${b.bolNo}-${b.version}`} className="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[10px]">
+   366→   366→                  <FileText className="h-3 w-3 text-primary/70" />
+   367→   367→                  <span className="font-mono font-semibold">{b.bolNo}</span>
+   368→   368→                  <span className="text-muted-foreground">v{b.version}</span>
+   369→   369→                  <StatusPill value={b.status} />
+   370→   370→                </span>
+   371→   371→              ))}
+   372→   372→            </div>
+   373→   373→          ) : null}
+   374→   374→
+   375→   375→          {comp.exceptions.length > 0 ? (
+   376→   376→            <div className="mt-2.5 space-y-1.5">
+   377→   377→              {comp.exceptions.map((x) => (
+   378→   378→                <div key={x.ref} className="flex flex-wrap items-center gap-1.5 rounded-md border border-rose-400/20 bg-rose-400/5 px-2 py-1.5 text-[11px]">
+   379→   379→                  <SeverityBadge value={x.severity} />
+   380→   380→                  <Siren className="h-3 w-3 shrink-0 text-rose-400" />
+   381→   381→                  <span className="font-mono font-semibold">{x.ref}</span>
+   382→   382→                  <span className="min-w-0 flex-1 truncate">{x.title}</span>
+   383→   383→                  <CaseStateBadge state={x.state} />
+   384→   384→                </div>
+   385→   385→              ))}
+   386→   386→            </div>
+   387→   387→          ) : null}
+   388→   388→
+   389→   389→          {comp.risks.length > 0 ? (
+   390→   390→            <div className="mt-2.5 space-y-1.5">
+   391→   391→              {comp.risks.map((r, i) => (
+   392→   392→                <div key={`${r.signalCode}-${i}`} className="rounded-md border border-border/70 bg-muted/30 px-2 py-1.5 text-[11px]">
+   393→   393→                  <div className="flex items-center gap-1.5">
+   394→   394→                    <SeverityBadge value={r.severity} />
+   395→   395→                    <span className="font-mono text-[10px] font-bold">{r.signalCode}</span>
+   396→   396→                  </div>
+   397→   397→                  <p className="mt-1 text-muted-foreground">{r.fact}</p>
+   398→   398→                </div>
+   399→   399→              ))}
+   400→   400→            </div>
+   401→   401→          ) : null}
+   402→   402→
+   403→   403→          {comp.evidence.length > 0 ? (
+   404→   404→            <div className="mt-2.5 flex flex-wrap gap-1.5">
+   405→   405→              {comp.evidence.map((e, i) => (
+   406→   406→                <EvidenceBadge key={`${e.entityRef}-${i}`} label={`${e.sourceSystem} · ${e.label}`} />
+   407→   407→              ))}
+   408→   408→            </div>
+   409→   409→          ) : null}
+   410→   410→        </section>
+   411→   411→      </div>
+   412→   412→    </div>
+   413→   413→  );
+   414→   414→}
+   415→   415→
+   416→   416→/* ── fleet rail chip ───────────────────────────────────────────────────── */
+   417→   417→function FleetChip({ ship, p, active, onClick }: { ship: TraceShip; p: number; active: boolean; onClick: () => void }) {
+   418→   418→  const c = STATUS_COLOR[ship.liveStatus];
+   419→   419→  return (
+   420→   420→    <button
+   421→   421→      type="button"
+   422→   422→      onClick={onClick}
+   423→   423→      aria-pressed={active}
+   424→   424→      className={cn(
+   425→   425→        "group relative w-[220px] shrink-0 rounded-xl border p-2.5 text-left transition-all duration-300",
+   426→   426→        active
+   427→   427→          ? "border-primary/60 bg-primary/10 shadow-[0_0_24px_oklch(0.79_0.135_88/15%)]"
+   428→   428→          : "border-border/70 bg-card/70 hover:border-primary/35 hover:bg-card"
+   429→   429→      )}
+   430→   430→    >
+   431→   431→      <div className="flex items-center justify-between gap-2">
+   432→   432→        <span className="flex min-w-0 items-center gap-1.5">
+   433→   433→          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: c, boxShadow: `0 0 6px ${c}` }} />
+   434→   434→          <span className="truncate font-mono text-xs font-bold">{ship.ref}</span>
+   435→   435→        </span>
+   436→   436→        <span className="text-[9px] font-bold uppercase tracking-wide" style={{ color: c }}>
+   437→   437→          {STATUS_LABEL[ship.liveStatus]}
+   438→   438→        </span>
+   439→   439→      </div>
+   440→   440→      <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+   441→   441→        {ship.from?.label ?? ship.originPort} → {ship.to?.label ?? ship.destPort}
+   442→   442→        {ship.vesselName ? <span className="ml-1 text-primary/70">· {ship.vesselName}</span> : null}
+   443→   443→      </p>
+   444→   444→      <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-muted">
+   445→   445→        <div className="h-full rounded-full" style={{ width: `${p * 100}%`, background: `linear-gradient(90deg, #8a6a1f, ${c}, #f3dc8e)` }} />
+   446→   446→      </div>
+   447→   447→      <div className="mt-1 flex items-center justify-between text-[10px]">
+   448→   448→        <span className="tabular-nums text-primary">{fmtPct(p)}</span>
+   449→   449→        <span className="tabular-nums text-muted-foreground">{fmtMoney(ship.importValue, ship.currency)}</span>
+   450→   450→      </div>
+   451→   451→    </button>
+   452→   452→  );
+   453→   453→}
+   454→   454→
+   455→   455→/* ══ LIVE TRACEABILITY COMMAND VIEW (full-screen overlay) ════════════════ */
+   456→   456→export function LiveTraceabilityView({ drillRef }: { drillRef?: string | null }) {
+   457→   457→  const setView = useAppStore((s) => s.setView);
+   458→   458→  const clearDrill = useAppStore((s) => s.clearDrill);
+   459→   459→  const traceShip = useAppStore((s) => s.traceShip);
+   460→   460→  const clearTraceShip = useAppStore((s) => s.clearTraceShip);
+   461→   461→  const { data: snap, loading, error, refresh, syncedAt } = useApi<TraceSnapshot>("/api/live-trace", [], 0);
+   462→   462→  const [picked, setPicked] = useState<string | null>(null);
+   463→   463→  const [factor, setFactor] = useState<number>(600);
+   464→   464→  const now = useNow(1000);
+   465→   465→
+   466→   466→  const activeRef = picked ?? traceShip ?? drillRef ?? null;
+   467→   467→
+   468→   468→  /* sim clock: server snapshot + real elapsed × time-lapse factor */
+   469→   469→  const baseRef = useRef<{ server: number; wall: number } | null>(null);
+   470→   470→  useEffect(() => {
+   471→   471→    if (snap) baseRef.current = { server: +new Date(snap.serverTime), wall: Date.now() };
+   472→   472→  }, [snap]);
+   473→   473→  const [simNow, setSimNow] = useState<number | null>(null);
+   474→   474→  useEffect(() => {
+   475→   475→    const id = setInterval(() => {
+   476→   476→      const b = baseRef.current;
+   477→   477→      if (b) setSimNow(b.server + (Date.now() - b.wall) * factor);
+   478→   478→    }, 150);
+   479→   479→    return () => clearInterval(id);
+   480→   480→  }, [factor]);
+   481→   481→
+   482→   482→  /* hourly cadence: refetch exactly at the next top-of-hour + pulse */
+   483→   483→  const [flash, setFlash] = useState(0);
+   484→   484→  useEffect(() => {
+   485→   485→    if (!snap) return;
+   486→   486→    const delay = Math.max(1500, +new Date(snap.nextUpdateAt) - Date.now());
+   487→   487→    const id = setTimeout(() => {
+   488→   488→      refresh();
+   489→   489→      setFlash((f) => f + 1);
+   490→   490→    }, delay);
+   491→   491→    return () => clearTimeout(id);
+   492→   492→  }, [snap, refresh]);
+   493→   493→  const syncPulse = now !== null && syncedAt > 0 && now - syncedAt < 1600;
+   494→   494→
+   495→   495→  /* per-ship live progress at simNow */
+   496→   496→  const progress = useMemo(() => {
+   497→   497→    const m = new Map<string, number>();
+   498→   498→    if (!snap || simNow === null) return m;
+   499→   499→    for (const s of snap.ships) {
+   500→   500→      if (s.liveStatus === "ARRIVED") {
+   501→   501→        m.set(s.ref, 1);
+   502→   502→        continue;
+   503→   503→      }
+   504→   504→      if (s.liveStatus === "BOOKED") {
+   505→   505→        m.set(s.ref, 0);
+   506→   506→        continue;
+   507→   507→      }
+   508→   508→      const end = s.actualArrival ? +new Date(s.actualArrival) : s.eta ? +new Date(s.eta) : null;
+   509→   509→      const start = s.departure ? +new Date(s.departure) : 0;
+   510→   510→      m.set(s.ref, !end ? 0 : clamp01((simNow - start) / Math.max(1, end - start)));
+   511→   511→    }
+   512→   512→    return m;
+   513→   513→  }, [snap, simNow]);
+   514→   514→
+   515→   515→  const byRef = useMemo(() => new Map((snap?.ships ?? []).map((s) => [s.ref, s])), [snap]);
+   516→   516→  const sel = activeRef ? byRef.get(activeRef) ?? null : null;
+   517→   517→
+   518→   518→  /* deep-link URL sync: /?view=trace&ship=SHP-8801 */
+   519→   519→  useEffect(() => {
+   520→   520→    const q = new URLSearchParams(window.location.search);
+   521→   521→    q.set("view", "trace");
+   522→   522→    if (activeRef) q.set("ship", activeRef);
+   523→   523→    else q.delete("ship");
+   524→   524→    window.history.replaceState(null, "", `/?${q.toString()}`);
+   525→   525→  }, [activeRef]);
+   526→   526→
+   527→   527→  const closeOverlay = () => {
+   528→   528→    const q = new URLSearchParams(window.location.search);
+   529→   529→    q.delete("view");
+   530→   530→    q.delete("ship");
+   531→   531→    window.history.replaceState(null, "", q.size ? `/?${q.toString()}` : "/");
+   532→   532→    setView("control-tower");
+   533→   533→  };
+   534→   534→  const closeDrawer = () => {
+   535→   535→    setPicked(null);
+   536→   536→    clearTraceShip();
+   537→   537→    if (drillRef) clearDrill();
+   538→   538→  };
+   539→   539→
+   540→   540→  /* Esc: drawer first, then overlay */
+   541→   541→  useEffect(() => {
+   542→   542→    const onKey = (e: KeyboardEvent) => {
+   543→   543→      if (e.key !== "Escape") return;
+   544→   544→      if (sel) closeDrawer();
+   545→   545→      else closeOverlay();
+   546→   546→    };
+   547→   547→    window.addEventListener("keydown", onKey);
+   548→   548→    return () => window.removeEventListener("keydown", onKey);
+   549→   549→  }, [sel, drillRef]);
+   550→   550→
+   551→   551→  const countdown = snap && now !== null ? +new Date(snap.nextUpdateAt) - now : null;
+   552→   552→  const totals = snap?.totals;
+   553→   553→
+   554→   554→  return (
+   555→   555→    <motion.div
+   556→   556→      initial={{ opacity: 0, y: 26, scale: 0.995 }}
+   557→   557→      animate={{ opacity: 1, y: 0, scale: 1 }}
+   558→   558→      transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+   559→   559→      className="fixed inset-0 z-[70] flex flex-col bg-background"
+   560→   560→      role="dialog"
+   561→   561→      aria-modal="true"
+   562→   562→      aria-label="Live Traceability Command View"
+   563→   563→    >
+   564→   564→      {/* ambient gold + hourly pulse */}
+   565→   565→      <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(1100px_480px_at_50%_-12%,oklch(0.79_0.135_88/9%),transparent_62%)]" />
+   566→   566→      {flash > 0 ? (
+   567→   567→        <div
+   568→   568→          key={flash}
+   569→   569→          aria-hidden
+   570→   570→          className="map-flash-layer pointer-events-none absolute inset-0 bg-[radial-gradient(900px_430px_at_50%_42%,oklch(0.79_0.135_88/11%),transparent_66%)] [animation:map-flash_1.5s_ease-out_1]"
+   571→   571→        />
+   572→   572→      ) : null}
+   573→   573→
+   574→   574→      {/* ── top bar ── */}
+   575→   575→      <header className="relative z-10 border-b border-primary/15 bg-background/90 backdrop-blur">
+   576→   576→        <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 sm:px-4">
+   577→   577→          <div className="flex min-w-0 items-center gap-2.5">
+   578→   578→            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#f3dc8e] via-[#d4af37] to-[#8a6a1f] text-[#1a1408] shadow-[0_0_16px_oklch(0.79_0.135_88/30%)]">
+   579→   579→              <RadioTower className="h-4 w-4" />
+   580→   580→            </div>
+   581→   581→            <div className="min-w-0 leading-tight">
+   582→   582→              <p className="truncate font-display text-sm font-bold tracking-wide">
+   583→   583→                Live Traceability <span className="text-gold-grad">Command</span>
+   584→   584→              </p>
+   585→   585→              <p className="flex items-center gap-1.5 text-[9px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
+   586→   586→                <PulsingDot /> every ship · same picture · hourly snapshot
+   587→   587→              </p>
+   588→   588→            </div>
+   589→   589→          </div>
+   590→   590→
+   591→   591→          {/* live counters */}
+   592→   592→          {totals ? (
+   593→   593→            <div className="hidden items-center gap-2.5 rounded-lg border border-border/70 bg-card/60 px-3 py-1.5 md:flex">
+   594→   594→              {(
+   595→   595→                [
+   596→   596→                  ["in transit", totals.inTransit, STATUS_COLOR.IN_TRANSIT],
+   597→   597→                  ["at port", totals.atPort, STATUS_COLOR.AT_PORT],
+   598→   598→                  ["hold", totals.customsHold, STATUS_COLOR.CUSTOMS_HOLD],
+   599→   599→                  ["delayed", totals.delayed, STATUS_COLOR.DELAYED],
+   600→   600→                  ["arrived", totals.arrived, STATUS_COLOR.ARRIVED],
+   601→   601→                ] as const
+   602→   602→              ).map(([label, value, color]) => (
+   603→   603→                <span key={label} className="flex items-center gap-1 text-[10px] font-semibold text-muted-foreground">
+   604→   604→                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: color, boxShadow: `0 0 5px ${color}` }} />
+   605→   605→                  {label} <span className="font-display text-[13px] font-bold tabular-nums text-foreground">{value}</span>
+   606→   606→                </span>
+   607→   607→              ))}
+   608→   608→              <span className="border-l border-border/60 pl-2.5 text-[10px] font-semibold text-muted-foreground">
+   609→   609→                fleet value <span className="font-display text-[13px] font-bold tabular-nums text-gold-grad">{fmtMoney(totals.importValue, totals.currency)}</span>
+   610→   610→              </span>
+   611→   611→            </div>
+   612→   612→          ) : null}
+   613→   613→
+   614→   614→          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+   615→   615→            {/* hourly cadence chip */}
+   616→   616→            <span
+   617→   617→              className={cn(
+   618→   618→                "inline-flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-[10px] font-semibold transition-colors duration-700",
+   619→   619→                syncPulse ? "border-primary/60 bg-primary/15 text-primary" : "border-border/70 bg-card/60 text-muted-foreground"
+   620→   620→              )}
+   621→   621→              title={snap ? `Snapshot recomputed every hour (${snap.snapshotHourLabel}) — positions keep gliding between snapshots` : undefined}
+   622→   622→            >
+   623→   623→              <Timer className="h-3 w-3" />
+   624→   624→              Hourly sync {snap ? `· ${snap.snapshotHourLabel}` : ""}
+   625→   625→              {countdown !== null ? <span className="tabular-nums text-primary">· next in {fmtCountdown(countdown)}</span> : null}
+   626→   626→            </span>
+   627→   627→
+   628→   628→            {/* time-lapse control */}
+   629→   629→            <div className="flex items-center overflow-hidden rounded-md border border-border/70 bg-card/60" role="group" aria-label="Time-lapse factor">
+   630→   630→              <span className="border-r border-border/60 px-2 py-1.5 text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
+   631→   631→                <Gauge className="mr-1 inline h-3 w-3" />sim
+   632→   632→              </span>
+   633→   633→              {SIM_PRESETS.map((f) => (
+   634→   634→                <button
+   635→   635→                  key={f}
+   636→   636→                  type="button"
+   637→   637→                  onClick={() => setFactor(f)}
+   638→   638→                  aria-pressed={factor === f}
+   639→   639→                  className={cn(
+   640→   640→                    "px-2 py-1.5 text-[10px] font-bold tabular-nums transition-colors",
+   641→   641→                    factor === f ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+   642→   642→                  )}
+   643→   643→                >
+   644→   644→                  ×{f}
+   645→   645→                </button>
+   646→   646→              ))}
+   647→   647→            </div>
+   648→   648→
+   649→   649→            <LiveClock prefix="ops" className="hidden items-center rounded-md border border-border/70 bg-card/60 px-2 py-1.5 text-[11px] font-semibold lg:inline-flex" />
+   650→   650→
+   651→   651→            <a href="/api/live-trace/report" download aria-label="Download full live scenario PDF">
+   652→   652→              <Button variant="outline" size="sm" className="h-8 gap-1.5 border-primary/30 text-primary hover:bg-primary/10 hover:text-primary">
+   653→   653→                <FileDown className="h-3.5 w-3.5" /> Scenario PDF
+   654→   654→              </Button>
+   655→   655→            </a>
+   656→   656→
+   657→   657→            {/* CLOSE — pinned top-right */}
+   658→   658→            <Button
+   659→   659→              size="sm"
+   660→   660→              className="h-9 gap-1.5 border border-primary/40 bg-primary/10 px-3 font-semibold text-primary hover:bg-primary/20 hover:text-primary"
+   661→   661→              onClick={closeOverlay}
+   662→   662→              aria-label="Close live traceability view"
+   663→   663→              title="Close (Esc)"
+   664→   664→            >
+   665→   665→              <X className="h-4 w-4" /> Close
+   666→   666→            </Button>
+   667→   667→          </div>
+   668→   668→        </div>
+   669→   669→        <div className="hairline-gold h-px w-full" aria-hidden />
+   670→   670→      </header>
+   671→   671→
+   672→   672→      {/* ── map ── */}
+   673→   673→      <div className="relative min-h-0 flex-1">
+   674→   674→        {!snap ? (
+   675→   675→          <div className="flex h-full items-center justify-center">
+   676→   676→            {error ? (
+   677→   677→              <div className="space-y-3 text-center">
+   678→   678→                <ErrorState message={error} />
+   679→   679→                <Button variant="outline" size="sm" onClick={refresh}>
+   680→   680→                  <RefreshCw className="h-4 w-4" /> Retry
+   681→   681→                </Button>
+   682→   682→              </div>
+   683→   683→            ) : (
+   684→   684→              <LoadingState label="Establishing live feed — plotting every vessel…" />
+   685→   685→            )}
+   686→   686→          </div>
+   687→   687→        ) : (
+   688→   688→          <>
+   689→   689→            <WorldMap ships={snap.ships} progress={progress} selectedRef={activeRef} onPick={(ref) => setPicked(ref)} onBackgroundClick={closeDrawer} />
+   690→   690→
+   691→   691→            {/* legend */}
+   692→   692→            <div className="pointer-events-none absolute left-3 top-3 rounded-lg border border-border/70 bg-card/80 px-3 py-2 backdrop-blur">
+   693→   693→              <p className="mb-1 text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Fleet status</p>
+   694→   694→              <MapLegend className="max-w-[240px]" />
+   695→   695→            </div>
+   696→   696→
+   697→   697→            {/* sim note */}
+   698→   698→            <div className="pointer-events-none absolute right-3 top-3 hidden rounded-lg border border-border/70 bg-card/80 px-3 py-2 text-[10px] text-muted-foreground backdrop-blur sm:block">
+   699→   699→              <span className="font-semibold text-primary">sim ×{factor}</span> · markers glide continuously, data recomputed hourly
+   700→   700→              {snap.ships.length === 0 ? <span className="mt-1 block"><EmptyState message="No shipments to trace" /></span> : null}
+   701→   701→            </div>
+   702→   702→
+   703→   703→            {/* fleet rail */}
+   704→   704→            {snap.ships.length > 0 ? (
+   705→   705→              <div className="absolute inset-x-0 bottom-0 z-10 border-t border-primary/10 bg-background/85 px-3 py-2 backdrop-blur">
+   706→   706→                <div className="mb-1.5 flex items-center justify-between text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+   707→   707→                  <span className="flex items-center gap-1.5">
+   708→   708→                    <Container className="h-3 w-3" /> Fleet — {snap.ships.length} consignments · click any ship on map or below
+   709→   709→                  </span>
+   710→   710→                  <span className="hidden sm:inline">{fmtMoney(totals?.importValue ?? 0, totals?.currency ?? "USD")} total import value</span>
+   711→   711→                </div>
+   712→   712→                <div className="flex gap-2 overflow-x-auto pb-1">
+   713→   713→                  {snap.ships.map((s) => (
+   714→   714→                    <FleetChip key={s.ref} ship={s} p={progress.get(s.ref) ?? s.progress} active={s.ref === activeRef} onClick={() => setPicked(s.ref)} />
+   715→   715→                  ))}
+   716→   716→                </div>
+   717→   717→              </div>
+   718→   718→            ) : null}
+   719→   719→
+   720→   720→            {/* ── dossier drawer ── */}
+   721→   721→            <AnimatePresence>
+   722→   722→              {sel ? (
+   723→   723→                <motion.aside
+   724→   724→                  key={sel.ref}
+   725→   725→                  initial={{ x: "100%" }}
+   726→   726→                  animate={{ x: 0 }}
+   727→   727→                  exit={{ x: "100%" }}
+   728→   728→                  transition={{ type: "spring", stiffness: 280, damping: 32 }}
+   729→   729→                  className="absolute right-0 top-0 z-20 h-full w-full border-l border-primary/20 bg-card/95 shadow-[-30px_0_60px_oklch(0_0_0/35%)] backdrop-blur-xl sm:w-[480px]"
+   730→   730→                  role="complementary"
+   731→   731→                  aria-label={`Dossier — ${sel.ref}`}
+   732→   732→                >
+   733→   733→                  <Dossier ship={sel} p={progress.get(sel.ref) ?? sel.progress} now={now} onClose={closeDrawer} />
+   734→   734→                </motion.aside>
+   735→   735→              ) : null}
+   736→   736→            </AnimatePresence>
+   737→   737→          </>
+   738→   738→        )}
+   739→   739→      </div>
+   740→   740→    </motion.div>
+   741→   741→  );
+   742→   742→}
+   743→   743→

@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
-import { Activity, Fingerprint, PlugZap } from "lucide-react";
+import { useMemo, useState } from "react";
+import { motion } from "framer-motion";
+import { Activity, ChevronLeft, ChevronRight, Fingerprint, History, PlugZap } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -185,27 +187,152 @@ function IntegrationHealth() {
       )}
       <Callout>
         <span className="inline-flex items-center gap-1.5">
-          <PlugZap className="inline h-3.5 w-3.5" /> Connector isolation — one source cannot stall all ingest (circuit breaker §12.2).
+          <PlugZap className="inline h-3.5 w-3.5" /> Connector isolation — one source cannot stall all ingest (circuit breaker pattern).
         </span>
       </Callout>
     </div>
   );
 }
 
+/* ── Live event stream — audit replay with left/right prev/next paging (M22) ── */
+const STREAM_PAGE_SIZE = 6;
+const FALLBACK_CHIP = "border-zinc-300 bg-zinc-100 text-zinc-700 dark:border-zinc-500/40 dark:bg-zinc-900 dark:text-zinc-300";
+const ACTOR_CHIP: Record<string, string> = {
+  RULE: "border-zinc-400/70 bg-zinc-200 text-zinc-800 dark:border-zinc-500/40 dark:bg-zinc-800 dark:text-zinc-200",
+  USER: "border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-400/30 dark:bg-amber-400/15 dark:text-amber-300",
+  SYSTEM: "border-zinc-300 bg-zinc-100 text-zinc-700 dark:border-zinc-500/40 dark:bg-zinc-900 dark:text-zinc-300",
+  SERVICE: "border-teal-300 bg-teal-100 text-teal-800 dark:border-teal-400/25 dark:bg-teal-400/10 dark:text-teal-300",
+};
+
+function LiveEventStream({ events }: { events: AuditRow[] }) {
+  const [page, setPage] = useState(0);
+  const pages = Math.max(1, Math.ceil(events.length / STREAM_PAGE_SIZE));
+  const safe = Math.min(page, pages - 1);
+  const start = safe * STREAM_PAGE_SIZE;
+  const visible = events.slice(start, start + STREAM_PAGE_SIZE);
+  const fmtTime = (iso: string) => {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? "—" : d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
+  };
+
+  const goPrev = () => setPage(Math.max(0, safe - 1));
+  const goNext = () => setPage(Math.min(pages - 1, safe + 1));
+
+  return (
+    <SectionCard
+      title={
+        <span className="flex items-center gap-2">
+          <History className="h-4 w-4 text-primary" aria-hidden /> Live event stream
+        </span>
+      }
+      subtitle="audit trail replayed as it happened"
+      right={
+        <div className="flex items-center gap-1.5" role="group" aria-label="Event stream pages">
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-7 w-7"
+            onClick={goPrev}
+            disabled={safe === 0}
+            aria-label="Previous events"
+            title="Previous events"
+          >
+            <ChevronLeft className="h-4 w-4" aria-hidden />
+          </Button>
+          <span className="min-w-[52px] text-center text-[11px] font-semibold tabular-nums text-muted-foreground" aria-live="polite">
+            {events.length === 0 ? "0 / 0" : `${safe + 1} / ${pages}`}
+          </span>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-7 w-7"
+            onClick={goNext}
+            disabled={safe >= pages - 1}
+            aria-label="Next events"
+            title="Next events"
+          >
+            <ChevronRight className="h-4 w-4" aria-hidden />
+          </Button>
+        </div>
+      }
+    >
+      {visible.length === 0 ? (
+        <p className="py-6 text-center text-xs text-muted-foreground">No audit events recorded.</p>
+      ) : (
+        <motion.ol
+          key={safe}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.22, ease: "easeOut" }}
+          className="space-y-2 outline-none"
+          tabIndex={0}
+          role="region"
+          aria-label="Live event stream — use left and right arrow keys to page"
+          onKeyDown={(e) => {
+            if (e.key === "ArrowLeft") {
+              e.preventDefault();
+              goPrev();
+            } else if (e.key === "ArrowRight") {
+              e.preventDefault();
+              goNext();
+            }
+          }}
+        >
+          {visible.map((e) => (
+            <li
+              key={e.id}
+              title={`${e.actor}${e.actorType ? ` · ${e.actorType}` : ""} · ${fmtDateTime(e.at)}${e.reason ? ` · ${e.reason}` : ""}${e.correlationId ? ` · corr ${e.correlationId}` : ""}${e.ruleVersion ? ` · ${e.ruleVersion}` : ""}`}
+              className="rounded-xl border border-border/70 bg-card/60 px-3 py-2.5 transition-colors hover:border-primary/35 hover:bg-card"
+            >
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                <span className="tabular-nums text-muted-foreground">{fmtTime(e.at)}</span>
+                <span className={chipCls(ACTOR_CHIP[e.actorType] ?? FALLBACK_CHIP)}>{e.actorType}</span>
+                <span className="font-bold">{e.action}</span>
+                <span className="text-muted-foreground">{e.entityType}</span>
+                {e.entityRef ? <span className="font-mono text-muted-foreground">{e.entityRef}</span> : null}
+              </div>
+              <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs">
+                <span className="min-w-0">
+                  {e.previousState || e.newState ? (
+                    <>
+                      <span className="font-medium text-rose-600 dark:text-rose-400">{e.previousState ?? "—"}</span>
+                      <span className="mx-1.5 text-muted-foreground" aria-hidden>→</span>
+                      <span className="sr-only">to</span>
+                      <span className="font-medium text-emerald-700 dark:text-emerald-400">{e.newState ?? "—"}</span>
+                    </>
+                  ) : e.diff ? (
+                    <span className="block max-w-[520px] truncate text-muted-foreground">{e.diff}</span>
+                  ) : null}
+                </span>
+                <span className="ml-auto whitespace-nowrap text-[11px] tabular-nums text-muted-foreground">{fmtRelative(e.at)}</span>
+              </div>
+            </li>
+          ))}
+        </motion.ol>
+      )}
+      <p className="mt-3 border-t border-border/60 pt-2.5 text-[11px] italic text-muted-foreground">
+        real audit records · replayed on a live cadence · append-only (M22)
+      </p>
+    </SectionCard>
+  );
+}
+
 /* ── Audit trail tab ── */
 function AuditTrail() {
-  const api = useApi<AuditRow[]>("/api/audit");
+  const api = useApi<AuditRow[]>("/api/audit", [], 10_000);
   const events = api.data ?? [];
   return (
-    <SectionCard title={`Append-only audit trail — ${events.length} events`} subtitle="Actor, action, entity, prior/new state, reason, correlation id, rule version (§8.1 #24)." bodyClass="pt-0">
-      {api.loading ? (
-        <LoadingState />
-      ) : api.error ? (
-        <p className="text-sm text-destructive">{api.error}</p>
-      ) : events.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No audit events recorded.</p>
-      ) : (
-        <ScrollTable maxHeight="max-h-[560px]">
+    <div className="space-y-4">
+      <LiveEventStream events={events} />
+      <SectionCard title={`Append-only audit trail — ${events.length} events`} subtitle="Actor, action, entity, prior/new state, reason, correlation id, rule version." bodyClass="pt-0">
+        {api.loading ? (
+          <LoadingState />
+        ) : api.error ? (
+          <p className="text-sm text-destructive">{api.error}</p>
+        ) : events.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No audit events recorded.</p>
+        ) : (
+          <ScrollTable maxHeight="max-h-[560px]">
           <table className="w-full text-xs tabular-nums">
             <thead className="sticky top-0 bg-background">
               <tr className="border-b text-left text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -250,13 +377,14 @@ function AuditTrail() {
             </tbody>
           </table>
         </ScrollTable>
-      )}
-      <Callout>
-        <span className="inline-flex items-center gap-1.5">
-          <Fingerprint className="inline h-3.5 w-3.5" /> Append-only audit trail (M22) — minimum fields per §8.1 #24.
-        </span>
-      </Callout>
-    </SectionCard>
+        )}
+        <Callout>
+          <span className="inline-flex items-center gap-1.5">
+            <Fingerprint className="inline h-3.5 w-3.5" /> Append-only audit trail (M22) — minimum required audit fields.
+          </span>
+        </Callout>
+      </SectionCard>
+    </div>
   );
 }
 
@@ -265,7 +393,7 @@ function EvidenceRegistry() {
   const api = useApi<EvidenceRow[]>("/api/evidence");
   const rows = api.data ?? [];
   return (
-    <SectionCard title={`Source evidence registry — ${rows.length} records`} subtitle="Provenance, content hash, issuer, extraction version and retention class (§8.1 #21)." bodyClass="pt-0">
+    <SectionCard title={`Source evidence registry — ${rows.length} records`} subtitle="Provenance, content hash, issuer, extraction version and retention class." bodyClass="pt-0">
       {api.loading ? (
         <LoadingState />
       ) : api.error ? (
@@ -327,7 +455,7 @@ export function GovernanceView() {
   return (
     <div className="space-y-4">
       <Tabs defaultValue="health">
-        <TabsList aria-label="Governance sections">
+        <TabsList aria-label="Governance sections" className="h-auto min-h-9 max-w-full flex-wrap">
           <TabsTrigger value="health">
             <Activity className="mr-1.5 h-3.5 w-3.5" aria-hidden /> Integration Health
           </TabsTrigger>

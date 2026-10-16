@@ -73,7 +73,7 @@ interface NotificationRow {
   note: string | null;
 }
 
-/* ── Action state machine (§13.1) ── */
+/* ── Action state machine ── */
 const ACTION_MAIN = ["DRAFT", "POLICY_CHECK", "AWAITING_APPROVAL", "AUTHORIZED", "SUBMITTED", "ACKNOWLEDGED", "PENDING_VERIFICATION", "VERIFIED"];
 const ACTION_SIDE = ["FAILED", "COMPENSATION_REQUIRED", "CANCELLED"];
 
@@ -296,7 +296,7 @@ export function ActionsView({ drillRef }: { drillRef?: string | null }) {
               >
                 {/* Action state mini strip */}
                 <div className="mb-4">
-                  <p className="mb-1.5 text-xs font-medium text-muted-foreground">Action state machine (§13.1)</p>
+                  <p className="mb-1.5 text-xs font-medium text-muted-foreground">Action state machine</p>
                   <div className="flex flex-wrap items-center gap-x-1 gap-y-1.5">
                     {ACTION_MAIN.map((s, i) => (
                       <span key={s} className="inline-flex items-center gap-1">
