@@ -1,0 +1,751 @@
+     1→# MASTER IMPLEMENTATION PROMPT
+     2→
+     3→##
+     4→
+     5→### ROLE AND OBJECTIVE
+     6→
+     7→Act as a senior full-stack engineer, GIS developer, maritime tracking engineer, and QA specialist.
+     8→
+     9→You have access to my existing NASS Closed-Loop Control Tower / Freight Traceability codebase.
+    10→
+    11→Your objective is to diagnose and fix the issues listed below using the **smallest possible changes to the existing code**.
+    12→
+    13→This is a targeted bug-fixing assignment, NOT an application redesign or rebuild.
+    14→
+    15→Use the existing application, recorded behavior, screenshots, components, APIs, database models, design system, and business logic as the source of truth.
+    16→
+    17→## 0. STRICT CODE PROTECTION RULES
+    18→
+    19→These rules are mandatory:
+    20→
+    21→1. **DO NOT modify unrelated code.** Only edit files, functions, styles and tests directly required to correct an identified issue.
+    22→2. Do not rebuild the application from scratch.
+    23→3. Do not change the existing technology stack, routing architecture or database structure unless absolutely necessary for a specific confirmed bug.
+    24→4. Do not modify authentication, authorization, user management, billing, deployment or unrelated modules.
+    25→5. Do not rename existing routes, API endpoints, component names, database fields or exported interfaces unnecessarily.
+    26→6. Do not remove existing features, filters, animations, workflows, dashboard tabs, shipment IDs or operational records.
+    27→7. Preserve the application's existing dark enterprise design, component hierarchy and brand colors.
+    28→8. Preserve all functional workflows: procurement, shipments, simulation, tracking, inventory, approvals, reporting and AI assistance.
+    29→9. Never fabricate live operational data, connector availability, AIS readings, delivery estimates or successful QC results.
+    30→10. Reuse existing utilities and services whenever possible. Avoid introducing new dependencies when an existing solution can address the problem.
+    31→11. If a fix requires modifying a shared component, API contract, dependency or database migration affecting unrelated modules, explain the required scope and obtain approval before proceeding.
+    32→12. Preserve a working baseline before making changes, implement fixes in small isolated patches and verify that existing behavior still works.
+    33→
+    34→**Execution approach:** First inspect the relevant code and identify the actual causes. Do not blindly apply solutions based only on screenshots. Then implement verified fixes and run the necessary regression tests.
+    35→
+    36→---
+    37→
+    38→# 1. CRITICAL — MARITIME MAP AND ARCGIS INTEGRATION
+    39→
+    40→Affected component: NASS Freight Traceability Map
+    41→
+    42→Observed problems:
+    43→
+    44→- Map background is too dark, making geography and maritime routes hard to understand.
+    45→- Some vessel icons appear over land around Sudan, Egypt and the Red Sea.
+    46→- Some shipment labels are disconnected from obvious vessel markers or overlap other labels.
+    47→- SHP-8803, SHP-8805, SHP-8806 and SHP-8807 require position and label verification.
+    48→- Route graphics appear to cross or cut close to land areas incorrectly.
+    49→- Green and pink route lines overlap without an immediately understandable meaning.
+    50→- The map has visible potential tile seams or incomplete rendering boundaries.
+    51→- Floating vessel-direction arrows appear independently of meaningful shipment locations.
+    52→- Some ship symbols are too small.
+    53→- The right-hand information panel and bottom filters are partially clipped in the provided screenshots.
+    54→- The map lacks sufficiently readable port, country and geographic labels.
+    55→
+    56→## 1.1 Integrate ArcGIS without rebuilding the website
+    57→
+    58→Use the official ArcGIS Maps SDK for JavaScript if the existing project configuration, credentials and application architecture permit it.
+    59→
+    60→Documentation:
+    61→[https://developers.arcgis.com/javascript/latest/](https://developers.arcgis.com/javascript/latest/)
+    62→
+    63→Preferred ArcGIS features:
+    64→
+    65→- Map and MapView for geographic rendering.
+    66→- ArcGIS Dark Gray or Human Geography Dark basemap.
+    67→- GraphicsLayer or FeatureLayer for existing vessel and shipment data.
+    68→- Point geometry for vessel locations.
+    69→- Polyline geometry for validated maritime routes.
+    70→- PopupTemplate or the existing application popup component for vessel details.
+    71→- GeoJSONLayer only where appropriate for available geographic datasets.
+    72→
+    73→Implementation conditions:
+    74→
+    75→1. Replace only the current basemap/map-rendering implementation if ArcGIS integration is feasible.
+    76→2. Retain the existing shipment data, tracking APIs, markers, selection state, filters, status indicators and simulation functions.
+    77→3. Connect those existing values to ArcGIS graphics.
+    78→4. Do not embed an isolated ArcGIS iframe if that would break existing map interactions.
+    79→5. Keep the existing React/Vue/Next.js component lifecycle, whichever the repository uses.
+    80→6. Handle MapView initialization, resizing, loading, cleanup and error handling correctly.
+    81→7. Configure ArcGIS authentication securely through the project's existing configuration pattern. Do not hardcode private credentials.
+    82→8. Preserve required attribution and comply with ArcGIS service access requirements.
+    83→9. If ArcGIS credentials are unavailable, do not invent credentials or break the current map. First fix the geographical and visual problems using the current provider, and isolate the ArcGIS switch behind configuration until the required credentials exist.
+    84→
+    85→## 1.2 Correct maritime route geometry
+    86→
+    87→This is essential.
+    88→
+    89→Do not use a simple straight line between origin and destination for a shipping route when that line crosses land.
+    90→
+    91→Inspect the existing route dataset and rendering algorithm.
+    92→
+    93→Implement:
+    94→
+    95→- Correct longitude/latitude ordering and coordinate reference system.
+    96→- Validate route coordinates before rendering.
+    97→- Use existing validated maritime waypoints or an approved maritime routing service.
+    98→- Proper handling of shipping corridors through the Suez Canal, Red Sea, Bab-el-Mandeb Strait, Gulf of Aden, Arabian Sea and Strait of Hormuz where applicable.
+    99→- Preserve valid port departure and arrival positions.
+   100→- Check route segments against an appropriate coastline/land mask, accounting for legitimate canals and port approaches.
+   101→- Reject or flag incorrect route geometry rather than silently drawing impossible paths.
+   102→- Calculate route progress along cumulative segment distance instead of interpolating directly between two distant endpoints.
+   103→- Calculate vessel heading from its current route segment.
+   104→
+   105→Do not use ArcGIS road-routing services to generate sea routes.
+   106→
+   107→Do not invent missing maritime waypoint coordinates. Where validated coordinates are unavailable, display an explicit estimated/unverified state instead of presenting an inaccurate route as verified.
+   108→
+   109→**Acceptance criteria:**
+   110→
+   111→- Ships follow valid maritime paths.
+   112→- No ship appears in inland desert or unrelated land areas due to erroneous coordinates.
+   113→- Suez Canal and Red Sea routes render correctly at multiple zoom levels.
+   114→- Vessel movement follows the displayed route geometry.
+   115→- No geographically impossible direct-line shortcuts appear.
+   116→
+   117→## 1.3 Correct vessel markers and shipment labels
+   118→
+   119→Inspect the vessel graphics and label-rendering logic.
+   120→
+   121→Fix:
+   122→
+   123→- Every vessel marker must use its associated shipment/vessel coordinates.
+   124→- Shipment IDs must follow their corresponding markers.
+   125→- Remove accidental detached or duplicate markers.
+   126→- Verify SHP-8803, SHP-8805, SHP-8806 and SHP-8807 against their actual source data.
+   127→- Resolve overlapping labels through appropriate collision handling, positioning or clustering.
+   128→- Use readable vessel symbols and consistent status colors.
+   129→- Selected vessels must remain visibly highlighted.
+   130→- Clicking a marker must update the correct existing shipment information panel.
+   131→- Clicking a shipment card must focus or highlight the matching marker where that behavior exists.
+   132→- Marker size should remain usable at different zoom levels.
+   133→
+   134→Do not assign arbitrary coordinates to make the map look correct.
+   135→
+   136→## 1.4 Fix map appearance and layout
+   137→
+   138→Improve the map without changing the overall website design.
+   139→
+   140→- Increase visual separation between land and water.
+   141→- Improve country, sea, major port and geographic label readability.
+   142→- Use a suitable dark ArcGIS basemap if available.
+   143→- Make active routes clearly visible.
+   144→- Distinguish planned, completed, estimated and live segments using consistent colors or line styles, with an explanatory legend.
+   145→- Avoid unnecessary duplicated route strokes.
+   146→- Correct map-tile alignment, loading artifacts and clipping.
+   147→- Resolve incorrect layer stacking and z-index issues.
+   148→- Ensure the map fills its intended container correctly.
+   149→- Keep information panels, tooltips and filter bars inside the visible viewport.
+   150→- Prevent bottom filters and status chips from being hidden or cropped.
+   151→- Keep map controls accessible at supported viewport sizes.
+   152→- Ensure map resizing does not duplicate markers or leak resources.
+   153→
+   154→**Do not redesign the complete dashboard.**
+   155→
+   156→---
+   157→
+   158→# 2. CRITICAL — LIVE AIS VS SIMULATED VESSEL DATA
+   159→
+   160→Affected components: Freight Tracking, Live Map, Connector Health.
+   161→
+   162→Problem: The website mixes simulated vessel movement, estimated positions and live tracking terminology.
+   163→
+   164→The connector-health screen also indicates stale or degraded AIS source information.
+   165→
+   166→## Required solution
+   167→
+   168→Introduce clear, accurate data-state handling using existing source metadata.
+   169→
+   170→Supported states should include:
+   171→
+   172→- LIVE AIS — verified provider location with timestamp.
+   173→- STALE AIS — last verified location is older than the configured freshness threshold.
+   174→- ESTIMATED — position calculated from route and model assumptions.
+   175→- SIMULATED — demonstration or accelerated playback.
+   176→- UNAVAILABLE — trustworthy position cannot be determined.
+   177→
+   178→Implement the following:
+   179→
+   180→1. Each position should have a source type and timestamp where available.
+   181→2. Determine freshness from configured thresholds, not hardcoded display labels.
+   182→3. When AIS becomes stale, stop presenting the marker as live.
+   183→4. Do not silently replace missing AIS coordinates with simulated values.
+   184→5. If simulation is active, clearly indicate simulation mode.
+   185→6. Preserve existing AIS source attribution.
+   186→7. Keep vessel coordinates and status cards synchronized.
+   187→8. Distinguish actual vessel speed from simulated playback speed.
+   188→9. Ensure source data errors do not crash the map.
+   189→
+   190→**Acceptance criteria:** Every visible position can be traced to its actual source or clearly identified estimation method.
+   191→
+   192→---
+   193→
+   194→# 3. HIGH — VESSEL SIMULATION, SPEED AND ETA
+   195→
+   196→Affected time: 00:00–00:32.
+   197→
+   198→Observed problem: Vessel progress, speed and ETA behavior appear potentially inconsistent.
+   199→
+   200→A selected vessel displays approximately 73.5 knots under simulation.
+   201→
+   202→## Required solution
+   203→
+   204→Inspect the simulation clock, position interpolation and ETA functions.
+   205→
+   206→Use one consistent simulation time source.
+   207→
+   208→Required corrections:
+   209→
+   210→1. Separate wall-clock elapsed time from simulated elapsed time.
+   211→2. Use the configured simulation acceleration factor for position progression.
+   212→3. Derive vessel progress from distance traveled along the validated route.
+   213→4. Derive the simulated position from that same progress.
+   214→5. Calculate simulation ETA and real ETA consistently using their respective time bases.
+   215→6. Do not label accelerated movement speed as actual AIS vessel speed.
+   216→7. Prevent progress values below 0% or above 100%.
+   217→8. Correctly stop simulated movement when the route ends.
+   218→9. Pause/resume playback without accumulating duplicate animation intervals.
+   219→10. Ensure a shipment refresh does not unexpectedly reset playback.
+   220→11. Preserve existing playback controls and behavior.
+   221→
+   222→**Acceptance criteria:** Map position, route progress, speed, ETA and the shipment detail panel remain synchronized throughout playback.
+   223→
+   224→---
+   225→
+   226→# 4. HIGH — AI OPERATIONS ASSISTANT
+   227→
+   228→Affected time: 00:34–00:42.
+   229→
+   230→Problem: A simple greeting generates a lengthy response saying that no matching operational records were retrieved.
+   231→
+   232→## Required solution
+   233→
+   234→Inspect the current assistant message classification, retrieval and response handling.
+   235→
+   236→Apply targeted corrections:
+   237→
+   238→- Recognize greetings and basic conversational messages before launching operational retrieval.
+   239→- Return a concise helpful greeting and examples of supported operational questions.
+   240→- For operational queries, use the existing authorized data retrieval system.
+   241→- Distinguish no matching records from a connector error or model error.
+   242→- Do not present missing operational records as a failure when the user has only greeted the assistant.
+   243→- Do not hallucinate shipment information.
+   244→- Preserve existing conversation history, retrieval integrations and access restrictions.
+   245→- Avoid introducing an unrelated chatbot framework.
+   246→
+   247→**Acceptance criteria:**
+   248→
+   249→"Hi" produces a useful greeting.
+   250→
+   251→"Where is SHP-8805?" queries the appropriate operational data.
+   252→
+   253→Unavailable shipment information produces a clear, accurate explanation.
+   254→
+   255→---
+   256→
+   257→# 5. MEDIUM — CONTROL TOWER LOADING AND KPI COUNTS
+   258→
+   259→Affected time: 00:33–01:00.
+   260→
+   261→Problems:
+   262→
+   263→- Dashboard briefly becomes nearly blank during loading.
+   264→- Exception counters may temporarily display zero.
+   265→- KPI counts visibly change without sufficient snapshot context.
+   266→
+   267→## Required solution
+   268→
+   269→- Inspect the loading lifecycle and existing asynchronous queries.
+   270→- Use the current loading components or add scoped skeleton placeholders.
+   271→- Keep last successfully loaded values visible when appropriate, marked as refreshing.
+   272→- Never display loading defaults as real zero values.
+   273→- Show an explicit loading or unavailable state if no valid data exists.
+   274→- Ensure KPI widgets share compatible data snapshots and filters.
+   275→- Add or expose the relevant last-updated timestamp.
+   276→- Handle asynchronous responses arriving out of order.
+   277→- Prevent stale responses from overwriting newer data.
+   278→- Fix incorrect counts if the query or aggregation is proven wrong.
+   279→
+   280→**Acceptance criteria:** Counts are never falsely shown as zero while data is still loading, and the dashboard remains usable during refresh.
+   281→
+   282→---
+   283→
+   284→# 6. MEDIUM — RFQ / SOURCING DEADLINES
+   285→
+   286→Affected time: 01:02–01:06.
+   287→
+   288→Problem: An expired quotation deadline appears alongside the supplier ranking workflow without a sufficiently clear explanation.
+   289→
+   290→## Required solution
+   291→
+   292→- Inspect the existing RFQ deadline and status logic.
+   293→- Compare deadlines using the correct timezone and server-authoritative timestamp.
+   294→- Distinguish OPEN, EXPIRED, CLOSED and AWARDED using the existing workflow states where supported.
+   295→- Show a clear expired deadline indicator.
+   296→- Do not permit expired RFQs to be treated as open unless existing business rules expressly allow it.
+   297→- Preserve historical supplier rankings and quotation records.
+   298→- Do not create new RFQs or alter historical deadlines.
+   299→
+   300→**Acceptance criteria:** Users can immediately identify whether a supplier ranking is historical or currently actionable.
+   301→
+   302→---
+   303→
+   304→# 7. HIGH — PURCHASE ORDER AND SHIPMENT LINKAGE
+   305→
+   306→Affected time: 01:07–01:13 and 01:39–01:45.
+   307→
+   308→Problem: PO-3001 shows zero linked shipments, while the materials workflow displays 120 tonnes in transit.
+   309→
+   310→This requires data-lineage verification. Do not assume the two values refer to the same record without checking their relationships.
+   311→
+   312→## Required solution
+   313→
+   314→- Inspect Purchase Order, PO line item, Shipment, Shipment Line and Project Material associations.
+   315→- Trace quantities from the underlying records.
+   316→- Confirm whether the transit quantity is linked through the PO, material, allocation or another existing relationship.
+   317→- Fix broken joins, foreign-key lookups or aggregation logic if confirmed.
+   318→- Do not automatically assign shipments based only on similar descriptions or quantities.
+   319→- Recalculate derived counts from authoritative linked records.
+   320→- Distinguish linked, unlinked and pending-reconciliation shipments.
+   321→- Preserve existing records and associations.
+   322→- Do not modify unrelated database schema.
+   323→
+   324→**Acceptance criteria:** Shipment counts and in-transit quantities reconcile with their underlying source records, and missing relationships are clearly identified.
+   325→
+   326→---
+   327→
+   328→# 8. MEDIUM — SHIPMENT TRACKING AND ETA PRESENTATION
+   329→
+   330→Affected time: 01:15–01:17.
+   331→
+   332→Problem: Carrier ETA, model ETA and port ETA are distributed across separate panels.
+   333→
+   334→## Required solution
+   335→
+   336→Preserve the current layout structure but improve the existing ETA display.
+   337→
+   338→- Display the source of each ETA clearly.
+   339→- Identify the authoritative or selected ETA using current business rules.
+   340→- Expose the last updated time.
+   341→- Display differences between ETA sources where useful.
+   342→- Show unavailable when a source provides no ETA.
+   343→- Ensure timezone and date formatting are consistent.
+   344→- Avoid duplicated ETA values with contradictory labels.
+   345→
+   346→**Acceptance criteria:** Users can identify which ETA is operationally selected and where it came from.
+   347→
+   348→---
+   349→
+   350→# 9. HIGH — RECEIVING AND QUALITY CONTROL
+   351→
+   352→Affected time: 01:34–01:38.
+   353→
+   354→Problem: A deduplicated event displays 0/0 bag with a green PASS status.
+   355→
+   356→## Required solution
+   357→
+   358→- Inspect the goods-receipt deduplication process.
+   359→- Separate receipt processing outcome from inspection/QC outcome.
+   360→- A duplicate or zero-quantity processing event must not automatically count as a successful QC inspection.
+   361→- Represent a no-op or duplicate using an appropriate existing status or clearly differentiated display state.
+   362→- Ensure receipt quantities are not double-counted.
+   363→- Ensure QC success metrics exclude records with no valid inspection result.
+   364→- Preserve all receipt and audit records.
+   365→- Do not automatically change historically valid QC results.
+   366→
+   367→**Acceptance criteria:** A deduplicated 0/0 entry is not misleadingly presented as a newly passed physical inspection.
+   368→
+   369→---
+   370→
+   371→# 10. MEDIUM — INVENTORY AGING AND VERIFICATION
+   372→
+   373→Affected time: 01:29–01:33.
+   374→
+   375→Problem: Inventory records show stale, aging or unavailable verification information.
+   376→
+   377→## Required solution
+   378→
+   379→- Preserve existing inventory quantities and status rules.
+   380→- Verify how the last-verified timestamp is calculated.
+   381→- Differentiate inventory age from verification age.
+   382→- Display stale or unverified indicators consistently.
+   383→- Use configured thresholds rather than arbitrary values.
+   384→- Do not silently treat missing verification as verified.
+   385→- Ensure stock calculations remain unchanged unless an actual aggregation error is proven.
+   386→
+   387→**Acceptance criteria:** Users can distinguish stock quantity from the reliability/freshness of its verification.
+   388→
+   389→---
+   390→
+   391→# 11. MEDIUM — PROJECT MATERIALS TABLE
+   392→
+   393→Affected time: 01:39–01:45.
+   394→
+   395→Problems:
+   396→
+   397→- Unlinked shipment information is presented as a dash.
+   398→- Important columns require excessive horizontal scrolling.
+   399→
+   400→## Required solution
+   401→
+   402→- Replace ambiguous empty relationship indicators with an explicit state such as "Unlinked" when supported by the source data.
+   403→- Preserve existing material fields and calculations.
+   404→- Improve column widths and spacing within the existing table component.
+   405→- Keep critical identifiers and quantities visible.
+   406→- Use sticky identifiers or a responsive detail view if supported.
+   407→- Avoid cutting off quantity, shipment and risk columns.
+   408→- Preserve current sorting and filtering behavior.
+   409→
+   410→**Acceptance criteria:** Demand, available stock, incoming quantity, shipment linkage and risk are easy to compare without losing row context.
+   411→
+   412→---
+   413→
+   414→# 12. MEDIUM — ASSETS AND TELEMETRY
+   415→
+   416→Affected time: 01:48–01:51.
+   417→
+   418→Problems:
+   419→
+   420→- CRITICAL and HEALTHY badges appear together without clear explanatory labels.
+   421→- Multiple vibration readings lack sufficiently clear channel identification.
+   422→
+   423→## Required solution
+   424→
+   425→- Inspect the underlying status fields.
+   426→- Distinguish asset criticality from asset health.
+   427→- Label each status according to its meaning.
+   428→- Display sensor/channel identifiers beside their measurements.
+   429→- Show units and timestamps using existing telemetry metadata.
+   430→- Distinguish stale readings from current readings.
+   431→- Preserve original telemetry values and alarm thresholds.
+   432→- Do not change safety assessment logic without validating the existing rules.
+   433→
+   434→**Acceptance criteria:** Users do not confuse operational importance with a live equipment fault.
+   435→
+   436→---
+   437→
+   438→# 13. MEDIUM — EXCEPTION MANAGEMENT
+   439→
+   440→Affected time: 01:52–01:59.
+   441→
+   442→Problems:
+   443→
+   444→- Counters briefly display zero during loading.
+   445→- Exception queue is narrow.
+   446→- Queue requires horizontal scrolling.
+   447→- Dossier panel remains largely empty until a record is selected.
+   448→
+   449→## Required solution
+   450→
+   451→- Reuse the loading-state correction from the Control Tower.
+   452→- Preserve exception counts, severity filters and state transitions.
+   453→- Optimize the queue/detail layout without changing the surrounding page.
+   454→- Keep the exception ID, severity and title visible.
+   455→- Preserve row selection and scrolling behavior.
+   456→- Show an informative empty-selection state or automatically select the first record only when appropriate and consistent with existing UX.
+   457→- Ensure the dossier displays details for the selected exception.
+   458→- Do not trigger workflow actions automatically on selection.
+   459→
+   460→**Acceptance criteria:** Exception details are accessible without awkward scrolling and zero-count flicker is eliminated.
+   461→
+   462→---
+   463→
+   464→# 14. LOW — ACTIONS AND APPROVALS
+   465→
+   466→Affected time: 02:00–02:03.
+   467→
+   468→Problem: The details layout has excessive blank space before selecting a command.
+   469→
+   470→## Required solution
+   471→
+   472→- Improve the empty-selection state.
+   473→- Keep the existing action list and approval workflow unchanged.
+   474→- Where safe, select an appropriate existing record for viewing, but never automatically approve, execute or modify a command.
+   475→- Preserve role-based action restrictions.
+   476→- Keep command information readable and visually balanced.
+   477→
+   478→**Acceptance criteria:** The screen remains useful before and after selecting a command, and no commands execute without user action.
+   479→
+   480→---
+   481→
+   482→# 15. CRITICAL — CONNECTOR HEALTH AND DATA FRESHNESS
+   483→
+   484→Affected time: 02:04–02:07.
+   485→
+   486→Observed contradictions:
+   487→
+   488→- Customs broker portal shows HEALTHY while also showing UNAVAILABLE and "last sync never."
+   489→- Port community system appears FRESH despite a seven-hour-old synchronization timestamp and a description referencing hourly batches.
+   490→- Some green health cards indicate that customer integration or source data is still required.
+   491→- AIS data is reported as degraded/stale while other areas present live vessel movement.
+   492→
+   493→## Required solution
+   494→
+   495→Inspect each connector's underlying state and freshness rules.
+   496→
+   497→Keep three concepts separate:
+   498→
+   499→**A. Integration readiness**
+   500→
+   501→- Configured
+   502→- Not configured
+   503→- Requires customer integration
+   504→- Disabled
+   505→
+   506→**B. Technical connector health**
+   507→
+   508→- Healthy
+   509→- Degraded
+   510→- Error
+   511→- Unknown
+   512→
+   513→**C. Data freshness**
+   514→
+   515→- Fresh
+   516→- Stale
+   517→- Never synchronized
+   518→- Unavailable
+   519→
+   520→Use the application's existing state model where possible and map it accurately to these concepts.
+   521→
+   522→Implementation requirements:
+   523→
+   524→1. A never-synchronized source must not be described as delivering healthy, fresh operational data.
+   525→2. A technically reachable connector with unavailable data may be marked technically healthy only if the distinction is explicitly shown.
+   526→3. Derive freshness using the connector-specific expected update interval.
+   527→4. Use actual timestamps and timezone-safe calculations.
+   528→5. Do not classify an hourly feed as fresh after seven hours unless an explicitly documented threshold permits it.
+   529→6. Clearly mark demo/mock integrations.
+   530→7. Display missing credentials or customer integrations accurately.
+   531→8. Correct contradictory badge rendering.
+   532→9. Preserve existing monitoring logic and connector configurations.
+   533→10. Do not invent successful synchronizations or silently change backend status.
+   534→11. Ensure map data freshness uses the relevant AIS connector metadata.
+   535→
+   536→**Acceptance criteria:** Connector cards never imply operational data is current when it has never synchronized or has exceeded its freshness threshold.
+   537→
+   538→---
+   539→
+   540→# 16. LOW — SCENARIO PDF EXPORT
+   541→
+   542→Affected time: 00:19–00:27.
+   543→
+   544→Problem: The exported report has excessive unused space on a later page.
+   545→
+   546→## Required solution
+   547→
+   548→- Inspect the existing PDF export template.
+   549→- Improve pagination and content distribution.
+   550→- Avoid unnecessary page breaks.
+   551→- Maintain consistent margins, headings and table placement.
+   552→- Prevent tables or graphics from splitting incorrectly.
+   553→- Preserve all report content, figures, record references and export functions.
+   554→- Do not change the underlying report calculations.
+   555→
+   556→**Acceptance criteria:** The PDF is readable and professionally paginated without missing or altered content.
+   557→
+   558→---
+   559→
+   560→# 17. LOW — VESSEL DETAILS AND DUPLICATE BADGES
+   561→
+   562→Affected time: 00:29–00:32.
+   563→
+   564→Problem: Customs Hold appears in adjacent badges.
+   565→
+   566→## Required solution
+   567→
+   568→- Inspect whether both badges represent the same underlying status.
+   569→- If duplicated, remove only the redundant visual representation.
+   570→- If they represent different concepts, give each badge an appropriate label.
+   571→- Preserve the original shipment state and its workflow logic.
+   572→
+   573→**Acceptance criteria:** No redundant status badges appear without a distinct meaning.
+   574→
+   575→---
+   576→
+   577→# 18. MEDIUM — CONTROL TOWER INFORMATION DENSITY
+   578→
+   579→Affected time: 01:20–01:28.
+   580→
+   581→Problem: Important exceptions and stock information are buried within lengthy dashboard content.
+   582→
+   583→## Required solution
+   584→
+   585→- Keep the current dashboard architecture.
+   586→- Improve spacing, card density and information order within the affected dashboard region only.
+   587→- Make critical existing alerts easy to locate.
+   588→- Improve readability of tables and operational summaries.
+   589→- Preserve all current cards, KPIs and drill-downs.
+   590→- Do not reorganize or redesign unrelated pages.
+   591→
+   592→**Acceptance criteria:** High-severity operational information is discoverable quickly without removing existing information.
+   593→
+   594→---
+   595→
+   596→# 19. MEDIUM — SIDEBAR, LABELS AND RESPONSIVENESS
+   597→
+   598→Affected throughout the recording.
+   599→
+   600→Problems:
+   601→
+   602→- Some labels are truncated.
+   603→- Long navigation titles are difficult to read.
+   604→- Secondary text is too small in certain areas.
+   605→- Dense status badges reduce readability.
+   606→- Map overlays and controls may extend beyond the visible viewport.
+   607→
+   608→## Required solution
+   609→
+   610→- Preserve the existing sidebar structure and navigation behavior.
+   611→- Apply scoped fixes to spacing, truncation, wrapping and tooltips.
+   612→- Improve the readability of affected secondary labels.
+   613→- Use existing design tokens where possible.
+   614→- Prevent unintended overflow.
+   615→- Ensure key controls are visible at supported laptop and desktop resolutions.
+   616→- Avoid global CSS changes that might alter unrelated screens.
+   617→
+   618→**Acceptance criteria:** No affected primary navigation item, operational status or map control is unintentionally clipped.
+   619→
+   620→---
+   621→
+   622→# 20. IMPLEMENTATION ORDER
+   623→
+   624→Apply fixes in the following order while keeping patches isolated:
+   625→
+   626→**Stage 1 — Diagnose and protect**
+   627→
+   628→Inspect the repository, existing data models, map renderer, dependencies, API contracts and automated tests.
+   629→
+   630→Record the current behavior. Identify the smallest code locations requiring changes. Do not start broad refactoring.
+   631→
+   632→**Stage 2 — Fix data truthfulness**
+   633→
+   634→Correct connector readiness/freshness, live-versus-simulated position metadata, and misleading QC/status calculations.
+   635→
+   636→**Stage 3 — Fix maritime map**
+   637→
+   638→Correct coordinates, maritime routes, marker association, label placement, route animation and map clipping. Integrate ArcGIS only within the existing map module and only when feasible with available credentials.
+   639→
+   640→**Stage 4 — Fix cross-module inconsistencies**
+   641→
+   642→Investigate PO-to-shipment relationships, material quantities, ETA sources and KPI synchronization.
+   643→
+   644→**Stage 5 — Fix targeted UI behavior**
+   645→
+   646→Correct the AI greeting, loading states, exceptions layout, telemetry labels, RFQ status, table readability and command empty states.
+   647→
+   648→**Stage 6 — Fix reporting and polish**
+   649→
+   650→Correct PDF pagination, redundant badges and affected typography.
+   651→
+   652→---
+   653→
+   654→# 21. REQUIRED REGRESSION TESTS
+   655→
+   656→After implementing the corrections, validate all of the following.
+   657→
+   658→### Map tests
+   659→
+   660→- Map loads successfully.
+   661→- ArcGIS authentication works if enabled.
+   662→- Existing shipment records remain available.
+   663→- Vessel markers map to their correct coordinates.
+   664→- No accidental inland placement occurs.
+   665→- Maritime route paths respect validated corridors.
+   666→- Marker selection updates the corresponding shipment details.
+   667→- Route progress and simulated position remain synchronized.
+   668→- Map zoom, pan, tooltips, filters and playback still work.
+   669→- Map does not overflow its container.
+   670→- Switching pages does not leak or duplicate map instances.
+   671→- Map remains usable if an ArcGIS service is temporarily unavailable.
+   672→
+   673→### Operational data tests
+   674→
+   675→- Stale AIS is not presented as live.
+   676→- Simulated movement is correctly labeled.
+   677→- Connector health and freshness do not contradict each other.
+   678→- PO shipment counts reconcile with source records.
+   679→- Inventory calculations remain correct.
+   680→- QC deduplication does not create false passes.
+   681→- Exceptions load without false zero counts.
+   682→- ETA timestamps and timezones remain consistent.
+   683→
+   684→### UI and functional tests
+   685→
+   686→- AI assistant handles greetings correctly.
+   687→- Existing operational queries still work.
+   688→- Dashboard loading shows a valid state.
+   689→- RFQ deadlines are correctly classified.
+   690→- Filters, sorting and tables still work.
+   691→- Approvals cannot execute without intended user action.
+   692→- Existing PDF exports still contain their expected data.
+   693→- Sidebar and map controls remain visible.
+   694→- No new runtime errors, console errors or failed requests are introduced by the patches.
+   695→
+   696→Run available build, type-check, lint and test commands using the repository's existing tooling. Add focused regression tests where appropriate without rewriting the test framework.
+   697→
+   698→For any test that cannot run, report the reason and provide exact manual validation steps. Do not claim an unexecuted test passed.
+   699→
+   700→---
+   701→
+   702→# 22. FINAL CODE CHANGE RESTRICTIONS
+   703→
+   704→Before making modifications:
+   705→
+   706→- Identify each affected component and the exact files that need to change.
+   707→- Explain the confirmed cause versus assumptions still requiring validation.
+   708→- Determine whether an existing utility can solve the problem.
+   709→- Avoid editing unrelated files.
+   710→
+   711→During modifications:
+   712→
+   713→- Keep diffs minimal.
+   714→- Avoid broad formatting changes.
+   715→- Do not rewrite entire files when a small patch is sufficient.
+   716→- Do not introduce mock operational data to conceal broken integrations.
+   717→- Do not delete business functionality to make errors disappear.
+   718→- Do not add unrelated animations, widgets, modules or dependencies.
+   719→- Do not change public interfaces unless strictly required and approved.
+   720→
+   721→After modifications:
+   722→
+   723→- Provide a list of changed files.
+   724→- State the exact problem solved by each modification.
+   725→- Explain any newly added dependency or configuration requirement.
+   726→- Identify fixes completed versus blocked by missing source data, credentials or backend access.
+   727→- Report all relevant test results.
+   728→- Highlight any remaining risks.
+   729→- Confirm that unrelated functionality and files were left unchanged.
+   730→
+   731→---
+   732→
+   733→# 23. REQUIRED FINAL RESPONSE FORMAT
+   734→
+   735→Return an implementation report with these columns:
+   736→
+   737→| Component | Root Cause | Exact Fix | Files Changed | Test Result |
+   738→| --------- | ---------- | --------- | ------------- | ----------- |
+   739→
+   740→Also provide:
+   741→
+   742→1. ArcGIS integration status and required configuration, if applicable.
+   743→2. Geographic validation status for the vessel positions and routes.
+   744→3. Data-integrity fixes and remaining unresolved relationships.
+   745→4. Build/test outcomes.
+   746→5. Any issue requiring real customer data, provider credentials or additional approval.
+   747→
+   748→**Final objective:** Deliver a geographically credible, operationally trustworthy and visually clean NASS Control Tower, while preserving the original application's architecture, working features, existing data and design. Apply only the minimum necessary targeted changes.
+   749→
+   750→**DO NOT PERFORM A COMPLETE REDESIGN. DO NOT MODIFY UNRELATED CODE. DO NOT FABRICATE DATA. IMPLEMENT AND VERIFY EACH CONFIRMED FIX.**
+   751→
