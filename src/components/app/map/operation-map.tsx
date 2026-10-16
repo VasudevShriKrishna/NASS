@@ -2,7 +2,8 @@
 
 /* ═══════════════════════════════════════════════════════════════════════
  * OPERATION MAP — Google-Maps-style interactive live operations map.
- * Engine: MapLibre GL JS (bundled world GeoJSON, zero external tiles)
+ * Engine: MapLibre GL JS — ArcGIS (Esri World Dark Gray Canvas) raster basemap
+ * with the bundled world GeoJSON kept as a graceful offline fallback
  *   • drag-pan with inertia · wheel/pinch/double-click/buttons/keys zoom
  *   • eased flyTo camera · world-clamped panning · 60fps GPU rendering
  * Hero layer: shipment & freight movement — vessels gliding along true
@@ -120,22 +121,45 @@ interface LabelEntry {
 function baseStyle(world: FC): StyleSpecification {
   return {
     version: 8,
-    sources: { world: { type: "geojson", data: world } },
+    sources: {
+      world: { type: "geojson", data: world },
+      /* ArcGIS basemap (Esri World Dark Gray Canvas) — requested base layer.
+       * Rendered ABOVE the bundled land fill and BELOW the gold accents, so it
+       * becomes the visible basemap whenever tiles load, while the bundled
+       * geometry stays as a graceful offline fallback (raster renders
+       * transparent where tiles cannot be fetched — map never blanks). */
+      "esri-dark": {
+        type: "raster",
+        tiles: [
+          "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+        ],
+        tileSize: 256,
+        maxzoom: 16,
+        attribution:
+          "Basemap © Esri — Source: Esri, HERE, Garmin, FAO, NOAA, USGS",
+      },
+    },
     layers: [
       { id: "bg", type: "background", paint: { "background-color": "#080706" } },
-      {
-        id: "grat",
-        type: "line",
-        source: "world",
-        filter: ["==", ["get", "kind"], "grat"],
-        paint: { "line-color": "#d4af37", "line-opacity": 0.055, "line-width": 0.6 },
-      },
       {
         id: "land",
         type: "fill",
         source: "world",
         filter: ["==", ["get", "kind"], "fill"],
         paint: { "fill-color": "#1a1610", "fill-opacity": 1 },
+      },
+      {
+        id: "esri-basemap",
+        type: "raster",
+        source: "esri-dark",
+        paint: { "raster-opacity": 0.85, "raster-fade-duration": 300 },
+      },
+      {
+        id: "grat",
+        type: "line",
+        source: "world",
+        filter: ["==", ["get", "kind"], "grat"],
+        paint: { "line-color": "#d4af37", "line-opacity": 0.055, "line-width": 0.6 },
       },
       {
         id: "borders",
@@ -796,7 +820,7 @@ export function OperationMap({
         setNoWebGL(true);
         return;
       }
-      /* bundled world (no external tiles) */
+      /* bundled world geometry — fallback layer beneath the ArcGIS raster basemap */
       let world: FC = EMPTY_FC;
       try {
         const res = await fetch("/geo/world-land-110m.json");

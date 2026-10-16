@@ -1027,6 +1027,9 @@ export function LiveTraceabilityView({ drillRef }: { drillRef?: string | null })
                   </svg>
                   Solid = traveled · dashed = remaining
                 </p>
+                <p className="border-t border-border/60 pt-1.5 text-[9px] text-muted-foreground/80">
+                  Basemap © Esri — Esri, HERE, Garmin, FAO, NOAA, USGS
+                </p>
               </div>
             </div>
 
