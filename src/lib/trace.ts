@@ -1,10 +1,15 @@
 import { db } from "@/lib/db";
-import { lookupPort, portCountry, haversineKm, clamp01 } from "@/lib/geo";
-import type { LiveStatus, TraceShip, TraceSnapshot, TraceTotals } from "@/lib/trace-types";
+import { lookupPort, portCountry } from "@/lib/geo";
+import { resolveMaritimeRoute, viaFromLegs, isBahrainDestination } from "@/lib/maritime-routes";
+import { toUsd, FX_RATES_AS_OF, FX_SOURCE } from "@/lib/fx";
+import type { LiveStatus, TraceShip, TraceSnapshot, TraceTotals, TraceMilestone } from "@/lib/trace-types";
 
 /* Live Traceability snapshot builder (server-side).
- * One query pass over shipments + procurement + compliance relations,
- * projected into the client-facing TraceSnapshot shape.               */
+ * ONE authoritative calculation drives header counters, table, map markers,
+ * legend, filters and the selected-shipment panel (Phase 4).
+ * - Destination is Bahrain-only; nothing silently substitutes another country.
+ * - Import values are normalized to USD with documented FX (Phase 9).
+ * - Quantities keep dispatched / in-transit / received separate (Phase 5/9).  */
 
 const HOUR = 3_600_000;
 
@@ -20,19 +25,28 @@ function deriveLiveStatus(s: {
   carrierEta: Date | null;
   supplierPromisedEta: Date | null;
   actualArrival: Date | null;
+  freshness: string;
 }): LiveStatus {
   if (s.actualArrival || ["ARRIVED", "DELIVERED", "PARTIALLY_DELIVERED"].includes(s.status)) return "ARRIVED";
   if (s.status === "CUSTOMS_HOLD" || (s.customsStatus ?? "").toLowerCase().startsWith("held")) return "CUSTOMS_HOLD";
   if (s.carrierEta && s.supplierPromisedEta && +s.carrierEta - +s.supplierPromisedEta > 36 * HOUR) return "DELAYED";
   if (["PLANNED", "BOOKED", "READY"].includes(s.status)) return "BOOKED";
   if (s.status === "AT_TRANSIT_POINT") return "AT_PORT";
+  if (s.status === "UNKNOWN" || s.freshness === "unavailable") return "UNKNOWN";
   return "IN_TRANSIT";
+}
+
+function deriveDeliveryState(s: { status: string }, receivedQty: number, dispatchedQty: number): TraceShip["deliveryState"] {
+  if (dispatchedQty <= 0) return "UNKNOWN";
+  if (receivedQty >= dispatchedQty) return "RECEIVED";
+  if (receivedQty > 0 || s.status === "PARTIALLY_DELIVERED") return "PARTIALLY_RECEIVED";
+  return "NOT_DELIVERED";
 }
 
 export async function buildTraceSnapshot(): Promise<TraceSnapshot> {
   const now = new Date();
 
-  const [shipments, lots, evidences] = await Promise.all([
+  const [shipments, lots, evidences, receipts] = await Promise.all([
     db.shipment.findMany({
       orderBy: { ref: "asc" },
       include: {
@@ -43,17 +57,17 @@ export async function buildTraceSnapshot(): Promise<TraceSnapshot> {
         exceptionCases: true,
         milestones: { orderBy: { eventTime: "asc" } },
         legs: { orderBy: { seq: "asc" } },
+        poLines: { include: { material: true } },
+        containers: true,
       },
     }),
     db.inventoryLot.findMany({
       where: { shipmentId: { not: null } },
-      include: { warehouse: true },
+      include: { warehouse: true, material: true },
     }),
     db.sourceEvidence.findMany({ orderBy: { receivedAt: "desc" }, take: 200 }),
+    db.goodsReceipt.findMany({ where: { shipmentId: { not: null } }, include: { material: true } }),
   ]);
-
-  const lotByShipment = new Map<string, (typeof lots)[number]>();
-  for (const l of lots) if (l.shipmentId && !lotByShipment.has(l.shipmentId)) lotByShipment.set(l.shipmentId, l);
 
   // material requirements for "where to use" (per project + material)
   const projectIds = [...new Set(shipments.map((s) => s.projectId).filter(Boolean))] as string[];
@@ -86,8 +100,13 @@ export async function buildTraceSnapshot(): Promise<TraceSnapshot> {
   const ships: TraceShip[] = shipments.map((s) => {
     const liveStatus = deriveLiveStatus(s);
     const from = lookupPort(s.originPort);
-    const to = lookupPort(s.destinationPort) ?? lookupPort("Jebel Ali") /* WH-DIP etc. */;
+    // Phase 1.2/1.3: NO fallback substitution. Unknown destination stays unknown.
+    const to = lookupPort(s.destinationPort);
     const destLabel = s.destinationPort ?? "—";
+
+    /* ── Route resolution: mode-aware maritime corridor, never interpolation ── */
+    const via = viaFromLegs(s.legs.map((l) => ({ mode: l.mode, fromPoint: l.fromPoint, toPoint: l.toPoint })));
+    const resolved = resolveMaritimeRoute(s.originPort, s.destinationPort, s.mode, via);
 
     // voyage window: first milestone (or created) → actual arrival or display ETA
     const ms = s.milestones;
@@ -96,17 +115,20 @@ export async function buildTraceSnapshot(): Promise<TraceSnapshot> {
     let progress = 0;
     if (liveStatus === "ARRIVED") progress = 1;
     else if (liveStatus === "BOOKED" || !end) progress = 0;
-    else progress = clamp01((+now - start) / Math.max(1, end - start));
+    else progress = Math.min(1, Math.max(0, (+now - start) / Math.max(1, end - start)));
 
+    // distance-based speed along the validated corridor (not a chord guess)
     const voyageHours = end ? Math.max(1, (end - start) / HOUR) : 0;
     let speedKn: number | null = null;
-    if (from && to && voyageHours > 0 && liveStatus !== "ARRIVED") {
-      speedKn = Math.round(((haversineKm(from.lat, from.lng, to.lat, to.lng) / voyageHours) * 0.539957 + 8) * 10) / 10;
+    if (resolved.route && voyageHours > 0 && liveStatus !== "ARRIVED" && liveStatus !== "BOOKED") {
+      speedKn = Math.round((resolved.route.distanceNm / voyageHours) * 10) / 10;
     }
 
-    // materials + import value from PO lines
+    // materials + import value from THE SHIPMENT'S ALLOCATED PO LINES (Phase 9:
+    // no double counting when several shipments share one PO)
+    const allocatedLines = s.poLines; // Phase 9: shipment-allocated lines only — no whole-PO fallback
     const currency = s.po?.currency ?? "USD";
-    const materials = (s.po?.lines ?? []).map((l) => {
+    const materials = allocatedLines.map((l) => {
       const mr = s.projectId && l.materialId ? reqMap.get(reqKey(s.projectId!, l.materialId)) : undefined;
       return {
         sku: l.material.sku,
@@ -122,6 +144,32 @@ export async function buildTraceSnapshot(): Promise<TraceSnapshot> {
       };
     });
     const importValue = Math.round(materials.reduce((a, m) => a + m.extended, 0) * 100) / 100;
+    const importValueUsd = toUsd(importValue, currency);
+
+    /* ── Quantities: dispatched / in-transit / received / outstanding (Phase 5/6/9) ── */
+    const dispatched = allocatedLines.map((l) => ({ material: l.material.name, uom: l.uom, quantity: l.quantity }));
+    const lotRows = lots.filter((l) => l.shipmentId === s.id && l.status === "IN_TRANSIT");
+    const inTransit = lotRows.map((l) => ({ material: l.material.name, uom: l.uom, quantity: l.quantity }));
+    const grnRows = receipts.filter((g) => g.shipmentId === s.id);
+    const received = grnRows.map((g) => ({ material: g.material.name, uom: g.uom, quantity: g.receivedQty, ref: g.ref ?? g.grnNo ?? null, status: g.status }));
+    const receivedByMaterial = new Map<string, number>();
+    for (const g of grnRows) receivedByMaterial.set(g.materialId, (receivedByMaterial.get(g.materialId) ?? 0) + g.receivedQty);
+    const outstanding = allocatedLines.map((l) => ({
+      material: l.material.name,
+      uom: l.uom,
+      quantity: Math.max(0, Math.round((l.quantity - (l.receivedQty ?? (receivedByMaterial.get(l.materialId) ?? 0))) * 100) / 100),
+    }));
+    const totalDispatched = allocatedLines.reduce((a, l) => a + l.quantity, 0);
+    const totalReceived = allocatedLines.reduce((a, l) => a + (l.receivedQty ?? (receivedByMaterial.get(l.materialId) ?? 0)), 0);
+    const deliveryState = deriveDeliveryState(s, totalReceived, totalDispatched);
+
+    /* ── Destination validation (Phase 1.3) ─────────────────────────────── */
+    const destVerified = Boolean(to) && isBahrainDestination(s.destinationPort);
+    const destNote = destVerified
+      ? null
+      : s.destinationPort
+        ? "Destination not verified — no validated Bahrain destination in the record"
+        : "Destination not verified — missing destinationPort field";
 
     // compliance bundle
     const rec = { PASS: 0, WARN: 0, FAIL: 0, NOT_CHECKED: 0 };
@@ -140,12 +188,28 @@ export async function buildTraceSnapshot(): Promise<TraceSnapshot> {
       .slice(0, 4)
       .map((e) => ({ entityRef: e!.entityRef, sourceSystem: e!.sourceSystem, issuer: e!.issuer ?? "—", label: e!.label }));
 
-    const lot = lotByShipment.get(s.id);
+    const lot = lots.find((l) => l.shipmentId === s.id);
+
+    const milestones: TraceMilestone[] = ms.map((m) => ({
+      code: m.code,
+      label: m.label,
+      location: m.location,
+      eventTime: new Date(m.eventTime).toISOString(),
+      receivedAt: new Date(m.receivedAt).toISOString(),
+      source: m.source,
+      isEstimated: m.isEstimated,
+      freshness: m.freshness,
+      correctedByEventId: m.correctedByEventId,
+      note: m.note,
+      quantity: m.quantity,
+      uom: m.uom,
+    }));
 
     return {
       ref: s.ref,
       status: s.status,
       liveStatus,
+      deliveryState,
       mode: s.mode,
       carrier: s.carrier,
       forwarder: s.forwarder,
@@ -156,7 +220,7 @@ export async function buildTraceSnapshot(): Promise<TraceSnapshot> {
       originCountry: portCountry(s.originPort),
       destCountry: s.podCountry ?? portCountry(s.destinationPort),
       from: from ? { lat: from.lat, lng: from.lng, label: from.label } : null,
-      to: to ? { lat: to.lat, lng: to.lng, label: s.destinationPort?.startsWith("WH") ? "WH-DIP (Dubai)" : to.label } : null,
+      to: to ? { lat: to.lat, lng: to.lng, label: to.label } : null,
       departure: ms.length ? new Date(ms[0].eventTime).toISOString() : s.created.toISOString(),
       eta: s.displayEta ? s.displayEta.toISOString() : null,
       etaType: s.displayEtaType,
@@ -172,7 +236,10 @@ export async function buildTraceSnapshot(): Promise<TraceSnapshot> {
       lastEventSource: s.lastEventSource,
       importValue,
       currency,
+      importValueUsd,
       materials,
+      quantities: { dispatched, inTransit, received, outstanding },
+      legs: s.legs.map((l) => ({ seq: l.seq, mode: l.mode, fromPoint: l.fromPoint, toPoint: l.toPoint, status: l.status, carrier: l.carrier })),
       supplier: s.supplier
         ? {
             code: s.supplier.code,
@@ -208,9 +275,16 @@ export async function buildTraceSnapshot(): Promise<TraceSnapshot> {
         risks: shipmentRisks.slice(0, 5).map((r) => ({ signalCode: r.signalCode, severity: r.severity, fact: r.fact, interpretation: r.interpretation })),
         evidence,
       },
-      milestones: ms.map((m) => ({ code: m.code, label: m.label, location: m.location, eventTime: new Date(m.eventTime).toISOString(), isEstimated: m.isEstimated })),
+      milestones,
+      destVerified,
+      destNote,
+      routeProvenance: resolved.provenance,
+      routeVia: resolved.viaNames.slice(0, 6),
+      routeDistanceNm: resolved.route ? resolved.route.distanceNm : null,
     };
   });
+
+  const staleCount = ships.filter((s) => s.freshness === "stale" || s.freshness === "aging").length;
 
   const totals: TraceTotals = {
     ships: ships.length,
@@ -220,7 +294,9 @@ export async function buildTraceSnapshot(): Promise<TraceSnapshot> {
     delayed: ships.filter((s) => s.liveStatus === "DELAYED").length,
     arrived: ships.filter((s) => s.liveStatus === "ARRIVED").length,
     booked: ships.filter((s) => s.liveStatus === "BOOKED").length,
-    importValue: Math.round(ships.reduce((a, s) => a + s.importValue, 0) * 100) / 100,
+    unknown: ships.filter((s) => s.liveStatus === "UNKNOWN").length,
+    stale: staleCount,
+    importValueUsd: Math.round(ships.reduce((a, s) => a + s.importValueUsd, 0) * 100) / 100,
     currency: "USD",
   };
 
@@ -230,5 +306,12 @@ export async function buildTraceSnapshot(): Promise<TraceSnapshot> {
     snapshotHourLabel: `${String(now.getHours()).padStart(2, "0")}:00 block`,
     ships,
     totals,
+    destination: {
+      country: "Bahrain",
+      port: "Khalifa Bin Salman Port (KBSP), Hidd",
+      portVerified: true,
+      warehouse: "NASS Askar Yard (WH-ASKAR)",
+    },
+    fx: { asOf: FX_RATES_AS_OF, source: FX_SOURCE },
   };
 }

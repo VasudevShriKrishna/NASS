@@ -1,12 +1,30 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Anchor, Container as ContainerIcon, FileText, MapPin, Plane, RadioTower, Ship, Siren, Truck } from "lucide-react";
+import {
+  Anchor,
+  ChevronRight,
+  Container as ContainerIcon,
+  FileText,
+  MapPin,
+  PackageOpen,
+  Plane,
+  RadioTower,
+  Search,
+  ShieldAlert,
+  ShieldCheck,
+  Ship,
+  Siren,
+  Truck,
+} from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { useApi } from "@/lib/client";
 import { useAppStore } from "@/lib/app-state";
+import { fmtBahrainDate, fmtBahrainDateTime } from "@/lib/bahrain-time";
+import { isBahrainDestination } from "@/lib/maritime-routes";
 import {
   CaseStateBadge,
   EmptyState,
@@ -16,8 +34,6 @@ import {
   SectionCard,
   SeverityBadge,
   StatusPill,
-  fmtDate,
-  fmtDateTime,
   fmtRelative,
 } from "@/components/app/shared";
 
@@ -67,6 +83,9 @@ interface MilestoneRow {
   confidence: number | null;
   correctedByEventId: string | null;
   note: string | null;
+  quantity: number | null;
+  uom: string | null;
+  providerEventId?: string | null;
 }
 interface DocRow {
   id: string;
@@ -80,6 +99,7 @@ interface ShipmentRow {
   ref: string;
   importFileRef: string | null;
   mode: string;
+  podCountry: string | null;
   status: string;
   carrier: string | null;
   forwarder: string | null;
@@ -140,11 +160,85 @@ function EtaTypeBadge({ type }: { type: string }) {
   return <span className={`${CHIP} ${cls}`}>{t || "unknown"}</span>;
 }
 
-/** Identity status colors per spec: RESOLVED emerald / UNRESOLVED rose / MISSING rose. */
+/** Identity status colors (Phase 3): RESOLVED emerald / UNRESOLVED amber / MISSING rose. */
 function identityPillCls(status: string): string {
   if (status === "RESOLVED")
     return "border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-300";
-  return "border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300";
+  if (status === "MISSING")
+    return "border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300";
+  return "border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300";
+}
+
+/** Bulk/road consignments have no containers — "not applicable", never fabricated (Phase 3). */
+function isBulk(s: ShipmentRow): boolean {
+  if (s.mode === "ROAD") return true;
+  return s.legs.length > 0 && s.legs.every((l) => l.mode === "ROAD");
+}
+
+/** Destination country — stored podCountry, else parsed from the port string. */
+function destCountry(s: ShipmentRow): string | null {
+  if (s.podCountry) return s.podCountry;
+  const m = (s.destinationPort ?? "").match(/,\s*([A-Z]{2})\s*$/);
+  return m ? m[1] : null;
+}
+
+/** Destination validation chip (Phase 1.3): verified Bahrain destination vs
+ *  "Destination not verified" naming the missing/unvalidated field. A UAE (or any
+ *  non-Bahrain) destination is NEVER displayed as verified. */
+function DestChip({ s }: { s: ShipmentRow }) {
+  if (isBahrainDestination(s.destinationPort)) {
+    return (
+      <span
+        className={`${CHIP} border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-300`}
+        title="destinationPort matched a validated Bahrain destination (KBSP / Askar / , BH)"
+      >
+        <ShieldCheck className="mr-1 h-3 w-3 shrink-0" aria-hidden /> destination verified
+      </span>
+    );
+  }
+  return (
+    <span className="flex max-w-full flex-col items-start gap-1">
+      <span
+        className={`${CHIP} whitespace-normal border-amber-300 bg-amber-100 text-left text-amber-800 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300`}
+        title="Destination must resolve to a validated Bahrain port or jetty — never silently substituted"
+      >
+        <ShieldAlert className="mr-1 h-3 w-3 shrink-0" aria-hidden /> Destination not verified — {s.destinationPort ? "destinationPort" : "missing field: destinationPort"}
+      </span>
+      <span className="text-[11px] leading-relaxed text-muted-foreground">
+        {s.destinationPort
+          ? `Value on record "${s.destinationPort}" is not a validated Bahrain destination — never silently substituted (Phase 1.3).`
+          : "No destinationPort on the record — destination cannot be validated and is never guessed (Phase 1.3)."}
+      </span>
+    </span>
+  );
+}
+
+/** Multimodal leg chain (Phase 2.3): ordered chips feeder ROAD → OCEAN → ROAD with statuses. */
+function LegChain({ legs }: { legs: LegRow[] }) {
+  if (legs.length === 0) return null;
+  return (
+    <ol className="flex flex-wrap items-center gap-y-1.5" aria-label="Multimodal transport chain in sequence">
+      {legs.map((l, i) => (
+        <li key={l.id} className="flex items-center">
+          {i > 0 && <ChevronRight className="mx-0.5 h-3 w-3 shrink-0 text-zinc-400" aria-hidden />}
+          <span
+            className="inline-flex flex-wrap items-center gap-1 rounded-md border border-zinc-300 bg-zinc-100 px-1.5 py-1 text-[10px] font-semibold text-zinc-700 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-300"
+            title={l.carrier ? `Leg ${l.seq}: ${l.carrier}` : `Leg ${l.seq}`}
+          >
+            <span
+              className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-primary/15 font-mono text-[9px] font-bold text-primary"
+              aria-label={`Leg order ${l.seq}`}
+            >
+              {l.seq}
+            </span>
+            <ModeIcon mode={l.mode} />
+            <span>{l.mode}</span>
+            <StatusPill value={l.status} />
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
 }
 
 /** Vessel position recency — stale when older than 12 h (M11 cadence). */
@@ -179,6 +273,25 @@ export function ImportTrackingView({ drillRef }: { drillRef?: string | null }) {
   const shipments = useMemo(() => data ?? [], [data]);
   /** user pick tagged with the drill context it was made in — a NEW drillRef supersedes it */
   const [pick, setPick] = useState<{ id: string; atDrill: string | null } | null>(null);
+  /** Phase 10: workspace search — matches ref, vessel, supplier, ports and destination country */
+  const [query, setQuery] = useState("");
+  const filtered = useMemo(() => {
+    const t = query.trim().toLowerCase();
+    if (!t) return shipments;
+    return shipments.filter((s) =>
+      [
+        s.ref,
+        s.vesselName,
+        s.vesselVoyage,
+        s.supplier?.code,
+        s.supplier?.name,
+        s.originPort,
+        s.destinationPort,
+        s.podCountry,
+        s.importFileRef,
+      ].some((v) => (v ?? "").toLowerCase().includes(t)),
+    );
+  }, [shipments, query]);
 
   // Fully derived selection (no effects): drill ref > valid user pick > SHP-8802 story > first record.
   const selected = useMemo(() => {
@@ -196,28 +309,44 @@ export function ImportTrackingView({ drillRef }: { drillRef?: string | null }) {
   return (
     <div className="grid items-start gap-4 xl:grid-cols-[380px_1fr]">
       {/* ── master list ── */}
-      <section aria-label="Shipment list" className="rounded-xl border bg-card">
+      <section aria-label="Shipment list" className="min-w-0 rounded-xl border bg-card">
         <div className="flex items-center justify-between border-b px-4 py-3">
           <h2 className="text-sm font-semibold">Import shipments</h2>
           <div className="flex items-center gap-2">
-            <span className="text-xs tabular-nums text-muted-foreground">{shipments.length} records</span>
+            <span className="text-xs tabular-nums text-muted-foreground">
+              {filtered.length === shipments.length ? `${shipments.length} records` : `${filtered.length} / ${shipments.length} records`}
+            </span>
             <Button
               variant="outline"
               size="sm"
               className="h-7 gap-1 border-primary/30 px-2 text-[11px] text-primary hover:bg-primary/10 hover:text-primary"
               onClick={() => openTrace()}
-              title="Open the Live Traceability Command View (animated world map)"
+              title="Open the NASS Freight Traceability Map"
             >
               <RadioTower className="h-3 w-3" /> Live Map
             </Button>
           </div>
         </div>
-        <div className={`max-h-[460px] overflow-y-auto p-2 xl:max-h-[calc(100vh-140px)] ${SCROLL}`}>
+        <div className="border-b px-3 py-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search ref, vessel, supplier, port…"
+              aria-label="Search shipments by reference, vessel, supplier or port"
+              className="h-8 border-zinc-300 bg-transparent pl-8 text-xs dark:border-zinc-400/25"
+            />
+          </div>
+        </div>
+        <div className={`max-h-[460px] overflow-y-auto p-2 xl:max-h-[calc(100vh-188px)] ${SCROLL}`}>
           {shipments.length === 0 ? (
             <EmptyState message="No shipments found" />
+          ) : filtered.length === 0 ? (
+            <EmptyState message={`No shipments match "${query.trim()}"`} hint="Search matches reference, vessel, voyage, supplier, ports and destination country." />
           ) : (
             <ul className="space-y-1.5">
-              {shipments.map((s) => {
+              {filtered.map((s) => {
                 const slip = slipDays(s.displayEta, s.supplierPromisedEta);
                 const isSel = s.id === selected?.id;
                 return (
@@ -240,12 +369,15 @@ export function ImportTrackingView({ drillRef }: { drillRef?: string | null }) {
                         </span>
                       </div>
                       <p className="mt-1 truncate text-xs text-muted-foreground">
-                        {s.originPort ?? "?"} → {s.destinationPort ?? "?"}
+                        {s.originPort ?? "?"} <span className="text-zinc-400">→</span> {s.destinationPort ?? "?"}
                       </p>
                       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <span className={`${CHIP} ${destCountry(s) ? ZINC_CHIP : "border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300"}`} title="Destination country (Phase 10 shipment workspace)">
+                          dest: {destCountry(s) ?? "unknown"}
+                        </span>
                         <span className="text-[11px] tabular-nums text-muted-foreground">
-                          ETA {s.displayEta ? fmtDate(s.displayEta) : "—"}
-                          {s.supplierPromisedEta ? ` · promised ${fmtDate(s.supplierPromisedEta)}` : ""}
+                          ETA {s.displayEta ? fmtBahrainDate(s.displayEta) : "—"}
+                          {s.supplierPromisedEta ? ` · promised ${fmtBahrainDate(s.supplierPromisedEta)}` : ""}
                         </span>
                         {slip != null && (
                           <span className={`${CHIP} border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300`}>
@@ -270,7 +402,7 @@ export function ImportTrackingView({ drillRef }: { drillRef?: string | null }) {
       </section>
 
       {/* ── detail ── */}
-      <section aria-label="Shipment detail" className="space-y-4">
+      <section aria-label="Shipment detail" className="min-w-0 space-y-4">
         {!selected ? (
           <EmptyState message="Select a shipment" hint="Choose a shipment from the list to inspect provenance, milestones and exceptions." />
         ) : (
@@ -319,6 +451,12 @@ function ShipmentDetail({ s, onDrill }: { s: ShipmentRow; onDrill: (v: ViewName,
             <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Route</dt>
             <dd className="text-sm">
               {s.originPort ?? "—"} <span className="text-zinc-400">→</span> {s.destinationPort ?? "—"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Destination check</dt>
+            <dd>
+              <DestChip s={s} />
             </dd>
           </div>
           <div>
@@ -401,7 +539,7 @@ function ShipmentDetail({ s, onDrill }: { s: ShipmentRow; onDrill: (v: ViewName,
         <div className="rounded-lg border bg-muted/40 p-3">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Display ETA</span>
-            <span className="text-lg font-bold tabular-nums">{s.displayEta ? fmtDate(s.displayEta) : "not enough data"}</span>
+            <span className="text-lg font-bold tabular-nums">{s.displayEta ? fmtBahrainDate(s.displayEta) : "not enough data"}</span>
             {s.displayEtaType ? <EtaTypeBadge type={s.displayEtaType} /> : null}
             <FreshnessBadge value={s.carrierEtaFreshness} />
           </div>
@@ -409,7 +547,7 @@ function ShipmentDetail({ s, onDrill }: { s: ShipmentRow; onDrill: (v: ViewName,
             {s.displayEtaSource ? <span>src: {s.displayEtaSource}</span> : <span>src: —</span>}
             {s.supplierPromisedEta && (
               <span className="tabular-nums">
-                supplier promised {fmtDate(s.supplierPromisedEta)}
+                supplier promised {fmtBahrainDate(s.supplierPromisedEta)}
                 {slip != null && (
                   <span className={`ml-1.5 ${CHIP} border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300`}>
                     +{slip}d slip vs PO commitment
@@ -439,12 +577,12 @@ function ShipmentDetail({ s, onDrill }: { s: ShipmentRow; onDrill: (v: ViewName,
                   <span>
                     <span className="text-muted-foreground">ETA:</span>{" "}
                     <span className={`font-semibold ${o.etaValue ? "" : "italic text-muted-foreground"}`}>
-                      {o.etaValue ? fmtDate(o.etaValue) : "not enough data"}
+                      {o.etaValue ? fmtBahrainDate(o.etaValue) : "not enough data"}
                     </span>
                   </span>
                   {o.etaRangeTo && (
                     <span className="text-muted-foreground">
-                      range: {fmtDate(o.etaRangeFrom ?? o.etaValue)} – {fmtDate(o.etaRangeTo)}
+                      range: {fmtBahrainDate(o.etaRangeFrom ?? o.etaValue)} – {fmtBahrainDate(o.etaRangeTo)}
                     </span>
                   )}
                   <span className="text-muted-foreground">calc {fmtRelative(o.calculatedAt)}</span>
@@ -486,7 +624,7 @@ function ShipmentDetail({ s, onDrill }: { s: ShipmentRow; onDrill: (v: ViewName,
                 <span className="italic text-muted-foreground">no position reported</span>
               )}
               <FreshnessBadge value={vesselFreshness(s.vesselPositionAt)} />
-              {s.vesselPositionAt && <span className="text-muted-foreground">at {fmtDateTime(s.vesselPositionAt)}</span>}
+              {s.vesselPositionAt && <span className="text-muted-foreground">observed {fmtBahrainDateTime(s.vesselPositionAt)}</span>}
             </div>
             {s.vesselSource && <p className="mt-1 text-[11px] text-muted-foreground">src: {s.vesselSource}</p>}
             {s.vesselLinkEvidence ? (
@@ -507,7 +645,24 @@ function ShipmentDetail({ s, onDrill }: { s: ShipmentRow; onDrill: (v: ViewName,
               <h3 className="text-xs font-bold uppercase tracking-wide">Containers</h3>
             </div>
             {s.containers.length === 0 ? (
-              <p className="mt-2 text-xs italic text-muted-foreground">No containers recorded (e.g. LCL / break-bulk without container visibility).</p>
+              isBulk(s) ? (
+                <div className="mt-2 space-y-2">
+                  <span
+                    className={`${CHIP} border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300`}
+                  >
+                    <PackageOpen className="mr-1 h-3 w-3" aria-hidden /> containers not applicable — bulk consignment
+                  </span>
+                  <p className="text-[11px] leading-relaxed text-muted-foreground">
+                    Bulk/road consignment tracked by cargo quantity, vessel or barge and freight documents — no container numbers exist for this shipment
+                    and none are fabricated (Phase 3).
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-2 text-xs italic text-muted-foreground">
+                  No containers recorded — LCL / break-bulk consignment without container-level visibility. Tracking identity stays unresolved until a valid
+                  provider identifier or feed is available (M09/M11).
+                </p>
+              )
             ) : (
               <div className="mt-2 space-y-3">
                 {s.containers.map((c) => {
@@ -541,10 +696,13 @@ function ShipmentDetail({ s, onDrill }: { s: ShipmentRow; onDrill: (v: ViewName,
       </SectionCard>
 
       {/* d) milestone timeline */}
-      <SectionCard title="Milestone timeline" subtitle="Event time and ingestion (received) time shown separately — corrections preserved">
+      <SectionCard
+        title="Milestone timeline"
+        subtitle="Observed event time vs ingestion (received) time in Bahrain local time (AST +03) — corrections preserved (Phase 5 / M11)"
+      >
         {s.freshness === "stale" && (
           <div className="mb-3 rounded-md border border-orange-300 bg-orange-50 p-2.5 text-xs leading-relaxed text-orange-900 dark:border-orange-400/25 dark:bg-orange-400/10/50 dark:text-orange-300">
-            Carrier data STALE — last successful sync {fmtDateTime(s.lastEventAt)}. Last-known values shown; provider outage — bounded retries queued
+            Carrier data STALE — last successful sync {fmtBahrainDateTime(s.lastEventAt)}. Last-known values shown; provider outage — bounded retries queued
             (failure matrix row 1).
           </div>
         )}
@@ -576,14 +734,22 @@ function ShipmentDetail({ s, onDrill }: { s: ShipmentRow; onDrill: (v: ViewName,
                   </p>
                 )}
                 <p className="mt-1 text-xs tabular-nums">
-                  <span className="text-muted-foreground">event:</span> <span className="font-semibold">{fmtDateTime(m.eventTime)}</span>
+                  <span className="text-muted-foreground">observed:</span> <span className="font-semibold text-primary">{fmtBahrainDateTime(m.eventTime)}</span>
                   <span className="mx-2 text-zinc-300 dark:text-zinc-700">|</span>
-                  <span className="text-muted-foreground">received:</span> <span className="font-semibold">{fmtDateTime(m.receivedAt)}</span>
+                  <span className="text-muted-foreground">received:</span> <span className="font-semibold">{fmtBahrainDateTime(m.receivedAt)}</span>
                 </p>
                 <div className="mt-1 flex flex-wrap items-center gap-1.5">
                   <span className={`${CHIP} border-zinc-300 bg-zinc-100 font-mono text-zinc-600 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-400`}>
                     {m.source}
                   </span>
+                  {m.quantity != null && (
+                    <span
+                      className={`${CHIP} border-primary/40 bg-primary/10 text-primary`}
+                      title="Cargo quantity recorded by this event (Phase 5) — shown in the source unit of measure"
+                    >
+                      qty {m.quantity} {m.uom ?? ""}
+                    </span>
+                  )}
                   {m.confidence != null && (
                     <span className="text-[10px] tabular-nums text-muted-foreground">conf {m.confidence.toFixed(2)}</span>
                   )}
@@ -601,11 +767,13 @@ function ShipmentDetail({ s, onDrill }: { s: ShipmentRow; onDrill: (v: ViewName,
       </SectionCard>
 
       {/* e) legs + documents */}
-      <SectionCard title="Legs & documents" subtitle="Route legs and import dossier documents">
+      <SectionCard title="Legs & documents" subtitle="Multimodal chain, route legs and import dossier documents">
         {s.legs.length === 0 ? (
           <p className="py-2 text-xs italic text-muted-foreground">No legs recorded for this shipment.</p>
         ) : (
-          <Table>
+          <div className="space-y-2">
+            <LegChain legs={s.legs} />
+            <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="h-8 text-[10px] uppercase">Seq</TableHead>
@@ -634,6 +802,7 @@ function ShipmentDetail({ s, onDrill }: { s: ShipmentRow; onDrill: (v: ViewName,
               ))}
             </TableBody>
           </Table>
+          </div>
         )}
         <Separator className="my-3" />
         {documents.length === 0 ? (

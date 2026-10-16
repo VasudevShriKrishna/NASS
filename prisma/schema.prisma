@@ -200,6 +200,11 @@ model POLine {
   po       PurchaseOrder @relation(fields: [poId], references: [id])
   material Material      @relation(fields: [materialId], references: [id])
   receipts GoodsReceipt[]
+
+  // Freight allocation (Phase 9): which shipment this line's cargo rides on.
+  // Prevents double-counting PO lines when several shipments share one PO.
+  shipmentId String?
+  shipment   Shipment? @relation(fields: [shipmentId], references: [id])
 }
 
 // ─── 8.1 #8 Contract / Obligation ────────────────────────────────────────────
@@ -270,6 +275,7 @@ model Shipment {
   created          DateTime  @default(now())
 
   legs         ShipmentLeg[]
+  poLines      POLine[]
   containers   Container[]
   milestones   Milestone[]
   etaObservations EtaObservation[]
@@ -437,6 +443,10 @@ model Milestone {
   confidence     Float?
   correctedByEventId String? // correction/retraction link
   note           String?
+  // Cargo quantity recorded by this event when applicable (Phase 5);
+  // null when the event type carries no quantity (e.g. booking confirmed).
+  quantity       Float?
+  uom            String?
 
   shipment  Shipment  @relation(fields: [shipmentId], references: [id])
   container Container? @relation(fields: [containerId], references: [id])

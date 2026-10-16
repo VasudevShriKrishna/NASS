@@ -1,12 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { WORLD_COUNTRIES, WORLD_VIEWBOX } from "@/lib/world-map-paths";
-import { WORLD_W, WORLD_H, buildArc, arcAt, projectPoint, type Arc } from "@/lib/geo";
-import type { LiveStatus, TraceShip } from "@/lib/trace-types";
 import { cn } from "@/lib/utils";
+import type { LiveStatus } from "@/lib/trace-types";
 
-/* ── Status color system (map + fleet + dossier chips) ─────────────────── */
+/* ── Status color system (map + fleet + dossier chips) ───────────────────
+ * ONE authoritative palette — every view (counters, map markers, legend,
+ * filters, dossier) reads the same status → color mapping (Phase 4).     */
 export const STATUS_COLOR: Record<LiveStatus, string> = {
   IN_TRANSIT: "#d4af37",
   AT_PORT: "#34d399",
@@ -14,6 +13,7 @@ export const STATUS_COLOR: Record<LiveStatus, string> = {
   DELAYED: "#fb7185",
   ARRIVED: "#34d399",
   BOOKED: "#a8a29e",
+  UNKNOWN: "#78716c",
 };
 
 export const STATUS_LABEL: Record<LiveStatus, string> = {
@@ -23,234 +23,10 @@ export const STATUS_LABEL: Record<LiveStatus, string> = {
   DELAYED: "Delayed",
   ARRIVED: "Arrived",
   BOOKED: "Booked",
+  UNKNOWN: "Stale / unknown",
 };
 
-const SHIP_GLYPH = "M 8 0 L 2.2 2.9 L -6.5 2.9 L -6.5 -2.9 L 2.2 -2.9 Z";
-
-interface Plotted {
-  ship: TraceShip;
-  arc: Arc;
-  p: number;
-}
-
-/* ── The live world map — every ship gliding at once ───────────────────── */
-export function WorldMap({
-  ships,
-  progress,
-  selectedRef,
-  onPick,
-  onBackgroundClick,
-}: {
-  ships: TraceShip[];
-  progress: Map<string, number>;
-  selectedRef: string | null;
-  onPick: (ref: string) => void;
-  onBackgroundClick?: () => void;
-}) {
-  const [hovered, setHovered] = useState<string | null>(null);
-
-  const arcs = useMemo<Plotted[]>(() => {
-    return ships
-      .filter((s) => s.from && s.to)
-      .map((ship) => ({
-        ship,
-        arc: buildArc(ship.from!.lng, ship.from!.lat, ship.to!.lng, ship.to!.lat),
-        p: progress.get(ship.ref) ?? ship.progress,
-      }));
-  }, [ships, progress]);
-
-  const ports = useMemo(() => {
-    const seen = new Map<string, { label: string; x: number; y: number }>();
-    for (const s of ships) {
-      for (const end of [s.from, s.to]) {
-        if (!end) continue;
-        const pt = projectPoint(end.lng, end.lat);
-        const key = `${end.label}`;
-        if (!seen.has(key)) seen.set(key, { label: end.label, x: pt.x, y: pt.y });
-      }
-    }
-    return [...seen.values()];
-  }, [ships]);
-
-  const graticule = useMemo(() => {
-    const v: number[] = [];
-    for (let lng = -160; lng <= 160; lng += 20) v.push(projectPoint(lng, 0).x);
-    const h: number[] = [];
-    for (let lat = -40; lat <= 80; lat += 20) h.push(projectPoint(0, lat).y);
-    return { v, h };
-  }, []);
-
-  return (
-    <svg
-      viewBox={`0 0 ${WORLD_VIEWBOX.w} ${WORLD_VIEWBOX.h}`}
-      className="h-full w-full select-none"
-      role="group"
-      aria-label="Live world map — every ship in the fleet at the same time"
-    >
-      <defs>
-        <radialGradient id="mapOcean" cx="50%" cy="18%" r="90%">
-          <stop offset="0%" stopColor="var(--map-ocean-b)" />
-          <stop offset="55%" stopColor="var(--map-ocean-a)" />
-          <stop offset="100%" stopColor="var(--map-ocean-b)" />
-        </radialGradient>
-      </defs>
-
-      {/* ocean + graticule + click-to-dismiss layer */}
-      <rect
-        x={0}
-        y={0}
-        width={WORLD_W}
-        height={WORLD_H}
-        fill="url(#mapOcean)"
-        onClick={onBackgroundClick}
-        data-testid="map-ocean"
-      />
-      {graticule.v.map((x) => (
-        <line key={`v${x}`} x1={x} y1={0} x2={x} y2={WORLD_H} stroke="var(--map-graticule)" strokeWidth={0.7} />
-      ))}
-      {graticule.h.map((y) => (
-        <line key={`h${y}`} x1={0} y1={y} x2={WORLD_W} y2={y} stroke="var(--map-graticule)" strokeWidth={0.7} />
-      ))}
-
-      {/* land */}
-      <g>
-        {WORLD_COUNTRIES.map((c) => (
-          <path key={`${c.id}-${c.name}`} d={c.d} fill="var(--map-land)" stroke="var(--map-land-stroke)" strokeWidth={0.5} />
-        ))}
-      </g>
-
-      {/* routes: remaining = dashed/dim · traveled = solid status gold */}
-      <g fill="none" strokeLinecap="round">
-        {arcs.map(({ ship, arc, p }) => {
-          const active = ship.ref === selectedRef;
-          const color = STATUS_COLOR[ship.liveStatus];
-          return (
-            <g key={ship.ref} opacity={active ? 1 : 0.62}>
-              {/* base (remaining) */}
-              <path d={arc.d} pathLength={1} stroke="var(--map-land-stroke)" strokeWidth={1.4} strokeDasharray="0.012 0.011" />
-              {/* glow underlay for traveled */}
-              <path
-                d={arc.d}
-                pathLength={1}
-                stroke={color}
-                strokeOpacity={active ? 0.3 : 0.16}
-                strokeWidth={5}
-                strokeDasharray={`${Math.max(0.001, p)} 1`}
-              />
-              {/* traveled */}
-              <path
-                d={arc.d}
-                pathLength={1}
-                stroke={color}
-                strokeWidth={active ? 2.4 : 1.8}
-                strokeDasharray={`${Math.max(0.001, p)} 1`}
-              />
-            </g>
-          );
-        })}
-      </g>
-
-      {/* ports with gentle SMIL pulse */}
-      <g>
-        {ports.map((pt) => (
-          <g key={pt.label}>
-            <circle cx={pt.x} cy={pt.y} r={3.2} fill="#d4af37" stroke="var(--map-land)" strokeWidth={1} />
-            <circle cx={pt.x} cy={pt.y} r={3.2} fill="none" stroke="#d4af37" strokeWidth={1} pointerEvents="none">
-              <animate attributeName="r" values="3.5;11" dur="2.6s" repeatCount="indefinite" />
-              <animate attributeName="opacity" values="0.55;0" dur="2.6s" repeatCount="indefinite" />
-            </circle>
-            <text
-              x={pt.x}
-              y={pt.y - 8}
-              textAnchor="middle"
-              fontSize={9.5}
-              fill="var(--foreground)"
-              opacity={0.75}
-              style={{ paintOrder: "stroke", stroke: "var(--background)", strokeWidth: 3 }}
-            >
-              {pt.label}
-            </text>
-          </g>
-        ))}
-      </g>
-
-      {/* ships — continuously gliding markers */}
-      <g>
-        {arcs.map(({ ship, arc, p }) => {
-          const pos = arcAt(arc, Math.min(1, Math.max(0, p)));
-          const active = ship.ref === selectedRef || hovered === ship.ref;
-          const color = STATUS_COLOR[ship.liveStatus];
-          return (
-            <g
-              key={ship.ref}
-              style={{ transform: `translate(${pos.x}px, ${pos.y}px)`, willChange: "transform" }}
-              data-testid={`ship-${ship.ref}`}
-            >
-              {/* rotated ship layer */}
-              <g style={{ transform: `rotate(${pos.angle}deg)` }}>
-                {active && <path d={SHIP_GLYPH} fill="none" stroke={color} strokeOpacity={0.35} strokeWidth={5} strokeLinejoin="round" />}
-                <path d={SHIP_GLYPH} fill={color} stroke="var(--background)" strokeWidth={1.1} strokeLinejoin="round" />
-              </g>
-              {/* halo */}
-              <circle r={active ? 11 : 8.5} fill="none" stroke={color} strokeOpacity={active ? 0.55 : 0.28} strokeWidth={1.2} pointerEvents="none" />
-              <circle r={active ? 16 : 12} fill={color} opacity={active ? 0.14 : 0.07} pointerEvents="none" />
-              {/* selected/hovered marker pulse */}
-              {active && (
-                <circle r={11} fill="none" stroke={color} strokeWidth={1.4} pointerEvents="none">
-                  <animate attributeName="r" values="9;18" dur="1.8s" repeatCount="indefinite" />
-                  <animate attributeName="opacity" values="0.6;0" dur="1.8s" repeatCount="indefinite" />
-                </circle>
-              )}
-              {/* ref chip */}
-              {(active || ship.liveStatus === "CUSTOMS_HOLD") && (
-                <g transform="translate(0, -20)" pointerEvents="none">
-                  <rect
-                    x={-(ship.ref.length * 3.4 + 9)}
-                    y={-9}
-                    width={ship.ref.length * 6.8 + 18}
-                    height={15}
-                    rx={4}
-                    fill="var(--background)"
-                    stroke={color}
-                    strokeOpacity={0.6}
-                  />
-                  <text textAnchor="middle" y={2} fontSize={9.5} fontFamily="var(--font-geist-mono), monospace" fill={color} fontWeight={700}>
-                    {ship.ref}
-                  </text>
-                </g>
-              )}
-              {/* hit area */}
-              <circle
-                r={14}
-                fill="transparent"
-                className="cursor-pointer"
-                role="button"
-                tabIndex={0}
-                aria-label={`Open dossier for ${ship.ref} — ${ship.vesselName ?? ship.carrier ?? "vessel"} (${STATUS_LABEL[ship.liveStatus]})`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onPick(ship.ref);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onPick(ship.ref);
-                  }
-                }}
-                onMouseEnter={() => setHovered(ship.ref)}
-                onMouseLeave={() => setHovered(null)}
-              >
-                <title>{`${ship.ref} · ${ship.vesselName ?? ship.carrier ?? "vessel"} · ${STATUS_LABEL[ship.liveStatus]} · ${(p * 100).toFixed(0)}%`}</title>
-              </circle>
-            </g>
-          );
-        })}
-      </g>
-    </svg>
-  );
-}
-
-/* ── Legend chip row (status colors) ───────────────────────────────────── */
+/* ── Legend chip row — statuses + freight-chain symbols (Phase 2.3) ────── */
 export function MapLegend({ className }: { className?: string }) {
   const items: LiveStatus[] = ["IN_TRANSIT", "AT_PORT", "CUSTOMS_HOLD", "DELAYED", "ARRIVED", "BOOKED"];
   return (
@@ -261,6 +37,48 @@ export function MapLegend({ className }: { className?: string }) {
           {STATUS_LABEL[s]}
         </span>
       ))}
+      <span className="mx-1 hidden h-3 w-px bg-border sm:block" aria-hidden />
+      {/* freight-chain symbols */}
+      <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
+        <svg width="16" height="6" viewBox="0 0 16 6" aria-hidden>
+          <line x1="0" y1="3" x2="16" y2="3" stroke="#f3dc8e" strokeWidth="1.6" />
+        </svg>
+        maritime route — solid travelled
+      </span>
+      <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
+        <svg width="16" height="6" viewBox="0 0 16 6" aria-hidden>
+          <line x1="0" y1="3" x2="16" y2="3" stroke="#f3dc8e" strokeWidth="1.6" strokeDasharray="3 2.4" opacity="0.55" />
+        </svg>
+        dashed remaining
+      </span>
+      <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
+        <svg width="16" height="6" viewBox="0 0 16 6" aria-hidden>
+          <line x1="0" y1="3" x2="16" y2="3" stroke="#d4af37" strokeWidth="1.1" strokeDasharray="0.8 2.6" opacity="0.7" />
+        </svg>
+        land feeder
+      </span>
+      <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
+          <circle cx="6" cy="6" r="5.2" fill="none" stroke="#fbbf24" strokeWidth="1.2" />
+          <circle cx="6" cy="6" r="2" fill="#fbbf24" />
+        </svg>
+        port / customs checkpoint
+      </span>
+      <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2.4" aria-hidden>
+          <path d="M22 8.35V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.35A2 2 0 0 1 3.26 6.5l8-3.2a2 2 0 0 1 1.48 0l8 3.2A2 2 0 0 1 22 8.35Z" />
+        </svg>
+        NASS warehouse
+      </span>
+      <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#e9c765" strokeWidth="2.4" aria-hidden>
+          <path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z" />
+        </svg>
+        supplier / delivery site
+      </span>
+      <span className="inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
+        · routes are estimated corridors (waypoint geometry, no AIS track)
+      </span>
     </div>
   );
 }

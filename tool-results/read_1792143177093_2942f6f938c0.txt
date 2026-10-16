@@ -1,0 +1,554 @@
+     1→"use client";
+     2→
+     3→import { useMemo, useState } from "react";
+     4→import { ArrowRight, BadgeCheck, Check, KeyRound, Scale, X } from "lucide-react";
+     5→import { Button } from "@/components/ui/button";
+     6→import { Card, CardContent } from "@/components/ui/card";
+     7→import { Input } from "@/components/ui/input";
+     8→import { Textarea } from "@/components/ui/textarea";
+     9→import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+    10→import { cn } from "@/lib/utils";
+    11→import { useApi, postJson } from "@/lib/client";
+    12→import { useAppStore } from "@/lib/app-state";
+    13→import { useToast } from "@/hooks/use-toast";
+    14→import {
+    15→  EmptyState,
+    16→  ErrorState,
+    17→  LoadingState,
+    18→  ScrollTable,
+    19→  SectionCard,
+    20→  StatusPill,
+    21→  fmtDateTime,
+    22→  fmtRelative,
+    23→  parseObj,
+    24→} from "@/components/app/shared";
+    25→
+    26→/* ── Types (mirror API payloads) ── */
+    27→interface ApprovalRow {
+    28→  id: string;
+    29→  approver: string;
+    30→  role: string;
+    31→  decision: string;
+    32→  comment: string | null;
+    33→  at: string;
+    34→}
+    35→interface ActionRow {
+    36→  id: string;
+    37→  ref: string;
+    38→  caseId: string | null;
+    39→  case?: { ref: string; title: string; state: string; severity: string } | null;
+    40→  commandType: string;
+    41→  riskLevel: string;
+    42→  targetType: string | null;
+    43→  targetRef: string | null;
+    44→  payload: string | null;
+    45→  state: string;
+    46→  policyDecision: string | null;
+    47→  policyRule: string | null;
+    48→  idempotencyKey: string;
+    49→  requestedBy: string;
+    50→  approvalId: string | null;
+    51→  submittedAt: string | null;
+    52→  ackAt: string | null;
+    53→  postcondition: string | null;
+    54→  verifiedAt: string | null;
+    55→  result: string | null;
+    56→  failureReason: string | null;
+    57→  compensation: string | null;
+    58→  createdAt: string;
+    59→  approvals: ApprovalRow[];
+    60→}
+    61→interface NotificationRow {
+    62→  id: string;
+    63→  caseId: string | null;
+    64→  case?: { ref: string; title: string } | null;
+    65→  channel: string;
+    66→  template: string;
+    67→  templateVersion: string;
+    68→  recipient: string;
+    69→  audienceType: string;
+    70→  state: string;
+    71→  urgency: string;
+    72→  at: string;
+    73→  note: string | null;
+    74→}
+    75→
+    76→/* ── Action state machine ── */
+    77→const ACTION_MAIN = ["DRAFT", "POLICY_CHECK", "AWAITING_APPROVAL", "AUTHORIZED", "SUBMITTED", "ACKNOWLEDGED", "PENDING_VERIFICATION", "VERIFIED"];
+    78→const ACTION_SIDE = ["FAILED", "COMPENSATION_REQUIRED", "CANCELLED"];
+    79→
+    80→/* ── Chip palettes ── */
+    81→const RISK_CLS: Record<string, string> = {
+    82→  SAFE: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-400/10 dark:text-emerald-300",
+    83→  HIGH_RISK: "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-400/10 dark:text-rose-300",
+    84→};
+    85→const POLICY_CLS: Record<string, string> = {
+    86→  ALLOW: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-400/10 dark:text-emerald-300",
+    87→  REVIEW: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-400/10 dark:text-amber-300",
+    88→  DENY: "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-400/10 dark:text-rose-300",
+    89→};
+    90→const CHANNEL_CLS: Record<string, string> = {
+    91→  IN_APP: "bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-900 dark:text-zinc-300",
+    92→  EMAIL: "bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-400/10 dark:text-teal-300",
+    93→  SMS_WHATSAPP: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-400/10 dark:text-amber-300",
+    94→  SUPPLIER_PORTAL: "bg-violet-100 text-violet-800 border-violet-300 dark:bg-violet-400/10 dark:text-violet-300",
+    95→};
+    96→const NTF_STATE_CLS: Record<string, string> = {
+    97→  DELIVERED: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-400/10 dark:text-emerald-300",
+    98→  SENT: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-400/10 dark:text-amber-300",
+    99→  QUEUED: "bg-zinc-100 text-zinc-600 border-zinc-300 dark:bg-zinc-900 dark:text-zinc-400",
+   100→  FAILED: "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-400/10 dark:text-rose-300",
+   101→  BOUNCED: "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-400/10 dark:text-rose-300",
+   102→};
+   103→
+   104→function chipCls(cls: string | undefined) {
+   105→  return cn("inline-flex items-center whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[10px] font-semibold tracking-wide", cls ?? "bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-900 dark:text-zinc-300");
+   106→}
+   107→
+   108→function humanize(v: string | null | undefined) {
+   109→  return (v ?? "").replaceAll("_", " ");
+   110→}
+   111→
+   112→/* ── Approval gateway (interactive) ── */
+   113→function DecisionPanel({ action, onDone }: { action: ActionRow; onDone: () => void }) {
+   114→  const { toast } = useToast();
+   115→  const [approver, setApprover] = useState("Procurement Lead");
+   116→  const [role, setRole] = useState("Approver");
+   117→  const [comment, setComment] = useState("");
+   118→  const [busy, setBusy] = useState<"APPROVED" | "REJECTED" | null>(null);
+   119→
+   120→  async function decide(decision: "APPROVED" | "REJECTED") {
+   121→    if (busy) return;
+   122→    if (!approver.trim()) {
+   123→      toast({ title: "Approver required", description: "The approval record must identify the accountable approver (M18).", variant: "destructive" });
+   124→      return;
+   125→    }
+   126→    setBusy(decision);
+   127→    const res = await postJson<{ action: ActionRow; decision: string; correlation_id: string }>(`/api/actions/${action.id}/decide`, {
+   128→      decision,
+   129→      approver: approver.trim(),
+   130→      role: role.trim() || "Approver",
+   131→      comment: comment.trim() || undefined,
+   132→    });
+   133→    setBusy(null);
+   134→    if (res.ok) {
+   135→      toast({
+   136→        title: decision === "APPROVED" ? `${action.ref} approved and submitted` : `${action.ref} rejected`,
+   137→        description:
+   138→          decision === "APPROVED"
+   139→            ? "Gateway submitted the command with its idempotency key; outcome is PENDING_VERIFICATION until target read-back."
+   140→            : "Command cancelled with reason; the linked case returns to ACTION_PROPOSED for rework.",
+   141→      });
+   142→      setComment("");
+   143→      onDone();
+   144→    } else {
+   145→      toast({ title: "Gateway decision failed", description: res.error?.message ?? "Unknown gateway error.", variant: "destructive" });
+   146→    }
+   147→  }
+   148→
+   149→  return (
+   150→    <div className="space-y-3 rounded-lg border border-teal-300 bg-teal-50/60 p-3 dark:border-teal-400/25 dark:bg-teal-400/10">
+   151→      <p className="text-xs font-semibold uppercase tracking-wide text-teal-800 dark:text-teal-300">Approval gateway — decide this action</p>
+   152→      <div className="grid gap-3 sm:grid-cols-2">
+   153→        <div className="space-y-1.5">
+   154→          <label className="text-xs font-medium text-muted-foreground" htmlFor="approver">
+   155→            Approver
+   156→          </label>
+   157→          <Input id="approver" value={approver} onChange={(e) => setApprover(e.target.value)} placeholder="Procurement Lead" />
+   158→        </div>
+   159→        <div className="space-y-1.5">
+   160→          <label className="text-xs font-medium text-muted-foreground" htmlFor="approver-role">
+   161→            Role
+   162→          </label>
+   163→          <Input id="approver-role" value={role} onChange={(e) => setRole(e.target.value)} placeholder="Approver" />
+   164→        </div>
+   165→        <div className="space-y-1.5 sm:col-span-2">
+   166→          <label className="text-xs font-medium text-muted-foreground" htmlFor="approval-comment">
+   167→            Comment (recorded on the approval)
+   168→          </label>
+   169→          <Textarea id="approval-comment" value={comment} onChange={(e) => setComment(e.target.value)} rows={2} placeholder="Rationale, conditions or rejection reason" />
+   170→        </div>
+   171→      </div>
+   172→      <div className="flex flex-wrap items-center gap-2">
+   173→        <Button type="button" disabled={busy !== null} onClick={() => decide("APPROVED")} className="bg-emerald-600 text-white hover:bg-emerald-700">
+   174→          {busy === "APPROVED" ? <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}
+   175→          Approve
+   176→        </Button>
+   177→        <Button type="button" disabled={busy !== null} onClick={() => decide("REJECTED")} variant="outline" className="border-rose-400 text-rose-700 hover:bg-rose-50 hover:text-rose-800 dark:border-rose-400/25 dark:text-rose-400 dark:hover:bg-rose-400/10">
+   178→          {busy === "REJECTED" ? <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden /> : <X className="h-4 w-4" aria-hidden />}
+   179→          Reject
+   180→        </Button>
+   181→      </div>
+   182→      <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-xs text-amber-900 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300">
+   183→        LLM output is a proposal, not an action authorization — only the action gateway executes after policy, authorization and approval checks (M18).
+   184→      </p>
+   185→    </div>
+   186→  );
+   187→}
+   188→
+   189→/* ── Main view ── */
+   190→export function ActionsView({ drillRef }: { drillRef?: string | null }) {
+   191→  const drillTo = useAppStore((s) => s.drillTo);
+   192→  const actionsApi = useApi<ActionRow[]>("/api/actions");
+   193→  const notificationsApi = useApi<NotificationRow[]>("/api/notifications");
+   194→  const [manualId, setManualId] = useState<string | null>(null);
+   195→
+   196→  const actions = useMemo(() => actionsApi.data ?? [], [actionsApi.data]);
+   197→
+   198→  /* drillRef preselection is derived (no effect needed) — manual selection wins once the user clicks */
+   199→  const drillId = useMemo(() => (drillRef ? actions.find((a) => a.ref === drillRef)?.id ?? null : null), [drillRef, actions]);
+   200→  const selectedId = manualId ?? drillId;
+   201→
+   202→  const selected = actions.find((a) => a.id === selectedId) ?? null;
+   203→  const mainIdx = selected ? ACTION_MAIN.indexOf(selected.state) : -1;
+   204→  const notifications = notificationsApi.data ?? [];
+   205→
+   206→  return (
+   207→    <div className="space-y-4">
+   208→      <div className="grid items-start gap-4 xl:grid-cols-[420px_1fr]">
+   209→        {/* Master: action cards */}
+   210→        <SectionCard
+   211→          title="Action gateway queue (M18)"
+   212→          subtitle={`${actions.length} command${actions.length === 1 ? "" : "s"} · every external write flows through here`}
+   213→          bodyClass="pt-0"
+   214→        >
+   215→          {actionsApi.loading ? (
+   216→            <LoadingState />
+   217→          ) : actionsApi.error ? (
+   218→            <ErrorState message={actionsApi.error} />
+   219→          ) : actions.length === 0 ? (
+   220→            <EmptyState message="No action commands recorded" />
+   221→          ) : (
+   222→            <ScrollTable maxHeight="max-h-[620px]">
+   223→              <ul className="space-y-2">
+   224→                {actions.map((a) => (
+   225→                  <li key={a.id}>
+   226→                    <div
+   227→                      role="button"
+   228→                      tabIndex={0}
+   229→                      onClick={() => setManualId(a.id)}
+   230→                      onKeyDown={(e) => {
+   231→                        if (e.key === "Enter" || e.key === " ") {
+   232→                          e.preventDefault();
+   233→                          setManualId(a.id);
+   234→                        }
+   235→                      }}
+   236→                      aria-pressed={selectedId === a.id}
+   237→                      className={cn(
+   238→                        "w-full cursor-pointer rounded-lg border p-3 text-left transition-colors",
+   239→                        selectedId === a.id ? "border-foreground/30 bg-accent shadow-sm" : "border-border/70 hover:bg-accent/50"
+   240→                      )}
+   241→                    >
+   242→                      <div className="flex flex-wrap items-center gap-1.5">
+   243→                        <span className="font-mono text-xs font-bold">{a.ref}</span>
+   244→                        <span className={chipCls(RISK_CLS[a.riskLevel])}>{a.riskLevel === "HIGH_RISK" ? "HIGH RISK" : "SAFE"}</span>
+   245→                        <StatusPill value={a.state} />
+   246→                      </div>
+   247→                      <p className="mt-1 text-sm font-medium capitalize">{humanize(a.commandType)}</p>
+   248→                      <p className="mt-0.5 text-xs text-muted-foreground">
+   249→                        target: {a.targetType ?? "—"} <span className="font-mono">{a.targetRef ?? ""}</span>
+   250→                      </p>
+   251→                      <div className="mt-1 flex flex-wrap items-center justify-between gap-1 text-xs text-muted-foreground">
+   252→                        <span>
+   253→                          by {a.requestedBy} · {fmtRelative(a.createdAt)}
+   254→                        </span>
+   255→                        {a.case ? (
+   256→                          <button
+   257→                            type="button"
+   258→                            className="inline-flex items-center gap-1 text-teal-700 underline-offset-2 hover:underline dark:text-teal-400"
+   259→                            onClick={(e) => {
+   260→                              e.stopPropagation();
+   261→                              drillTo("exceptions", a.case?.ref);
+   262→                            }}
+   263→                          >
+   264→                            case {a.case.ref} <ArrowRight className="h-3 w-3" />
+   265→                          </button>
+   266→                        ) : null}
+   267→                      </div>
+   268→                    </div>
+   269→                  </li>
+   270→                ))}
+   271→              </ul>
+   272→            </ScrollTable>
+   273→          )}
+   274→        </SectionCard>
+   275→
+   276→        {/* Detail */}
+   277→        <div className="space-y-4">
+   278→          {!selected ? (
+   279→            <Card>
+   280→              <CardContent className="py-2">
+   281→                <EmptyState message="Select an action command" hint="Policy decision, idempotency, payload, approvals and verification are shown per command." />
+   282→              </CardContent>
+   283→            </Card>
+   284→          ) : (
+   285→            <>
+   286→              {/* Header */}
+   287→              <SectionCard
+   288→                title={
+   289→                  <span className="inline-flex flex-wrap items-center gap-2">
+   290→                    <span className="font-mono text-base font-bold">{selected.ref}</span>
+   291→                    <span className={chipCls(RISK_CLS[selected.riskLevel])}>{selected.riskLevel === "HIGH_RISK" ? "HIGH RISK" : "SAFE"}</span>
+   292→                    <StatusPill value={selected.state} />
+   293→                  </span>
+   294→                }
+   295→                subtitle={selected.case ? `${selected.case.title} — case ${selected.case.ref}` : humanize(selected.commandType)}
+   296→              >
+   297→                {/* Action state mini strip */}
+   298→                <div className="mb-4">
+   299→                  <p className="mb-1.5 text-xs font-medium text-muted-foreground">Action state machine</p>
+   300→                  <div className="flex flex-wrap items-center gap-x-1 gap-y-1.5">
+   301→                    {ACTION_MAIN.map((s, i) => (
+   302→                      <span key={s} className="inline-flex items-center gap-1">
+   303→                        {i > 0 ? <ArrowRight className="h-3 w-3 text-muted-foreground/50" /> : null}
+   304→                        <StatusPill
+   305→                          value={s}
+   306→                          className={cn(
+   307→                            (mainIdx < 0 || i > mainIdx) && "opacity-40",
+   308→                            s === selected.state && "ring-2 ring-foreground/30"
+   309→                          )}
+   310→                        />
+   311→                      </span>
+   312→                    ))}
+   313→                    <span className="ml-1 text-xs text-muted-foreground">side exits:</span>
+   314→                    {ACTION_SIDE.map((s) => (
+   315→                      <StatusPill key={s} value={s} className={cn(s !== selected.state && "opacity-40", s === selected.state && "ring-2 ring-foreground/30")} />
+   316→                    ))}
+   317→                  </div>
+   318→                </div>
+   319→                <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+   320→                  <div>
+   321→                    <dt className="text-xs text-muted-foreground">Command</dt>
+   322→                    <dd className="font-medium capitalize">{humanize(selected.commandType)}</dd>
+   323→                  </div>
+   324→                  <div>
+   325→                    <dt className="text-xs text-muted-foreground">Target</dt>
+   326→                    <dd className="font-medium">
+   327→                      {selected.targetType ?? "—"} <span className="font-mono text-xs">{selected.targetRef ?? ""}</span>
+   328→                    </dd>
+   329→                  </div>
+   330→                  <div>
+   331→                    <dt className="text-xs text-muted-foreground">Requested by</dt>
+   332→                    <dd className="font-medium">{selected.requestedBy}</dd>
+   333→                  </div>
+   334→                  <div>
+   335→                    <dt className="text-xs text-muted-foreground">Timeline</dt>
+   336→                    <dd className="text-xs text-muted-foreground">
+   337→                      created {fmtDateTime(selected.createdAt)}
+   338→                      {selected.submittedAt ? ` · submitted ${fmtDateTime(selected.submittedAt)}` : ""}
+   339→                      {selected.ackAt ? ` · ack ${fmtDateTime(selected.ackAt)}` : ""}
+   340→                      {selected.verifiedAt ? ` · verified ${fmtDateTime(selected.verifiedAt)}` : ""}
+   341→                    </dd>
+   342→                  </div>
+   343→                  {selected.case ? (
+   344→                    <div>
+   345→                      <dt className="text-xs text-muted-foreground">Linked case</dt>
+   346→                      <dd>
+   347→                        <button type="button" className="inline-flex items-center gap-1 text-sm font-medium text-teal-700 underline-offset-2 hover:underline dark:text-teal-400" onClick={() => drillTo("exceptions", selected.case?.ref)}>
+   348→                          {selected.case.ref} <ArrowRight className="h-3.5 w-3.5" />
+   349→                        </button>
+   350→                      </dd>
+   351→                    </div>
+   352→                  ) : null}
+   353→                </dl>
+   354→              </SectionCard>
+   355→
+   356→              {/* a) Policy & idempotency */}
+   357→              <SectionCard
+   358→                title={
+   359→                  <span className="inline-flex items-center gap-1.5">
+   360→                    <Scale className="h-4 w-4 text-amber-700 dark:text-amber-400" /> Policy &amp; idempotency
+   361→                  </span>
+   362→                }
+   363→                subtitle="No external write proceeds without a policy decision and a stable idempotency key (Rule 7)."
+   364→              >
+   365→                <div className="flex flex-wrap items-center gap-2">
+   366→                  {selected.policyDecision ? <span className={chipCls(POLICY_CLS[selected.policyDecision])}>POLICY {selected.policyDecision}</span> : <span className="text-xs text-muted-foreground">no policy decision recorded</span>}
+   367→                  {selected.policyRule ? <span className="text-xs text-muted-foreground">{selected.policyRule}</span> : null}
+   368→                </div>
+   369→                <div className="mt-2">
+   370→                  <TooltipProvider delayDuration={100}>
+   371→                    <Tooltip>
+   372→                      <TooltipTrigger asChild>
+   373→                        <span className="inline-flex cursor-help items-center gap-1.5 rounded-md border border-zinc-300 bg-zinc-100 px-1.5 py-0.5 font-mono text-[10px] text-zinc-700 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-300">
+   374→                          <KeyRound className="h-3 w-3" /> {selected.idempotencyKey}
+   375→                        </span>
+   376→                      </TooltipTrigger>
+   377→                      <TooltipContent side="top" className="max-w-xs">
+   378→                        Reprocessing the same command cannot duplicate effects (Rule 7).
+   379→                      </TooltipContent>
+   380→                    </Tooltip>
+   381→                  </TooltipProvider>
+   382→                </div>
+   383→              </SectionCard>
+   384→
+   385→              {/* b) Payload preview */}
+   386→              <SectionCard title="Payload preview" subtitle="The exact request body the gateway will submit to the target system.">
+   387→                {selected.payload ? (
+   388→                  <pre className="max-h-40 overflow-auto rounded-md border bg-muted/40 p-3 font-mono text-xs leading-relaxed">
+   389→                    {(() => {
+   390→                      const parsed = parseObj(selected.payload);
+   391→                      return parsed ? JSON.stringify(parsed, null, 2) : selected.payload;
+   392→                    })()}
+   393→                  </pre>
+   394→                ) : (
+   395→                  <p className="text-xs text-muted-foreground">No payload recorded.</p>
+   396→                )}
+   397→              </SectionCard>
+   398→
+   399→              {/* c) Approvals */}
+   400→              <SectionCard
+   401→                title={
+   402→                  <span className="inline-flex items-center gap-1.5">
+   403→                    <BadgeCheck className="h-4 w-4 text-emerald-700 dark:text-emerald-400" /> Approvals
+   404→                  </span>
+   405→                }
+   406→                subtitle={selected.riskLevel === "HIGH_RISK" ? "High-risk command — no approval, no execution." : "Approval records for this command."}
+   407→                bodyClass="pt-0"
+   408→              >
+   409→                {selected.approvals.length === 0 ? (
+   410→                  <EmptyState message="No approvals recorded yet" />
+   411→                ) : (
+   412→                  <ScrollTable maxHeight="max-h-56">
+   413→                    <ul className="space-y-2">
+   414→                      {selected.approvals.map((ap) => (
+   415→                        <li key={ap.id} className="flex flex-wrap items-center gap-2 rounded-md border border-border/70 px-2.5 py-2 text-xs">
+   416→                          <StatusPill value={ap.decision} />
+   417→                          <span className="font-semibold">{ap.approver}</span>
+   418→                          <span className="text-muted-foreground">{ap.role}</span>
+   419→                          <span className="ml-auto tabular-nums text-muted-foreground">{fmtDateTime(ap.at)}</span>
+   420→                          {ap.comment ? <p className="w-full whitespace-pre-wrap text-muted-foreground">{ap.comment}</p> : null}
+   421→                        </li>
+   422→                      ))}
+   423→                    </ul>
+   424→                  </ScrollTable>
+   425→                )}
+   426→              </SectionCard>
+   427→
+   428→              {/* d) Approval gateway */}
+   429→              {selected.state === "AWAITING_APPROVAL" ? (
+   430→                <DecisionPanel key={`${selected.id}-${selected.state}-${selected.approvals.length}`} action={selected} onDone={() => actionsApi.refresh()} />
+   431→              ) : null}
+   432→
+   433→              {/* e) Result & verification */}
+   434→              {(selected.result || selected.failureReason || selected.compensation || selected.postcondition) ? (
+   435→                <SectionCard title="Result &amp; verification" subtitle="A successful HTTP submission is not completion — postconditions are verified by read-back.">
+   436→                  {selected.result ? (
+   437→                    <div className="mb-3 overflow-hidden rounded-md border">
+   438→                      {(() => {
+   439→                        const parsed = parseObj<Record<string, unknown>>(selected.result);
+   440→                        if (!parsed) return <p className="p-3 font-mono text-xs">{selected.result}</p>;
+   441→                        const rows = ["gateway", "idempotency_key", "submission", "postcondition"].filter((k) => k in parsed);
+   442→                        return (
+   443→                          <table className="w-full text-xs">
+   444→                            <tbody>
+   445→                              {rows.map((k, i) => (
+   446→                                <tr key={k} className={cn(i % 2 === 1 && "bg-muted/40")}>
+   447→                                  <td className="w-40 border-r border-border/60 px-2.5 py-1.5 font-mono text-muted-foreground">{k}</td>
+   448→                                  <td className="px-2.5 py-1.5">{String(parsed[k])}</td>
+   449→                                </tr>
+   450→                              ))}
+   451→                            </tbody>
+   452→                          </table>
+   453→                        );
+   454→                      })()}
+   455→                    </div>
+   456→                  ) : null}
+   457→                  <div className="flex flex-wrap items-center gap-2 text-xs">
+   458→                    {selected.postcondition ? (
+   459→                      <span className="rounded-md border border-border/70 px-2 py-1">
+   460→                        postcondition: <span className="font-medium">{selected.postcondition}</span>
+   461→                      </span>
+   462→                    ) : null}
+   463→                    <StatusPill value={selected.verifiedAt ? "VERIFIED" : "PENDING_VERIFICATION"} />
+   464→                    {selected.verifiedAt ? <span className="text-muted-foreground">verified {fmtDateTime(selected.verifiedAt)}</span> : null}
+   465→                  </div>
+   466→                  {selected.failureReason ? (
+   467→                    <p className="mt-2 rounded-md border border-rose-300 bg-rose-50 px-2.5 py-2 text-xs font-medium text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300">
+   468→                      Failure reason: {selected.failureReason}
+   469→                    </p>
+   470→                  ) : null}
+   471→                  {selected.compensation ? (
+   472→                    <p className="mt-2 rounded-md border border-orange-300 bg-orange-50 px-2.5 py-2 text-xs text-orange-900 dark:border-orange-400/25 dark:bg-orange-400/10 dark:text-orange-300">
+   473→                      Compensation: {selected.compensation}
+   474→                    </p>
+   475→                  ) : null}
+   476→                </SectionCard>
+   477→              ) : null}
+   478→            </>
+   479→          )}
+   480→        </div>
+   481→      </div>
+   482→
+   483→      {/* Bottom full-width: Notifications (M19) */}
+   484→      <SectionCard
+   485→        title="Notifications (M19)"
+   486→        subtitle={`${notifications.length} messages · internal notes and external comms are separated by audience`}
+   487→        bodyClass="pt-0"
+   488→      >
+   489→        {notificationsApi.loading ? (
+   490→          <LoadingState />
+   491→        ) : notificationsApi.error ? (
+   492→          <ErrorState message={notificationsApi.error} />
+   493→        ) : notifications.length === 0 ? (
+   494→          <EmptyState message="No notifications recorded" />
+   495→        ) : (
+   496→          <ScrollTable maxHeight="max-h-80">
+   497→            <table className="w-full text-xs tabular-nums">
+   498→              <thead className="sticky top-0 bg-background">
+   499→                <tr className="border-b text-left text-[10px] uppercase tracking-wide text-muted-foreground">
+   500→                  <th className="py-2 pr-2 font-medium">Case</th>
+   501→                  <th className="py-2 pr-2 font-medium">Channel</th>
+   502→                  <th className="py-2 pr-2 font-medium">Template</th>
+   503→                  <th className="py-2 pr-2 font-medium">Recipient</th>
+   504→                  <th className="py-2 pr-2 font-medium">Audience</th>
+   505→                  <th className="py-2 pr-2 font-medium">State</th>
+   506→                  <th className="py-2 pr-2 font-medium">At</th>
+   507→                  <th className="py-2 font-medium">Note</th>
+   508→                </tr>
+   509→              </thead>
+   510→              <tbody>
+   511→                {notifications.map((n) => (
+   512→                  <tr key={n.id} className="border-b border-border/60">
+   513→                    <td className="py-2 pr-2">
+   514→                      {n.case ? (
+   515→                        <button type="button" className="font-mono text-teal-700 underline-offset-2 hover:underline dark:text-teal-400" onClick={() => drillTo("exceptions", n.case?.ref)}>
+   516→                          {n.case.ref}
+   517→                        </button>
+   518→                      ) : (
+   519→                        "—"
+   520→                      )}
+   521→                    </td>
+   522→                    <td className="py-2 pr-2">
+   523→                      <span className={chipCls(CHANNEL_CLS[n.channel])}>{n.channel.replaceAll("_", " ")}</span>
+   524→                    </td>
+   525→                    <td className="py-2 pr-2">
+   526→                      {n.template} <span className="font-mono text-muted-foreground">{n.templateVersion}</span>
+   527→                    </td>
+   528→                    <td className="py-2 pr-2">{n.recipient}</td>
+   529→                    <td className="py-2 pr-2">
+   530→                      <span className={chipCls(n.audienceType === "EXTERNAL" ? "bg-violet-100 text-violet-800 border-violet-300 dark:bg-violet-400/10 dark:text-violet-300" : "bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-900 dark:text-zinc-300")}>
+   531→                        {n.audienceType}
+   532→                      </span>
+   533→                    </td>
+   534→                    <td className="py-2 pr-2">
+   535→                      <span className={chipCls(NTF_STATE_CLS[n.state])}>{n.state}</span>
+   536→                    </td>
+   537→                    <td className="py-2 pr-2 text-muted-foreground">{fmtDateTime(n.at)}</td>
+   538→                    <td className="max-w-[280px] py-2 text-muted-foreground">
+   539→                      <span className="line-clamp-2">{n.note ?? "—"}</span>
+   540→                    </td>
+   541→                  </tr>
+   542→                ))}
+   543→              </tbody>
+   544→            </table>
+   545→          </ScrollTable>
+   546→        )}
+   547→        <p className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-xs text-amber-900 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300">
+   548→          Delivery evidence is required before &quot;supplier contacted&quot;; retries are idempotent (M19).
+   549→        </p>
+   550→      </SectionCard>
+   551→    </div>
+   552→  );
+   553→}
+   554→

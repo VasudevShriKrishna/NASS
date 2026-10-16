@@ -170,7 +170,7 @@ export function ControlTowerView({ drillRef }: { drillRef?: string | null }) {
             size="sm"
             className="gap-1.5 border-primary/30 text-primary hover:bg-primary/10 hover:text-primary"
             onClick={() => openTrace()}
-            title="Open the Live Traceability Command View (animated world map)"
+            title="Open the NASS Freight Traceability Map"
           >
             <RadioTower className="h-4 w-4" /> Live Map
           </Button>

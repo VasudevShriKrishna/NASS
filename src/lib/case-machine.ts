@@ -1,45 +1,19 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { ok, err, corrId } from "@/lib/api";
+import { CASE_STATES, canTransition, type CaseState } from "@/lib/case-states";
 
 /**
  * Closed-loop exception state machine (M17):
  * DETECTED → TRIAGED → ASSIGNED → INVESTIGATING → ACTION_PROPOSED →
  * AWAITING_APPROVAL → ACTION_SUBMITTED → OUTCOME_PENDING_VERIFICATION → RESOLVED | CANCELLED
  * Reopen allowed from RESOLVED on regression. Every transition is logged (CaseEvent + AuditEvent).
+ *
+ * The pure constants (CASE_STATES / TRANSITIONS / canTransition / CaseState) live in
+ * src/lib/case-states.ts so client components can import them without pulling in db.
  */
-export const CASE_STATES = [
-  "DETECTED",
-  "TRIAGED",
-  "ASSIGNED",
-  "INVESTIGATING",
-  "ACTION_PROPOSED",
-  "AWAITING_APPROVAL",
-  "ACTION_SUBMITTED",
-  "OUTCOME_PENDING_VERIFICATION",
-  "RESOLVED",
-  "CANCELLED",
-] as const;
-
-export type CaseState = (typeof CASE_STATES)[number];
-
-export const TRANSITIONS: Record<CaseState, CaseState[]> = {
-  DETECTED: ["TRIAGED", "CANCELLED"],
-  TRIAGED: ["ASSIGNED", "CANCELLED"],
-  ASSIGNED: ["INVESTIGATING", "CANCELLED"],
-  INVESTIGATING: ["ACTION_PROPOSED", "CANCELLED"],
-  ACTION_PROPOSED: ["AWAITING_APPROVAL", "CANCELLED"],
-  AWAITING_APPROVAL: ["ACTION_SUBMITTED", "CANCELLED"],
-  ACTION_SUBMITTED: ["OUTCOME_PENDING_VERIFICATION", "CANCELLED"],
-  OUTCOME_PENDING_VERIFICATION: ["RESOLVED", "CANCELLED"],
-  RESOLVED: [], // reopen handled separately
-  CANCELLED: [],
-};
-
-export function canTransition(from: CaseState, to: CaseState): boolean {
-  if (from === "RESOLVED" && to === "INVESTIGATING") return true; // reopen on regression
-  return (TRANSITIONS[from] ?? []).includes(to);
-}
+export { CASE_STATES, TRANSITIONS, canTransition } from "@/lib/case-states";
+export type { CaseState } from "@/lib/case-states";
 
 export async function transitionCase(
   caseId: string,

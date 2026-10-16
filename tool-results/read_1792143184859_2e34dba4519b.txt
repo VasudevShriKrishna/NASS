@@ -1,0 +1,684 @@
+     1→     1→"use client";
+     2→     2→
+     3→     3→import { useMemo, useState } from "react";
+     4→     4→import { Anchor, Container as ContainerIcon, FileText, MapPin, Plane, RadioTower, Ship, Siren, Truck } from "lucide-react";
+     5→     5→import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+     6→     6→import { Button } from "@/components/ui/button";
+     7→     7→import { Separator } from "@/components/ui/separator";
+     8→     8→import { useApi } from "@/lib/client";
+     9→     9→import { useAppStore } from "@/lib/app-state";
+    10→    10→import {
+    11→    11→  CaseStateBadge,
+    12→    12→  EmptyState,
+    13→    13→  ErrorState,
+    14→    14→  FreshnessBadge,
+    15→    15→  LoadingState,
+    16→    16→  SectionCard,
+    17→    17→  SeverityBadge,
+    18→    18→  StatusPill,
+    19→    19→  fmtDate,
+    20→    20→  fmtDateTime,
+    21→    21→  fmtRelative,
+    22→    22→} from "@/components/app/shared";
+    23→    23→
+    24→    24→/* ── payload types (mirror /api/shipments include) ─────────────────────────── */
+    25→    25→interface LegRow {
+    26→    26→  id: string;
+    27→    27→  seq: number;
+    28→    28→  mode: string;
+    29→    29→  fromPoint: string | null;
+    30→    30→  toPoint: string | null;
+    31→    31→  status: string;
+    32→    32→  carrier: string | null;
+    33→    33→}
+    34→    34→interface ContainerRow {
+    35→    35→  id: string;
+    36→    36→  containerNo: string | null;
+    37→    37→  sizeType: string | null;
+    38→    38→  sealNo: string | null;
+    39→    39→  packageCount: number | null;
+    40→    40→  identityStatus: string;
+    41→    41→  identitySource: string | null;
+    42→    42→  note: string | null;
+    43→    43→}
+    44→    44→interface EtaObsRow {
+    45→    45→  id: string;
+    46→    46→  estimateType: string;
+    47→    47→  sourceName: string;
+    48→    48→  etaValue: string | null;
+    49→    49→  etaRangeFrom: string | null;
+    50→    50→  etaRangeTo: string | null;
+    51→    51→  calculatedAt: string;
+    52→    52→  confidence: number | null;
+    53→    53→  inputLineage: string | null;
+    54→    54→  isActive: boolean;
+    55→    55→  note: string | null;
+    56→    56→}
+    57→    57→interface MilestoneRow {
+    58→    58→  id: string;
+    59→    59→  code: string;
+    60→    60→  label: string;
+    61→    61→  location: string | null;
+    62→    62→  eventTime: string;
+    63→    63→  receivedAt: string;
+    64→    64→  source: string;
+    65→    65→  isEstimated: boolean;
+    66→    66→  freshness: string;
+    67→    67→  confidence: number | null;
+    68→    68→  correctedByEventId: string | null;
+    69→    69→  note: string | null;
+    70→    70→}
+    71→    71→interface DocRow {
+    72→    72→  id: string;
+    73→    73→  docType: string;
+    74→    74→  refNo: string | null;
+    75→    75→  issuer: string | null;
+    76→    76→  note: string | null;
+    77→    77→}
+    78→    78→interface ShipmentRow {
+    79→    79→  id: string;
+    80→    80→  ref: string;
+    81→    81→  importFileRef: string | null;
+    82→    82→  mode: string;
+    83→    83→  status: string;
+    84→    84→  carrier: string | null;
+    85→    85→  forwarder: string | null;
+    86→    86→  originPort: string | null;
+    87→    87→  destinationPort: string | null;
+    88→    88→  supplierPromisedEta: string | null;
+    89→    89→  carrierEtaFreshness: string;
+    90→    90→  etaPrecedencePolicy: string;
+    91→    91→  displayEta: string | null;
+    92→    92→  displayEtaSource: string | null;
+    93→    93→  displayEtaType: string | null;
+    94→    94→  vesselName: string | null;
+    95→    95→  vesselVoyage: string | null;
+    96→    96→  vesselPositionLat: number | null;
+    97→    97→  vesselPositionLng: number | null;
+    98→    98→  vesselPositionAt: string | null;
+    99→    99→  vesselSource: string | null;
+   100→   100→  vesselLinkEvidence: string | null;
+   101→   101→  lastEventAt: string | null;
+   102→   102→  freshness: string;
+   103→   103→  customsStatus: string | null;
+   104→   104→  supplier: { code: string; name: string } | null;
+   105→   105→  po: { ref: string } | null;
+   106→   106→  legs: LegRow[];
+   107→   107→  containers: ContainerRow[];
+   108→   108→  bols: { id: string; bolNo: string; version: number; isActive: boolean; status: string }[];
+   109→   109→  etaObservations: EtaObsRow[];
+   110→   110→  milestones: MilestoneRow[];
+   111→   111→  documents?: DocRow[];
+   112→   112→  exceptionCases: { id: string; ref: string; state: string; severity: string; title: string }[];
+   113→   113→}
+   114→   114→
+   115→   115→/* ── small local atoms ─────────────────────────────────────────────────────── */
+   116→   116→const CHIP =
+   117→   117→  "inline-flex items-center whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[10px] font-semibold tracking-wide";
+   118→   118→const ZINC_CHIP = `${CHIP} border-zinc-300 bg-zinc-100 text-zinc-700 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-300`;
+   119→   119→const ROSE_CALLOUT =
+   120→   120→  "rounded-md border border-rose-300 bg-rose-50 p-2 text-[11px] leading-relaxed text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10/50 dark:text-rose-300";
+   121→   121→const SCROLL =
+   122→   122→  "[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-zinc-300 [&::-webkit-scrollbar-track]:bg-transparent dark:[&::-webkit-scrollbar-thumb]:bg-zinc-700";
+   123→   123→
+   124→   124→function ModeIcon({ mode }: { mode: string }) {
+   125→   125→  const m = (mode ?? "").toUpperCase();
+   126→   126→  if (m === "AIR") return <Plane className="h-3.5 w-3.5 text-zinc-500" aria-label="Air freight" />;
+   127→   127→  if (m === "ROAD") return <Truck className="h-3.5 w-3.5 text-zinc-500" aria-label="Road freight" />;
+   128→   128→  return <Ship className="h-3.5 w-3.5 text-zinc-500" aria-label="Ocean freight" />;
+   129→   129→}
+   130→   130→
+   131→   131→/** ETA estimate type badge — violet for manual (never imply authority), teal for model (Rule 15). */
+   132→   132→function EtaTypeBadge({ type }: { type: string }) {
+   133→   133→  const t = (type ?? "").toLowerCase();
+   134→   134→  const cls =
+   135→   135→    t === "manual"
+   136→   136→      ? "border-violet-300 bg-violet-100 text-violet-800 dark:border-violet-400/25 dark:bg-violet-400/10 dark:text-violet-300"
+   137→   137→      : t === "model"
+   138→   138→        ? "border-teal-300 bg-teal-100 text-teal-800 dark:border-teal-400/25 dark:bg-teal-400/10 dark:text-teal-300"
+   139→   139→        : ZINC_CHIP;
+   140→   140→  return <span className={`${CHIP} ${cls}`}>{t || "unknown"}</span>;
+   141→   141→}
+   142→   142→
+   143→   143→/** Identity status colors per spec: RESOLVED emerald / UNRESOLVED rose / MISSING rose. */
+   144→   144→function identityPillCls(status: string): string {
+   145→   145→  if (status === "RESOLVED")
+   146→   146→    return "border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-300";
+   147→   147→  return "border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300";
+   148→   148→}
+   149→   149→
+   150→   150→/** Vessel position recency — stale when older than 12 h (M11 cadence). */
+   151→   151→function vesselFreshness(at: string | null | undefined): string {
+   152→   152→  if (!at) return "unavailable";
+   153→   153→  const hrs = (Date.now() - new Date(at).getTime()) / 3_600_000;
+   154→   154→  if (Number.isNaN(hrs)) return "unavailable";
+   155→   155→  if (hrs <= 6) return "fresh";
+   156→   156→  if (hrs <= 12) return "aging";
+   157→   157→  return "stale";
+   158→   158→}
+   159→   159→
+   160→   160→function slipDays(displayEta: string | null, promised: string | null): number | null {
+   161→   161→  if (!displayEta || !promised) return null;
+   162→   162→  const ms = new Date(displayEta).getTime() - new Date(promised).getTime();
+   163→   163→  if (!(ms > 0)) return null;
+   164→   164→  return Math.ceil(ms / 86_400_000);
+   165→   165→}
+   166→   166→
+   167→   167→const DOT: Record<string, string> = {
+   168→   168→  fresh: "bg-emerald-500",
+   169→   169→  aging: "bg-amber-500",
+   170→   170→  stale: "bg-orange-500",
+   171→   171→  unavailable: "bg-zinc-400",
+   172→   172→};
+   173→   173→
+   174→   174→/* ── view ──────────────────────────────────────────────────────────────────── */
+   175→   175→export function ImportTrackingView({ drillRef }: { drillRef?: string | null }) {
+   176→   176→  const { data, loading, error } = useApi<ShipmentRow[]>("/api/shipments");
+   177→   177→  const drillTo = useAppStore((s) => s.drillTo);
+   178→   178→  const openTrace = useAppStore((s) => s.openTrace);
+   179→   179→  const shipments = useMemo(() => data ?? [], [data]);
+   180→   180→  /** user pick tagged with the drill context it was made in — a NEW drillRef supersedes it */
+   181→   181→  const [pick, setPick] = useState<{ id: string; atDrill: string | null } | null>(null);
+   182→   182→
+   183→   183→  // Fully derived selection (no effects): drill ref > valid user pick > SHP-8802 story > first record.
+   184→   184→  const selected = useMemo(() => {
+   185→   185→    if (pick && pick.atDrill === (drillRef ?? null)) {
+   186→   186→      const picked = shipments.find((s) => s.id === pick.id);
+   187→   187→      if (picked) return picked;
+   188→   188→    }
+   189→   189→    const byDrill = drillRef ? shipments.find((s) => s.ref === drillRef) : undefined;
+   190→   190→    return byDrill ?? shipments.find((s) => s.ref === "SHP-8802") ?? shipments[0] ?? null;
+   191→   191→  }, [shipments, drillRef, pick]);
+   192→   192→
+   193→   193→  if (loading) return <LoadingState label="Loading shipments, milestones and ETA provenance…" />;
+   194→   194→  if (error) return <ErrorState message={`Failed to load shipments: ${error}`} />;
+   195→   195→
+   196→   196→  return (
+   197→   197→    <div className="grid items-start gap-4 xl:grid-cols-[380px_1fr]">
+   198→   198→      {/* ── master list ── */}
+   199→   199→      <section aria-label="Shipment list" className="rounded-xl border bg-card">
+   200→   200→        <div className="flex items-center justify-between border-b px-4 py-3">
+   201→   201→          <h2 className="text-sm font-semibold">Import shipments</h2>
+   202→   202→          <div className="flex items-center gap-2">
+   203→   203→            <span className="text-xs tabular-nums text-muted-foreground">{shipments.length} records</span>
+   204→   204→            <Button
+   205→   205→              variant="outline"
+   206→   206→              size="sm"
+   207→   207→              className="h-7 gap-1 border-primary/30 px-2 text-[11px] text-primary hover:bg-primary/10 hover:text-primary"
+   208→   208→              onClick={() => openTrace()}
+   209→   209→              title="Open the NASS Freight Traceability Map"
+   210→   210→            >
+   211→   211→              <RadioTower className="h-3 w-3" /> Live Map
+   212→   212→            </Button>
+   213→   213→          </div>
+   214→   214→        </div>
+   215→   215→        <div className={`max-h-[460px] overflow-y-auto p-2 xl:max-h-[calc(100vh-140px)] ${SCROLL}`}>
+   216→   216→          {shipments.length === 0 ? (
+   217→   217→            <EmptyState message="No shipments found" />
+   218→   218→          ) : (
+   219→   219→            <ul className="space-y-1.5">
+   220→   220→              {shipments.map((s) => {
+   221→   221→                const slip = slipDays(s.displayEta, s.supplierPromisedEta);
+   222→   222→                const isSel = s.id === selected?.id;
+   223→   223→                return (
+   224→   224→                  <li key={s.id}>
+   225→   225→                    <button
+   226→   226→                      type="button"
+   227→   227→                      onClick={() => setPick({ id: s.id, atDrill: drillRef ?? null })}
+   228→   228→                      aria-current={isSel ? "true" : undefined}
+   229→   229→                      className={`w-full rounded-lg border p-3 text-left transition-colors ${
+   230→   230→                        isSel
+   231→   231→                          ? "border-zinc-500 bg-muted/70 dark:border-zinc-300"
+   232→   232→                          : "border-transparent hover:border-zinc-300 hover:bg-muted/40 dark:hover:border-zinc-700"
+   233→   233→                      }`}
+   234→   234→                    >
+   235→   235→                      <div className="flex items-center gap-2">
+   236→   236→                        <ModeIcon mode={s.mode} />
+   237→   237→                        <span className="font-mono text-sm font-bold">{s.ref}</span>
+   238→   238→                        <span className="ml-auto flex items-center gap-1.5">
+   239→   239→                          <StatusPill value={s.status} />
+   240→   240→                        </span>
+   241→   241→                      </div>
+   242→   242→                      <p className="mt-1 truncate text-xs text-muted-foreground">
+   243→   243→                        {s.originPort ?? "?"} → {s.destinationPort ?? "?"}
+   244→   244→                      </p>
+   245→   245→                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+   246→   246→                        <span className="text-[11px] tabular-nums text-muted-foreground">
+   247→   247→                          ETA {s.displayEta ? fmtDate(s.displayEta) : "—"}
+   248→   248→                          {s.supplierPromisedEta ? ` · promised ${fmtDate(s.supplierPromisedEta)}` : ""}
+   249→   249→                        </span>
+   250→   250→                        {slip != null && (
+   251→   251→                          <span className={`${CHIP} border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300`}>
+   252→   252→                            +{slip}d slip
+   253→   253→                          </span>
+   254→   254→                        )}
+   255→   255→                        <FreshnessBadge value={s.freshness} />
+   256→   256→                        {s.exceptionCases.length > 0 && (
+   257→   257→                          <span className={`${CHIP} border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-400/25 dark:bg-rose-400/10/60 dark:text-rose-300`}>
+   258→   258→                            <Siren className="mr-1 h-3 w-3" aria-hidden />
+   259→   259→                            {s.exceptionCases.length} exception{s.exceptionCases.length > 1 ? "s" : ""}
+   260→   260→                          </span>
+   261→   261→                        )}
+   262→   262→                      </div>
+   263→   263→                    </button>
+   264→   264→                  </li>
+   265→   265→                );
+   266→   266→              })}
+   267→   267→            </ul>
+   268→   268→          )}
+   269→   269→        </div>
+   270→   270→      </section>
+   271→   271→
+   272→   272→      {/* ── detail ── */}
+   273→   273→      <section aria-label="Shipment detail" className="space-y-4">
+   274→   274→        {!selected ? (
+   275→   275→          <EmptyState message="Select a shipment" hint="Choose a shipment from the list to inspect provenance, milestones and exceptions." />
+   276→   276→        ) : (
+   277→   277→          <ShipmentDetail s={selected} onDrill={(view, ref) => drillTo(view, ref)} />
+   278→   278→        )}
+   279→   279→      </section>
+   280→   280→    </div>
+   281→   281→  );
+   282→   282→}
+   283→   283→
+   284→   284→/* ── detail panel ──────────────────────────────────────────────────────────── */
+   285→   285→type ViewName = Parameters<ReturnType<typeof useAppStore.getState>["drillTo"]>[0];
+   286→   286→
+   287→   287→function ShipmentDetail({ s, onDrill }: { s: ShipmentRow; onDrill: (v: ViewName, ref?: string) => void }) {
+   288→   288→  const openTrace = useAppStore((st) => st.openTrace);
+   289→   289→  const slip = slipDays(s.displayEta, s.supplierPromisedEta);
+   290→   290→  const hasModelEta = s.etaObservations.some((o) => o.estimateType.toLowerCase() === "model");
+   291→   291→  const documents = s.documents ?? [];
+   292→   292→  const milestones = [...s.milestones].sort((a, b) => new Date(a.eventTime).getTime() - new Date(b.eventTime).getTime());
+   293→   293→  const manualCustoms = (s.customsStatus ?? "").toLowerCase().includes("manually reported");
+   294→   294→
+   295→   295→  return (
+   296→   296→    <>
+   297→   297→      {/* a) header */}
+   298→   298→      <SectionCard
+   299→   299→        title={<span className="font-mono">{s.ref}</span>}
+   300→   300→        subtitle="Import tracking — provenance and freshness shown per source (M10/M11)"
+   301→   301→        right={
+   302→   302→          <span className="flex flex-wrap items-center justify-end gap-1.5">
+   303→   303→            <StatusPill value={s.status} />
+   304→   304→            <FreshnessBadge value={s.freshness} />
+   305→   305→            <Button
+   306→   306→              variant="outline"
+   307→   307→              size="sm"
+   308→   308→              className="h-7 gap-1 border-primary/30 px-2 text-[11px] text-primary hover:bg-primary/10 hover:text-primary"
+   309→   309→              onClick={() => openTrace(s.ref)}
+   310→   310→              title="Show this shipment on the animated live world map"
+   311→   311→            >
+   312→   312→              <RadioTower className="h-3 w-3" /> Live Map
+   313→   313→            </Button>
+   314→   314→          </span>
+   315→   315→        }
+   316→   316→      >
+   317→   317→        <dl className="grid grid-cols-1 gap-x-6 gap-y-2.5 sm:grid-cols-2">
+   318→   318→          <div>
+   319→   319→            <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Route</dt>
+   320→   320→            <dd className="text-sm">
+   321→   321→              {s.originPort ?? "—"} <span className="text-zinc-400">→</span> {s.destinationPort ?? "—"}
+   322→   322→            </dd>
+   323→   323→          </div>
+   324→   324→          <div>
+   325→   325→            <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Carrier / Forwarder</dt>
+   326→   326→            <dd className="text-sm">
+   327→   327→              {s.carrier ?? "—"}
+   328→   328→              <span className="text-zinc-400"> · </span>
+   329→   329→              {s.forwarder ?? "—"}
+   330→   330→            </dd>
+   331→   331→          </div>
+   332→   332→          <div>
+   333→   333→            <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">PO</dt>
+   334→   334→            <dd className="text-sm">
+   335→   335→              {s.po ? (
+   336→   336→                <button type="button" className="font-medium text-teal-700 underline-offset-2 hover:underline dark:text-teal-400" onClick={() => onDrill("procurement", s.po?.ref)}>
+   337→   337→                  {s.po.ref}
+   338→   338→                </button>
+   339→   339→              ) : (
+   340→   340→                "—"
+   341→   341→              )}
+   342→   342→            </dd>
+   343→   343→          </div>
+   344→   344→          <div>
+   345→   345→            <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Supplier</dt>
+   346→   346→            <dd className="text-sm">{s.supplier ? `${s.supplier.code} — ${s.supplier.name}` : "—"}</dd>
+   347→   347→          </div>
+   348→   348→          <div>
+   349→   349→            <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Import file ref</dt>
+   350→   350→            <dd className="font-mono text-xs">{s.importFileRef ?? "—"}</dd>
+   351→   351→          </div>
+   352→   352→          <div>
+   353→   353→            <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Customs status</dt>
+   354→   354→            <dd className="flex flex-wrap items-center gap-1.5 text-sm">
+   355→   355→              {s.customsStatus ? (
+   356→   356→                <>
+   357→   357→                  <span className="text-xs">{s.customsStatus}</span>
+   358→   358→                  {manualCustoms && (
+   359→   359→                    <span className={`${CHIP} border-violet-300 bg-violet-100 text-violet-800 dark:border-violet-400/25 dark:bg-violet-400/10 dark:text-violet-300`}>
+   360→   360→                      MANUAL SOURCE — never imply clearance
+   361→   361→                    </span>
+   362→   362→                  )}
+   363→   363→                </>
+   364→   364→              ) : (
+   365→   365→                <span className="text-xs text-muted-foreground">not reported</span>
+   366→   366→              )}
+   367→   367→            </dd>
+   368→   368→          </div>
+   369→   369→          {s.bols.length > 0 && (
+   370→   370→            <div className="sm:col-span-2">
+   371→   371→              <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Bills of lading</dt>
+   372→   372→              <dd className="flex flex-wrap gap-1.5">
+   373→   373→                {s.bols.map((b) => (
+   374→   374→                  <button
+   375→   375→                    key={b.id}
+   376→   376→                    type="button"
+   377→   377→                    title={`Open ${b.bolNo} in BOL Intelligence`}
+   378→   378→                    onClick={() => onDrill("bol-intelligence", b.bolNo)}
+   379→   379→                    className={`${CHIP} border-zinc-300 bg-zinc-100 font-mono text-zinc-700 hover:bg-zinc-200 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800`}
+   380→   380→                  >
+   381→   381→                    {b.bolNo} v{b.version}
+   382→   382→                    {!b.isActive && " (superseded)"}
+   383→   383→                  </button>
+   384→   384→                ))}
+   385→   385→              </dd>
+   386→   386→            </div>
+   387→   387→          )}
+   388→   388→        </dl>
+   389→   389→      </SectionCard>
+   390→   390→
+   391→   391→      {/* b) ETA provenance (M11) */}
+   392→   392→      <SectionCard
+   393→   393→        title="ETA provenance (M11)"
+   394→   394→        subtitle="Separate values per source — precedence is visible, never silent"
+   395→   395→        right={
+   396→   396→          <code className="rounded-md border border-zinc-300 bg-zinc-100 px-2 py-1 font-mono text-[10px] font-semibold text-zinc-700 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-300">
+   397→   397→            {s.etaPrecedencePolicy}
+   398→   398→          </code>
+   399→   399→        }
+   400→   400→      >
+   401→   401→        <div className="rounded-lg border bg-muted/40 p-3">
+   402→   402→          <div className="flex flex-wrap items-center gap-2">
+   403→   403→            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Display ETA</span>
+   404→   404→            <span className="text-lg font-bold tabular-nums">{s.displayEta ? fmtDate(s.displayEta) : "not enough data"}</span>
+   405→   405→            {s.displayEtaType ? <EtaTypeBadge type={s.displayEtaType} /> : null}
+   406→   406→            <FreshnessBadge value={s.carrierEtaFreshness} />
+   407→   407→          </div>
+   408→   408→          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+   409→   409→            {s.displayEtaSource ? <span>src: {s.displayEtaSource}</span> : <span>src: —</span>}
+   410→   410→            {s.supplierPromisedEta && (
+   411→   411→              <span className="tabular-nums">
+   412→   412→                supplier promised {fmtDate(s.supplierPromisedEta)}
+   413→   413→                {slip != null && (
+   414→   414→                  <span className={`ml-1.5 ${CHIP} border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300`}>
+   415→   415→                    +{slip}d slip vs PO commitment
+   416→   416→                  </span>
+   417→   417→                )}
+   418→   418→              </span>
+   419→   419→            )}
+   420→   420→          </div>
+   421→   421→        </div>
+   422→   422→
+   423→   423→        <div className="mt-3 space-y-2">
+   424→   424→          {s.etaObservations.length === 0 ? (
+   425→   425→            <EmptyState message="No ETA observations recorded" />
+   426→   426→          ) : (
+   427→   427→            s.etaObservations.map((o) => (
+   428→   428→              <div key={o.id} className="rounded-lg border p-2.5">
+   429→   429→                <div className="flex flex-wrap items-center gap-1.5">
+   430→   430→                  <EtaTypeBadge type={o.estimateType} />
+   431→   431→                  <span className="text-xs font-medium">{o.sourceName}</span>
+   432→   432→                  <span className="ml-auto">
+   433→   433→                    <span className={`${CHIP} ${o.isActive ? "border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-300" : ZINC_CHIP}`}>
+   434→   434→                      {o.isActive ? "ACTIVE" : "INACTIVE"}
+   435→   435→                    </span>
+   436→   436→                  </span>
+   437→   437→                </div>
+   438→   438→                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs tabular-nums">
+   439→   439→                  <span>
+   440→   440→                    <span className="text-muted-foreground">ETA:</span>{" "}
+   441→   441→                    <span className={`font-semibold ${o.etaValue ? "" : "italic text-muted-foreground"}`}>
+   442→   442→                      {o.etaValue ? fmtDate(o.etaValue) : "not enough data"}
+   443→   443→                    </span>
+   444→   444→                  </span>
+   445→   445→                  {o.etaRangeTo && (
+   446→   446→                    <span className="text-muted-foreground">
+   447→   447→                      range: {fmtDate(o.etaRangeFrom ?? o.etaValue)} – {fmtDate(o.etaRangeTo)}
+   448→   448→                    </span>
+   449→   449→                  )}
+   450→   450→                  <span className="text-muted-foreground">calc {fmtRelative(o.calculatedAt)}</span>
+   451→   451→                  {o.confidence != null && <span className="text-muted-foreground">conf {o.confidence.toFixed(2)}</span>}
+   452→   452→                </div>
+   453→   453→                {o.inputLineage && <p className="mt-1 text-[11px] text-muted-foreground">{o.inputLineage}</p>}
+   454→   454→                {o.note && <p className="mt-0.5 text-[11px] italic text-muted-foreground">{o.note}</p>}
+   455→   455→              </div>
+   456→   456→            ))
+   457→   457→          )}
+   458→   458→        </div>
+   459→   459→        <p className="mt-3 text-[11px] text-muted-foreground">
+   460→   460→          All ETA observations retained — never silently overwrite one source with another (Rule 9/M11).
+   461→   461→        </p>
+   462→   462→        {hasModelEta && (
+   463→   463→          <p className="mt-1 text-[11px] text-teal-700 dark:text-teal-400">Forecast with uncertainty — not a guaranteed arrival (Rule 15).</p>
+   464→   464→        )}
+   465→   465→      </SectionCard>
+   466→   466→
+   467→   467→      {/* c) vessel vs container */}
+   468→   468→      <SectionCard title="Vessel vs container identity" subtitle="AIS vessel position is never claimed as container position (Rule 4 / M09)">
+   469→   469→        <div className="grid gap-4 md:grid-cols-2">
+   470→   470→          {/* vessel block */}
+   471→   471→          <div className="rounded-lg border p-3">
+   472→   472→            <div className="flex items-center gap-2">
+   473→   473→              <Anchor className="h-4 w-4 text-zinc-500" aria-hidden />
+   474→   474→              <h3 className="text-xs font-bold uppercase tracking-wide">Vessel</h3>
+   475→   475→            </div>
+   476→   476→            <p className="mt-2 text-sm font-semibold">
+   477→   477→              {s.vesselName ?? "No vessel reported"}
+   478→   478→              {s.vesselVoyage ? <span className="ml-1 font-mono text-xs font-normal text-muted-foreground">/ {s.vesselVoyage}</span> : null}
+   479→   479→            </p>
+   480→   480→            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs tabular-nums">
+   481→   481→              {s.vesselPositionLat != null && s.vesselPositionLng != null ? (
+   482→   482→                <span>
+   483→   483→                  position {s.vesselPositionLat.toFixed(2)}, {s.vesselPositionLng.toFixed(2)}
+   484→   484→                </span>
+   485→   485→              ) : (
+   486→   486→                <span className="italic text-muted-foreground">no position reported</span>
+   487→   487→              )}
+   488→   488→              <FreshnessBadge value={vesselFreshness(s.vesselPositionAt)} />
+   489→   489→              {s.vesselPositionAt && <span className="text-muted-foreground">at {fmtDateTime(s.vesselPositionAt)}</span>}
+   490→   490→            </div>
+   491→   491→            {s.vesselSource && <p className="mt-1 text-[11px] text-muted-foreground">src: {s.vesselSource}</p>}
+   492→   492→            {s.vesselLinkEvidence ? (
+   493→   493→              <p className="mt-2 text-[11px] leading-relaxed">
+   494→   494→                <span className="font-semibold">Link evidence:</span> <span className="text-muted-foreground">{s.vesselLinkEvidence}</span>
+   495→   495→              </p>
+   496→   496→            ) : (
+   497→   497→              <div className={`${ROSE_CALLOUT} mt-2`}>
+   498→   498→                No evidenced container-to-vessel relationship — vessel position cannot be attributed to the container (Rule 4).
+   499→   499→              </div>
+   500→   500→            )}
+   501→   501→          </div>
+   502→   502→
+   503→   503→          {/* container block */}
+   504→   504→          <div className="rounded-lg border p-3">
+   505→   505→            <div className="flex items-center gap-2">
+   506→   506→              <ContainerIcon className="h-4 w-4 text-zinc-500" aria-hidden />
+   507→   507→              <h3 className="text-xs font-bold uppercase tracking-wide">Containers</h3>
+   508→   508→            </div>
+   509→   509→            {s.containers.length === 0 ? (
+   510→   510→              <p className="mt-2 text-xs italic text-muted-foreground">No containers recorded (e.g. LCL / break-bulk without container visibility).</p>
+   511→   511→            ) : (
+   512→   512→              <div className="mt-2 space-y-3">
+   513→   513→                {s.containers.map((c) => {
+   514→   514→                  const unresolved = c.identityStatus !== "RESOLVED";
+   515→   515→                  return (
+   516→   516→                    <div key={c.id} className="rounded-md border bg-muted/30 p-2.5">
+   517→   517→                      <div className="flex flex-wrap items-center gap-1.5">
+   518→   518→                        <span className={`font-mono text-sm font-bold ${c.containerNo ? "" : "text-rose-700 dark:text-rose-400"}`}>
+   519→   519→                          {c.containerNo ?? "MISSING"}
+   520→   520→                        </span>
+   521→   521→                        <StatusPill value={c.identityStatus} className={identityPillCls(c.identityStatus)} />
+   522→   522→                      </div>
+   523→   523→                      <p className="mt-1 text-[11px] tabular-nums text-muted-foreground">
+   524→   524→                        {c.sizeType ?? "size/type —"} · seal {c.sealNo ?? "—"}
+   525→   525→                        {c.packageCount != null ? ` · ${c.packageCount} packages` : ""}
+   526→   526→                      </p>
+   527→   527→                      <p className="text-[11px] text-muted-foreground">identity source: {c.identitySource ?? "none — unresolved"}</p>
+   528→   528→                      {c.note && <p className="mt-1 text-[11px] italic text-muted-foreground">{c.note}</p>}
+   529→   529→                      {unresolved && (
+   530→   530→                        <div className={`${ROSE_CALLOUT} mt-2`}>
+   531→   531→                          Container location unresolved — tracking starts only when a valid provider identifier/feed is available (M09/M11).
+   532→   532→                        </div>
+   533→   533→                      )}
+   534→   534→                    </div>
+   535→   535→                  );
+   536→   536→                })}
+   537→   537→              </div>
+   538→   538→            )}
+   539→   539→          </div>
+   540→   540→        </div>
+   541→   541→      </SectionCard>
+   542→   542→
+   543→   543→      {/* d) milestone timeline */}
+   544→   544→      <SectionCard title="Milestone timeline" subtitle="Event time and ingestion (received) time shown separately — corrections preserved">
+   545→   545→        {s.freshness === "stale" && (
+   546→   546→          <div className="mb-3 rounded-md border border-orange-300 bg-orange-50 p-2.5 text-xs leading-relaxed text-orange-900 dark:border-orange-400/25 dark:bg-orange-400/10/50 dark:text-orange-300">
+   547→   547→            Carrier data STALE — last successful sync {fmtDateTime(s.lastEventAt)}. Last-known values shown; provider outage — bounded retries queued
+   548→   548→            (failure matrix row 1).
+   549→   549→          </div>
+   550→   550→        )}
+   551→   551→        {milestones.length === 0 ? (
+   552→   552→          <EmptyState message="No milestones recorded" />
+   553→   553→        ) : (
+   554→   554→          <ol className={`max-h-[460px] space-y-4 overflow-y-auto border-l border-zinc-200 pl-5 ml-2 dark:border-zinc-800 ${SCROLL}`}>
+   555→   555→            {milestones.map((m) => (
+   556→   556→              <li key={m.id} className="relative">
+   557→   557→                <span
+   558→   558→                  className={`absolute -left-[26px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-card ${DOT[m.freshness] ?? DOT.unavailable}`}
+   559→   559→                  aria-hidden
+   560→   560→                />
+   561→   561→                <div className="flex flex-wrap items-center gap-1.5">
+   562→   562→                  <span className="text-sm font-medium">{m.label}</span>
+   563→   563→                  <span className={`${CHIP} border-zinc-300 bg-zinc-100 font-mono text-zinc-600 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-400`}>
+   564→   564→                    {m.code}
+   565→   565→                  </span>
+   566→   566→                  {m.isEstimated && (
+   567→   567→                    <span className={`${CHIP} border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300`}>
+   568→   568→                      ESTIMATED
+   569→   569→                    </span>
+   570→   570→                  )}
+   571→   571→                  <FreshnessBadge value={m.freshness} />
+   572→   572→                </div>
+   573→   573→                {m.location && (
+   574→   574→                  <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+   575→   575→                    <MapPin className="h-3 w-3" aria-hidden /> {m.location}
+   576→   576→                  </p>
+   577→   577→                )}
+   578→   578→                <p className="mt-1 text-xs tabular-nums">
+   579→   579→                  <span className="text-muted-foreground">event:</span> <span className="font-semibold">{fmtDateTime(m.eventTime)}</span>
+   580→   580→                  <span className="mx-2 text-zinc-300 dark:text-zinc-700">|</span>
+   581→   581→                  <span className="text-muted-foreground">received:</span> <span className="font-semibold">{fmtDateTime(m.receivedAt)}</span>
+   582→   582→                </p>
+   583→   583→                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+   584→   584→                  <span className={`${CHIP} border-zinc-300 bg-zinc-100 font-mono text-zinc-600 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-400`}>
+   585→   585→                    {m.source}
+   586→   586→                  </span>
+   587→   587→                  {m.confidence != null && (
+   588→   588→                    <span className="text-[10px] tabular-nums text-muted-foreground">conf {m.confidence.toFixed(2)}</span>
+   589→   589→                  )}
+   590→   590→                  {m.correctedByEventId && (
+   591→   591→                    <span className={`${CHIP} border-teal-300 bg-teal-100 font-mono text-teal-800 dark:border-teal-400/25 dark:bg-teal-400/10 dark:text-teal-300`}>
+   592→   592→                      corrects {m.correctedByEventId}
+   593→   593→                    </span>
+   594→   594→                  )}
+   595→   595→                </div>
+   596→   596→                {m.note && <p className="mt-1 text-xs italic text-muted-foreground">{m.note}</p>}
+   597→   597→              </li>
+   598→   598→            ))}
+   599→   599→          </ol>
+   600→   600→        )}
+   601→   601→      </SectionCard>
+   602→   602→
+   603→   603→      {/* e) legs + documents */}
+   604→   604→      <SectionCard title="Legs & documents" subtitle="Route legs and import dossier documents">
+   605→   605→        {s.legs.length === 0 ? (
+   606→   606→          <p className="py-2 text-xs italic text-muted-foreground">No legs recorded for this shipment.</p>
+   607→   607→        ) : (
+   608→   608→          <Table>
+   609→   609→            <TableHeader>
+   610→   610→              <TableRow>
+   611→   611→                <TableHead className="h-8 text-[10px] uppercase">Seq</TableHead>
+   612→   612→                <TableHead className="h-8 text-[10px] uppercase">Mode</TableHead>
+   613→   613→                <TableHead className="h-8 text-[10px] uppercase">From → To</TableHead>
+   614→   614→                <TableHead className="h-8 text-[10px] uppercase">Status</TableHead>
+   615→   615→              </TableRow>
+   616→   616→            </TableHeader>
+   617→   617→            <TableBody>
+   618→   618→              {s.legs.map((l) => (
+   619→   619→                <TableRow key={l.id}>
+   620→   620→                  <TableCell className="py-1.5 text-xs tabular-nums">{l.seq}</TableCell>
+   621→   621→                  <TableCell className="py-1.5">
+   622→   622→                    <span className="flex items-center gap-1 text-xs">
+   623→   623→                      <ModeIcon mode={l.mode} /> {l.mode}
+   624→   624→                    </span>
+   625→   625→                  </TableCell>
+   626→   626→                  <TableCell className="py-1.5 text-xs">
+   627→   627→                    {l.fromPoint ?? "—"} <span className="text-zinc-400">→</span> {l.toPoint ?? "—"}
+   628→   628→                    {l.carrier ? <span className="ml-1 text-muted-foreground">({l.carrier})</span> : null}
+   629→   629→                  </TableCell>
+   630→   630→                  <TableCell className="py-1.5">
+   631→   631→                    <StatusPill value={l.status} />
+   632→   632→                  </TableCell>
+   633→   633→                </TableRow>
+   634→   634→              ))}
+   635→   635→            </TableBody>
+   636→   636→          </Table>
+   637→   637→        )}
+   638→   638→        <Separator className="my-3" />
+   639→   639→        {documents.length === 0 ? (
+   640→   640→          <p className="py-1 text-xs italic text-muted-foreground">No dossier documents linked.</p>
+   641→   641→        ) : (
+   642→   642→          <ul className="space-y-1.5">
+   643→   643→            {documents.map((d) => (
+   644→   644→              <li key={d.id} className="flex flex-wrap items-center gap-2 text-xs">
+   645→   645→                <FileText className="h-3.5 w-3.5 text-zinc-500" aria-hidden />
+   646→   646→                <span className={`${CHIP} border-zinc-300 bg-zinc-100 font-mono uppercase text-zinc-600 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-400`}>
+   647→   647→                  {d.docType}
+   648→   648→                </span>
+   649→   649→                <span className="font-mono font-medium">{d.refNo ?? "—"}</span>
+   650→   650→                {d.issuer && <span className="text-muted-foreground">issued by {d.issuer}</span>}
+   651→   651→                {d.note && <span className="w-full text-[11px] italic text-muted-foreground sm:w-auto">{d.note}</span>}
+   652→   652→              </li>
+   653→   653→            ))}
+   654→   654→          </ul>
+   655→   655→        )}
+   656→   656→      </SectionCard>
+   657→   657→
+   658→   658→      {/* f) linked exceptions */}
+   659→   659→      <SectionCard title="Linked exceptions" subtitle="Closed-loop cases for this shipment — click to open in Exceptions">
+   660→   660→        {s.exceptionCases.length === 0 ? (
+   661→   661→          <EmptyState message="No exceptions linked to this shipment" />
+   662→   662→        ) : (
+   663→   663→          <ul className="space-y-1.5">
+   664→   664→            {s.exceptionCases.map((ex) => (
+   665→   665→              <li key={ex.id}>
+   666→   666→                <button
+   667→   667→                  type="button"
+   668→   668→                  onClick={() => onDrill("exceptions", ex.ref)}
+   669→   669→                  className="flex w-full flex-wrap items-center gap-2 rounded-lg border p-2.5 text-left transition-colors hover:bg-muted/50"
+   670→   670→                >
+   671→   671→                  <span className="font-mono text-xs font-bold">{ex.ref}</span>
+   672→   672→                  <CaseStateBadge state={ex.state} />
+   673→   673→                  <SeverityBadge value={ex.severity} />
+   674→   674→                  <span className="text-xs">{ex.title}</span>
+   675→   675→                </button>
+   676→   676→              </li>
+   677→   677→            ))}
+   678→   678→          </ul>
+   679→   679→        )}
+   680→   680→      </SectionCard>
+   681→   681→    </>
+   682→   682→  );
+   683→   683→}
+   684→   684→

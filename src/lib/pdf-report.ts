@@ -1,4 +1,4 @@
-/* NASS — Live Traceability PDF report renderer (server-side only).
+/* NASS — Freight Traceability PDF report renderer (server-side only).
  * Luxury black-gold brand, pure PDFKit vectors, built-in Helvetica family only
  * (no font files registered, no raster images). Consumes the TraceSnapshot
  * built by src/lib/trace.ts.
@@ -73,7 +73,7 @@ export async function renderLiveReport(snap: TraceSnapshot, ref?: string | null)
     margins: { top: M, bottom: M, left: M, right: M },
     info: {
       Title: perShip ? `NASS Live Report — ${ship?.ref ?? ref}` : "NASS Live Scenario Report",
-      Author: "NASS · Closed-Loop Supply Chain Intelligence",
+      Author: "NASS · Closed-Loop Control Tower",
       Subject: "Live traceability snapshot report",
       Creator: "NASS control tower",
     },
@@ -216,14 +216,14 @@ export async function renderLiveReport(snap: TraceSnapshot, ref?: string | null)
     doc.rect(0, H - 2.5, PAGE_W, 2.5).fill(PANEL); // subtle depth strip
     doc.moveTo(0, H + 0.75).lineTo(PAGE_W, H + 0.75).lineWidth(1.5).strokeColor(GOLD).stroke();
 
-    doc.font("Helvetica-Bold").fontSize(8).fillColor(GOLD).text("NASS · CLOSED-LOOP SUPPLY CHAIN INTELLIGENCE", M, 24, {
+    doc.font("Helvetica-Bold").fontSize(8).fillColor(GOLD).text("NASS · CLOSED-LOOP CONTROL TOWER", M, 24, {
       characterSpacing: 1.6,
       lineBreak: false,
     });
     // brand mark: small gold diamond, right edge
     diamond(PAGE_W - M - 3, 28, 4.2, GOLD, GOLD_LIGHT);
 
-    doc.font("Helvetica-Bold").fontSize(23).fillColor(GOLD_LIGHT).text("LIVE TRACEABILITY REPORT", M, 42, {
+    doc.font("Helvetica-Bold").fontSize(23).fillColor(GOLD_LIGHT).text("FREIGHT TRACEABILITY REPORT", M, 42, {
       characterSpacing: 0.6,
       lineBreak: false,
     });
@@ -241,7 +241,7 @@ export async function renderLiveReport(snap: TraceSnapshot, ref?: string | null)
     const hourLabel = snap.snapshotHourLabel.replace(/\s+block$/, "");
     doc.font("Helvetica").fontSize(7.5).fillColor(BAND_META);
     doc.text(`Generated at ${fmtNow()}`, M, 102, { lineBreak: false });
-    doc.text(`Hourly snapshot block · ${hourLabel}`, M, 102, {
+    doc.text(`Hourly snapshot block · ${hourLabel} · Destination: ${snap.destination.port}, Bahrain`, M, 102, {
       width: CONTENT_W,
       align: "right",
       lineBreak: false,
@@ -321,6 +321,8 @@ export async function renderLiveReport(snap: TraceSnapshot, ref?: string | null)
       ["Progress", `${Math.round(clamp01(s.progress) * 100)} %`],
       ["Speed", s.speedKn != null ? `${s.speedKn} kn` : "—"],
       ["Freshness", s.freshness],
+      ["Destination", s.destVerified ? `VERIFIED — ${s.destPort} (${s.destCountry})` : `NOT VERIFIED — ${s.destNote ?? "missing destination"}`],
+      ["Route provenance", `${s.routeProvenance === "estimated-corridor" ? "estimated corridor (waypoint geometry)" : s.routeProvenance === "land-leg" ? "land leg" : "no validated route"}${s.routeDistanceNm ? ` · ${s.routeDistanceNm} nm` : ""}${s.routeVia.length ? ` · via ${s.routeVia.join(", ")}` : ""}`],
       [
         "Last event",
         `${fmtDT(s.lastEventAt)}${s.lastEventSource ? ` · ${s.lastEventSource}` : ""}`,
@@ -405,7 +407,15 @@ export async function renderLiveReport(snap: TraceSnapshot, ref?: string | null)
       align: "right",
       lineBreak: false,
     });
-    y += rowH + 10;
+    y += rowH + 2;
+    doc.font("Helvetica-Oblique").fontSize(6.8).fillColor(MUTED);
+    doc.text(
+      `Values in PO currency${s.currency !== "USD" ? ` — USD equivalent USD ${nf2.format(s.importValueUsd)} at documented corporate FX (as of ${snap.fx.asOf.slice(0, 10)})` : ""} · derived from shipment-allocated PO lines`,
+      M,
+      y,
+      { lineBreak: false },
+    );
+    y += 10;
   };
 
   const whereToUseSection = (s: TraceShip) => {
@@ -529,7 +539,7 @@ export async function renderLiveReport(snap: TraceSnapshot, ref?: string | null)
       ["Delayed", nf0.format(t.delayed), false],
       ["Arrived", nf0.format(t.arrived), false],
       ["Booked", nf0.format(t.booked), false],
-      ["Import value", money0(t.importValue, t.currency), true],
+      ["Fleet value (USD eq.)", money0(t.importValueUsd, "USD"), true],
     ];
     const gap = 4;
     const tw = (CONTENT_W - gap * 7) / 8;

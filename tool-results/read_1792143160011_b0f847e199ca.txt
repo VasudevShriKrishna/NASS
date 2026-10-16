@@ -1,0 +1,648 @@
+     1→# NASS CLOSED-LOOP CONTROL TOWER
+     2→## Comprehensive Correction, Bahrain-First Freight Traceability, Decision Management & Operations Assistant
+     3→
+     4→### ROLE
+     5→
+     6→Act as a senior maritime logistics software architect, geospatial engineer, supply-chain control-tower specialist, AI operations-assistant engineer, and enterprise application developer.
+     7→
+     8→You must audit and improve the existing application shown in the supplied screenshots. Work with the actual codebase, map library, shipment records, APIs, components, database, and existing operations assistant.
+     9→
+    10→Do not simply redesign the interface or generate another static dashboard. Correct the underlying geography, shipment data, tracking logic, time handling, freight visibility, and decision-management workflows.
+    11→
+    12→The final result must be a credible operational control tower specifically configured for NASS in Bahrain.
+    13→
+    14→---
+    15→
+    16→# PHASE 1 — CORRECT THE PRODUCT IDENTITY AND GEOGRAPHIC SCOPE
+    17→
+    18→### 1.1 Official application identity
+    19→
+    20→Use these names consistently throughout the UI:
+    21→
+    22→**Main application:** NASS Closed-Loop Control Tower
+    23→
+    24→**Subtitle:** Freight Traceability, Decision Management & Operations Assistant
+    25→
+    26→**AI assistant:** NASS Operations Assistant
+    27→
+    28→**Decision module:** NASS Decision Management
+    29→
+    30→**Core purpose:** Provide a unified, evidence-based view of every relevant shipment, supplier, freight movement, port or jetty event, customs milestone, warehouse receipt, outstanding delivery, and operational decision.
+    31→
+    32→Remove generic titles such as “Live Traceability Command” where they conflict with the NASS-specific product identity. Remove unrelated company names, generic demo destinations, and inconsistent product labels.
+    33→
+    34→The interface must look like an enterprise logistics and decision-management system designed for NASS, not a generic shipping-animation demo.
+    35→
+    36→### 1.2 Bahrain is the required destination for this scenario
+    37→
+    38→Correct the existing destination configuration and every component that depends on it.
+    39→
+    40→Explicitly enforce the following rules:
+    41→
+    42→- Set the current NASS scenario's destination country to Bahrain.
+    43→- Use the actual configured Bahrain destination port, marine jetty, warehouse, or project delivery site.
+    44→- Never substitute the UAE as the destination because of a default coordinate, sample dataset, hard-coded port, geocoder fallback, or incorrect country mapping.
+    45→- Do not use an arbitrary point on the Saudi Arabian mainland to represent Bahrain.
+    46→- Do not mistake Bahrain, the Eastern Province of Saudi Arabia, Qatar, and the UAE for interchangeable Gulf destinations.
+    47→- If a shipment genuinely transships through a UAE port, display that port only when it is supported by the shipment's route or manifest. A UAE transit call must not silently become the final NASS destination.
+    48→- It is acceptable for the UAE to remain visible as part of the wider geographic map, but it must not be presented as the shipment destination unless the records explicitly say so.
+    49→
+    50→### 1.3 Validate every destination coordinate
+    51→
+    52→Inspect the existing configuration, geocoding calls, route endpoints, warehouse coordinates, port coordinates, and map-centering logic.
+    53→
+    54→Resolve coordinates from an authoritative port/site master or verified geographic source. Add validation that checks the returned location's country, port identity, and coordinates against the intended destination.
+    55→
+    56→For example, if the shipment is configured to arrive at Khalifa Bin Salman Port, use the verified coordinates for that Bahrain port. If the record instead specifies a dedicated NASS marine jetty or another Bahrain destination, use that specific location.
+    57→
+    58→Do not automatically set every NASS shipment's destination to KBSP. Do not silently replace a missing destination with a guessed location.
+    59→
+    60→When the destination is unknown, show **Destination not verified** and identify the missing field.
+    61→
+    62→### 1.4 Set the correct default map view
+    63→
+    64→On opening the application:
+    65→
+    66→- Center the main view on Bahrain and the surrounding Gulf region.
+    67→- Keep Bahrain and the actual NASS delivery location visible at an appropriate zoom level.
+    68→- Allow the user to inspect the complete international journey by zooming out or selecting a shipment.
+    69→- Provide clear labels for relevant ports, waterways, destination facilities, and shipment milestones.
+    70→- When a shipment is selected, fit the view to that shipment's actual route without losing the Bahrain destination from context.
+    71→
+    72→Do not open the application with an irrelevant destination or a world map zoom level that makes the Bahrain operation difficult to inspect.
+    73→
+    74→---
+    75→
+    76→# PHASE 2 — FIX THE MARITIME MAP AND ROUTE GEOMETRY
+    77→
+    78→### 2.1 Audit the current routing implementation
+    79→
+    80→The supplied screenshots show diagonal route lines that resemble direct point-to-point connections rather than verified maritime routes.
+    81→
+    82→Inspect the implementation to establish whether it is using:
+    83→
+    84→- Straight lines between origin and destination coordinates.
+    85→- Interpolated latitude and longitude values.
+    86→- A generic land-routing service for sea transport.
+    87→- Incorrect port or supplier coordinates.
+    88→- A hard-coded route shared by several shipments.
+    89→- Simplified map polylines that cross land.
+    90→- Incorrect longitude/latitude ordering.
+    91→- Marker positions that are independent of their route geometry.
+    92→
+    93→Identify and correct the actual root cause. Do not fix the issue solely by changing line curvature, color, or thickness.
+    94→
+    95→### 2.2 Implement route geometry appropriate to the transport mode
+    96→
+    97→Use a suitable maritime routing service when available. If such a service is unavailable, use validated port-to-port maritime waypoint geometry and clearly identify estimated or illustrative routes.
+    98→
+    99→Every main sea route must follow navigable water, appropriate port approaches, and relevant navigable canals or straits.
+   100→
+   101→For a shipment from Genoa to a verified destination in Bahrain, the expected maritime corridor would generally involve the Mediterranean, the Suez Canal, the Red Sea, the Gulf of Aden, the Arabian Sea, the Gulf of Oman, the Strait of Hormuz, and the Persian Gulf, subject to the actual routing and operational restrictions.
+   102→
+   103→This is an example, not a universal route. Calculate every shipment according to its actual origin, export port, destination port, vessel route, and documented transshipment points.
+   104→
+   105→Never create a maritime route by simply interpolating the coordinates of two ports.
+   106→
+   107→### 2.3 Separate different freight legs
+   108→
+   109→Show different transport legs as separate, connected segments:
+   110→
+   111→**Supplier to export port:** Use the configured land transport or relevant feeder route.
+   112→
+   113→**Export port to destination port:** Use maritime routing and the appropriate vessel or marine transport mode.
+   114→
+   115→**Destination port or jetty to warehouse/project site:** Use the configured land transport leg if applicable.
+   116→
+   117→Represent actual multimodal freight correctly. A vessel's sea route must not be drawn as a direct line from an inland supplier to an inland warehouse.
+   118→
+   119→The legend must clearly distinguish a maritime route, land feeder route, port/jetty stop, customs checkpoint, warehouse, and project delivery location.
+   120→
+   121→### 2.4 Render route progress properly
+   122→
+   123→For each shipment, display:
+   124→
+   125→- The verified travelled portion of the route as a solid line.
+   126→- The estimated remaining route as a dashed line.
+   127→- A vessel marker at its valid current or last confirmed position.
+   128→- A visible origin, destination, and relevant intermediate stops.
+   129→- A shipment identifier associated with the correct route.
+   130→- A clear indication of whether the route is verified, estimated, or illustrative.
+   131→
+   132→The travelled and remaining segments must be calculated from the same route geometry and progress state.
+   133→
+   134→### 2.5 Keep moving vessels on their actual routes
+   135→
+   136→Correct the vessel-animation implementation.
+   137→
+   138→Vessels must progress along ordered route waypoints or a distance-based position along a validated polyline. They must not travel in a straight line between their starting and ending coordinates.
+   139→
+   140→Speed controls must not change the route itself. Vessel markers must remain aligned with their corresponding route when the user zooms, pans, filters, or selects another shipment.
+   141→
+   142→Do not use random map coordinates to simulate vessel positions.
+   143→
+   144→If only a simulated route is available, clearly label it as simulated. Never imply that a vessel is physically present at a location simply because an animation placed it there.
+   145→
+   146→---
+   147→
+   148→# PHASE 3 — AUDIT ALL SHIPMENTS INDIVIDUALLY
+   149→
+   150→The current interface displays shipment references SHP-8801, SHP-8802, SHP-8803, SHP-8804, SHP-8805, SHP-8806, and SHP-8807.
+   151→
+   152→Audit every record individually. Do not assume the seven records are correct because their labels appear on the map.
+   153→
+   154→For each shipment, validate the following fields wherever applicable:
+   155→
+   156→1. Shipment ID.
+   157→2. Supplier and supplier-site address.
+   158→3. Purchase order and project reference.
+   159→4. Cargo description and material type.
+   160→5. Quantity, unit of measure, and weight.
+   161→6. Declared freight or cargo value and currency.
+   162→7. Transport mode.
+   163→8. Export port, intermediate ports, and Bahrain destination.
+   164→9. Vessel, carrier, and transport reference.
+   165→10. Container number or bulk-cargo reference, as appropriate.
+   166→11. Bill-of-lading reference and supporting documents.
+   167→12. Customs status and port/jetty milestones.
+   168→13. Current or last confirmed position and its observation time.
+   169→14. Most recent event, event location, and event timestamp.
+   170→15. Estimated arrival time and the source of the estimate.
+   171→16. Warehouse/project delivery status and outstanding quantity.
+   172→17. Responsible owner, outstanding exception, and next required action.
+   173→
+   174→Use existing verified records wherever possible. If the application currently uses demo data, keep the demo dataset internally consistent and clearly labeled.
+   175→
+   176→Do not invent vessels, container IDs, routes, timestamps, cargo amounts, customs clearances, shipment events, or supplier information and present them as real data.
+   177→
+   178→### Transport modes must reflect actual NASS operations
+   179→
+   180→Do not design the system exclusively for container shipping.
+   181→
+   182→Support applicable transport modes, including container vessels, bulk carriers, tugs and barges, trucks, and other configured freight modes.
+   183→
+   184→For container cargo, track container numbers and relevant container milestones. For bulk cargo, track the appropriate consignment, vessel or barge, cargo quantity, unit of measure, loading and unloading events, and relevant freight documents.
+   185→
+   186→Where information is not applicable, such as a container number for non-containerized bulk cargo, mark it as not applicable rather than fabricating a value.
+   187→
+   188→---
+   189→
+   190→# PHASE 4 — CORRECT THE FLEET SUMMARY, MARKERS, AND COUNTERS
+   191→
+   192→The current screenshot shows these summary values:
+   193→
+   194→- In transit: 1.
+   195→- At port: 0.
+   196→- Customs hold: 1.
+   197→- Delayed: 3.
+   198→- Arrived: 2.
+   199→
+   200→These add up to seven shipments, but the individual records must be inspected to determine whether the classifications are correct.
+   201→
+   202→Do not simply hard-code those totals.
+   203→
+   204→Create one authoritative status calculation that drives the header counters, shipment table, map markers, status legend, filters, and selected-shipment panel.
+   205→
+   206→Validate all seven shipment records and ensure that their statuses agree across every view.
+   207→
+   208→The implementation must handle:
+   209→
+   210→- In-transit shipments.
+   211→- Arrived-at-port shipments.
+   212→- Customs holds.
+   213→- Delayed shipments.
+   214→- Delivered or received shipments, if represented separately.
+   215→- Booked or not-yet-dispatched shipments.
+   216→- Unknown or stale states.
+   217→
+   218→Define the relationship between these states clearly. An arrived-at-port shipment is not necessarily delivered to the warehouse, and a delayed shipment may also be physically at a port. If the UI supports multiple operational conditions, model the dimensions explicitly rather than forcing misleading single-state classifications.
+   219→
+   220→Prevent duplicate counting, stale counters, and incorrect counts caused by hidden or filtered records.
+   221→
+   222→Clarify whether the header shows global totals or filtered totals.
+   223→
+   224→Check every visible route color and marker against the actual status record. The legend must describe the real semantics of the colors and line styles.
+   225→
+   226→If several markers overlap, use sensible clustering and label positioning. A cluster marked “×2” must represent exactly two records or markers according to a clearly defined rule, and it must be inspectable.
+   227→
+   228→---
+   229→
+   230→# PHASE 5 — BUILD A COMPLETE FREIGHT AND SHIPMENT EVENT HISTORY
+   231→
+   232→The system must explain not only where a shipment is now, but where it was at a particular time, what event occurred at each point, and how much cargo was involved.
+   233→
+   234→Implement or repair a persistent shipment-event history.
+   235→
+   236→Each event should record, as applicable:
+   237→
+   238→- Event ID.
+   239→- Shipment ID.
+   240→- Event type.
+   241→- Actual location and coordinates.
+   242→- Port, jetty, terminal, checkpoint, or warehouse.
+   243→- Event observation timestamp.
+   244→- Source-recorded timestamp.
+   245→- System ingestion timestamp.
+   246→- Event status.
+   247→- Cargo quantity and unit when relevant.
+   248→- Shipment or transport reference.
+   249→- Data source and source-record ID.
+   250→- Verification state.
+   251→- Associated document or evidence reference.
+   252→- Any correction, cancellation, or superseding event.
+   253→
+   254→Keep event time separate from the time the platform received the event.
+   255→
+   256→Store timestamps consistently and display them in Bahrain local time, using the Asia/Bahrain timezone, with clear dates and UTC offsets where needed.
+   257→
+   258→Retain historical events so an authorized user can ask what happened at an earlier time. Do not overwrite the only copy of an earlier event with a newer position.
+   259→
+   260→If historical records are unavailable, state that limitation clearly rather than inventing a history.
+   261→
+   262→### Required milestone visibility
+   263→
+   264→Where the source systems support them, track:
+   265→
+   266→- Purchase order confirmation.
+   267→- Supplier readiness.
+   268→- Cargo collection.
+   269→- Arrival at origin terminal.
+   270→- Export customs processing.
+   271→- Vessel loading and departure.
+   272→- Port calls and transshipment.
+   273→- Position updates during transit.
+   274→- Arrival at the destination port.
+   275→- Discharge or unloading.
+   276→- Import customs clearance.
+   277→- Release from port or jetty.
+   278→- Inland transport.
+   279→- Arrival at the NASS warehouse or project site.
+   280→- Goods receipt and quantity reconciliation.
+   281→- Damage, shortage, discrepancy, and final closure.
+   282→
+   283→Display which milestones are confirmed, estimated, pending, missing, or overdue.
+   284→
+   285→Do not mark a milestone complete simply because the vessel marker has reached a particular point on the map.
+   286→
+   287→---
+   288→
+   289→# PHASE 6 — IMPLEMENT THE NASS OPERATIONS ASSISTANT
+   290→
+   291→Create a functional assistant within the existing control tower called:
+   292→
+   293→**NASS Operations Assistant**
+   294→
+   295→It must operate as a query and decision interface over the actual shipment, event, freight, supplier, procurement, document, inventory, and task records connected to the application.
+   296→
+   297→Do not build a superficial chatbot with predefined responses.
+   298→
+   299→Do not rely on the language model's general knowledge to guess the current location of a vessel, shipment quantity, ETA, customs status, or supplier update.
+   300→
+   301→The assistant must retrieve the relevant records through the application's data layer, query service, or approved API integrations. Where calculations are needed, use deterministic logic based on those records.
+   302→
+   303→### 6.1 Questions users must be able to ask
+   304→
+   305→**Shipment location and route**
+   306→
+   307→- Where is SHP-8801 now?
+   308→- What was its last confirmed location, and when was that position observed?
+   309→- Which port or waypoint did it last reach?
+   310→- Which route is it following to Bahrain?
+   311→- What are the next expected waypoints?
+   312→- Which vessel or transport reference is carrying it?
+   313→- Show its complete journey from origin to the NASS destination.
+   314→- Where was this shipment at 08:00 Bahrain time on a specified date?
+   315→
+   316→**Freight and quantity**
+   317→
+   318→- What material is SHP-8801 carrying?
+   319→- How much material was dispatched?
+   320→- What quantity is currently recorded as in transit?
+   321→- How much has arrived at the Bahrain port or jetty?
+   322→- How much has been received at the NASS warehouse or project site?
+   323→- What quantity remains outstanding?
+   324→- How many containers, bulk consignments, or transport units are involved?
+   325→- Which shipments contain a specified material?
+   326→- What is the total shipment value, and in which currency?
+   327→- Which shipments have a quantity discrepancy or missing freight documentation?
+   328→
+   329→Use the correct unit of measure, such as tonnes, kilograms, cubic metres, pallets, containers, or pieces. Do not add incompatible units or convert them without a valid conversion basis.
+   330→
+   331→**Port and waypoint visibility**
+   332→
+   333→- Which shipments are at each port right now?
+   334→- What freight is currently recorded at each point?
+   335→- How much cargo entered or left this port during a specified period?
+   336→- Which shipments are waiting for customs clearance?
+   337→- Which vessels have arrived but have not completed unloading?
+   338→- Which consignments have left the port but have not reached their destination?
+   339→- How many updates have been recorded at each point today?
+   340→- Show every update received for SHP-8803, in chronological order.
+   341→- What was the latest recorded event at the Bahrain destination?
+   342→- Which events are missing between vessel arrival and warehouse receipt?
+   343→
+   344→The assistant must distinguish between the cargo that is physically present at a point, the quantity last recorded there, the quantity expected to arrive, and the quantity that has been confirmed as received.
+   345→
+   346→**Delivery, delay, and decision management**
+   347→
+   348→- Which shipments are delayed, and what evidence explains the delay?
+   349→- Which deliveries are expected in the next 24 hours?
+   350→- Which delayed consignments could affect a particular project?
+   351→- Which supplier has not provided a required shipping document?
+   352→- Which bill of lading is missing a container number, where that field applies?
+   353→- Which shipments have no reliable position update within the configured freshness window?
+   354→- What requires action today?
+   355→- Who owns each outstanding issue?
+   356→- What decision is needed to resolve the issue?
+   357→- Which exceptions remain open after the last operations review?
+   358→- Which actions have been completed, and what evidence confirms closure?
+   359→
+   360→**Historical and as-of-time questions**
+   361→
+   362→Support natural-language questions involving an explicit time, date, or time window.
+   363→
+   364→Examples:
+   365→
+   366→- What was the position of SHP-8804 at 14:00 Bahrain time yesterday?
+   367→- How much cargo had reached the destination by the end of a specified date?
+   368→- Show shipment updates between 08:00 and 12:00 on the selected date.
+   369→- Compare the quantity dispatched, landed, and received during the last seven days.
+   370→- Which shipment status changes occurred after the previous operations review?
+   371→
+   372→Use stored historical events and their timestamps. Do not answer a historical question using only the current marker position.
+   373→
+   374→If time interpretation is ambiguous, ask the user for clarification.
+   375→
+   376→### 6.2 Required answer format
+   377→
+   378→For shipment and freight queries, return a structured, readable answer containing the relevant fields:
+   379→
+   380→**Shipment:** ID and cargo description.
+   381→
+   382→**Current state:** Status and latest confirmed milestone.
+   383→
+   384→**Location:** Port, jetty, waypoint, warehouse, or project site.
+   385→
+   386→**Quantity:** Known quantity and unit, with expected, in-transit, landed, received, or outstanding quantities separated as applicable.
+   387→
+   388→**Time:** Event observation time, time received by the platform, and last successful source update where available.
+   389→
+   390→**Route:** Origin, intermediate points, destination, and next milestone.
+   391→
+   392→**ETA:** Estimated arrival and the source, calculation basis, or confidence limitations.
+   393→
+   394→**Evidence:** Underlying event, API, document, or system record supporting the answer.
+   395→
+   396→**Data quality:** Verified, estimated, simulated, stale, or unavailable.
+   397→
+   398→**Next action:** Only when supported by an identified operational exception.
+   399→
+   400→The assistant should use the relevant fields rather than printing empty sections for every question.
+   401→
+   402→When appropriate, show a map focused on the shipment and an event timeline alongside the answer. Selecting a result must open the correct underlying shipment record.
+   403→
+   404→### 6.3 Ground every answer in actual records
+   405→
+   406→The assistant must:
+   407→
+   408→- Query the connected data sources before making operational claims.
+   409→- Provide timestamps and provenance for tracking information.
+   410→- Separate observed facts from calculated values and estimates.
+   411→- Explain when a source is stale, unavailable, or contradictory.
+   412→- Never claim that a shipment is live-tracked if the system only contains a simulated route or periodic static record.
+   413→- Never invent a new event to make a route appear complete.
+   414→- Ask a clarification question when multiple shipments or ports match the request.
+   415→- State explicitly when required records do not exist.
+   416→
+   417→If no reliable current position is available, say, “No current verified position is available,” provide the last known position and timestamp if available, and identify what data is missing.
+   418→
+   419→### 6.4 Query architecture
+   420→
+   421→Inspect the existing assistant and improve its architecture rather than replacing it unnecessarily.
+   422→
+   423→Use an auditable query layer over the connected business records. Define secure query tools or service functions for shipment lookup, event history, cargo quantities, route information, ETA calculations, document retrieval, exception listing, and action status.
+   424→
+   425→The assistant must not have unrestricted direct database access or bypass application authorization.
+   426→
+   427→Use clear interfaces between the assistant, business logic, data layer, map, and event history.
+   428→
+   429→Do not present seeded demo responses as results from live operational systems.
+   430→
+   431→---
+   432→
+   433→# PHASE 7 — ADD CLOSED-LOOP DECISION MANAGEMENT
+   434→
+   435→The control tower must go beyond displaying routes and sending alerts.
+   436→
+   437→Implement a closed-loop workflow that turns an operational exception into an assigned, traceable, and verifiably closed action.
+   438→
+   439→Use this lifecycle:
+   440→
+   441→1. **Detect:** Identify a delay, unexpected port event, missing document, quantity discrepancy, stale update, customs hold, or other validated exception.
+   442→2. **Verify:** Retrieve supporting events and documents. Check the timestamps, data source, and shipment reference.
+   443→3. **Assess:** Explain the operational impact, affected material, potentially affected project, urgency, and uncertainty.
+   444→4. **Recommend:** Suggest a clearly justified next step. Separate the recommendation from any decision already approved.
+   445→5. **Assign:** Record the responsible team or person, agreed deadline, and priority.
+   446→6. **Approve:** Obtain the required authorized approval for decisions or external actions.
+   447→7. **Execute:** Record the action taken through the relevant connected system or verified manual workflow.
+   448→8. **Verify outcome:** Check whether the original issue was actually resolved using a new event, document, quantity reconciliation, or responsible-person confirmation.
+   449→9. **Close:** Store the closure evidence, timestamp, owner, and final status.
+   450→
+   451→Each action must have a unique ID, linked shipment or exception, owner, due date, status, supporting evidence, and closure history.
+   452→
+   453→Do not mark an alert resolved simply because a user dismissed it. Do not send messages, alter purchase orders, authorize payments, or commit external business actions without the required permission and approval.
+   454→
+   455→Show the outstanding exceptions, decisions awaiting approval, overdue actions, verified closures, and unresolved blockers in the Decision Management module.
+   456→
+   457→The assistant should answer questions such as:
+   458→
+   459→- What operational decisions require attention today?
+   460→- Why is this shipment flagged?
+   461→- What is the evidence for the recommended action?
+   462→- Who owns the next step?
+   463→- When is the action due?
+   464→- What has been done?
+   465→- Has the original issue been resolved?
+   466→- What evidence supports closure?
+   467→
+   468→---
+   469→
+   470→# PHASE 8 — CORRECT LIVE TRACKING, REFRESHES, AND SIMULATION
+   471→
+   472→The screenshots show an hourly synchronization message, a continuously moving map, a playback speed control, and a simulation mode. These must have precise and consistent meanings.
+   473→
+   474→Create separate states for:
+   475→
+   476→1. Actual tracking data received from a connected provider.
+   477→2. Periodic data synchronization.
+   478→3. Vessel or shipment position observed by a source.
+   479→4. Estimated position or ETA.
+   480→5. Simulated playback.
+   481→6. Stale or failed data sources.
+   482→
+   483→A simulation clock must not change the timestamp of real tracking observations.
+   484→
+   485→A continuously animated simulated marker must not be labeled as an actual live vessel location.
+   486→
+   487→The UI should display:
+   488→
+   489→- Last successful refresh time.
+   490→- Last source observation time.
+   491→- Next expected refresh, only when a refresh schedule is actually configured.
+   492→- Data source and connection status.
+   493→- Staleness or missing-data indicators.
+   494→- Simulation status and playback speed when simulation is active.
+   495→
+   496→Audit the consistency between the clock, date, hourly-sync label, countdown, and event timestamps in the screenshots. Use the correct timezone and handle date rollovers accurately.
+   497→
+   498→If a source fails, retain the last confirmed position with its observation time, show that the feed is stale, and report the error. Do not fabricate new positions, events, or ETA changes to keep the UI looking active.
+   499→
+   500→---
+   501→
+   502→# PHASE 9 — VALIDATE CARGO QUANTITIES, DOCUMENTS, AND FINANCIAL TOTALS
+   503→
+   504→Audit the current fleet value of USD 1,196,000 and any quantities, counts, weights, or totals displayed in the interface.
+   505→
+   506→Every aggregate must be derived from its underlying source records.
+   507→
+   508→Verify:
+   509→
+   510→- Declared value and currency for each shipment.
+   511→- Whether the header represents cargo value, freight cost, insurance value, or another financial measure.
+   512→- Whether shipment values are denominated in a common currency.
+   513→- Whether conversions use a documented exchange rate and timestamp.
+   514→- Whether duplicate shipments or duplicate invoice records are being counted.
+   515→- Whether quantity totals use compatible units.
+   516→- Whether cargo quantity, shipped quantity, landed quantity, and received quantity are being confused.
+   517→
+   518→If a total cannot be validated, do not preserve a potentially incorrect hard-coded total. Identify it as unavailable or unverified.
+   519→
+   520→Link relevant bills of lading, purchase orders, supplier records, invoices, packing lists, customs documents, container references, and goods receipts where they exist.
+   521→
+   522→Flag missing required information as a data-quality exception. Do not fill important missing document fields with made-up identifiers.
+   523→
+   524→---
+   525→
+   526→# PHASE 10 — IMPROVE THE MAP AND SHIPMENT WORKSPACE
+   527→
+   528→Retain the existing premium dark command-center appearance with restrained gold and teal accents.
+   529→
+   530→Correct functional defects before cosmetic refinements.
+   531→
+   532→Ensure the interface includes:
+   533→
+   534→- A Bahrain-focused map.
+   535→- A shipment list with searchable shipment IDs.
+   536→- Origin, destination, and transport-mode information.
+   537→- Route and status filters.
+   538→- A clickable marker and route for each applicable shipment.
+   539→- An individual shipment details view.
+   540→- Cargo quantities, units, and document references.
+   541→- An event timeline with timestamps and data provenance.
+   542→- A clear distinction between the route's estimated remaining portion and completed portion.
+   543→- An operations-assistant panel.
+   544→- A Decision Management workspace.
+   545→- Exception and outstanding-action views.
+   546→- Clear labels that remain readable at different zoom levels.
+   547→
+   548→Prevent important shipment IDs from overlapping. Use label prioritization or clustering when necessary, but keep every shipment discoverable and individually inspectable.
+   549→
+   550→Use one consistent record for the selected shipment across the map, shipment panel, assistant, and decision workflow.
+   551→
+   552→When the user selects a shipment in the assistant or shipment list, highlight that shipment's route and display the same ID and tracking details in the other relevant components.
+   553→
+   554→---
+   555→
+   556→# PHASE 11 — IMPLEMENTATION RULES
+   557→
+   558→Before editing, inspect the actual project and identify the existing framework, mapping library, state management, routing code, shipment model, event model, API integrations, and operations assistant.
+   559→
+   560→Preserve working functionality and use the smallest coherent architectural changes needed to correct the system.
+   561→
+   562→Build reusable services and components for:
+   563→
+   564→- Destination and port validation.
+   565→- Maritime route resolution.
+   566→- Transport-mode-specific route rendering.
+   567→- Shipment records and event history.
+   568→- Time conversion and historical queries.
+   569→- Quantity and status aggregation.
+   570→- Tracking-source health and freshness.
+   571→- Natural-language operational queries.
+   572→- Decision and action lifecycle.
+   573→- Data-quality validation.
+   574→
+   575→Use the existing application architecture where appropriate. Do not invent a replacement framework or remove working components without a reason.
+   576→
+   577→Where a real data integration is not configured, implement an honest integration boundary and state what credentials, API, source, or operational data is required. If the existing environment has the necessary integration, connect and test it rather than leaving a mock implementation.
+   578→
+   579→Keep secrets out of client-side code. Validate external data, handle failures safely, and use appropriate access controls for operational and commercial information.
+   580→
+   581→---
+   582→
+   583→# PHASE 12 — ACCEPTANCE TESTS AND FINAL VERIFICATION
+   584→
+   585→Do not declare the work complete just because the screen renders.
+   586→
+   587→Run the following tests and report actual results.
+   588→
+   589→### Geographic and routing tests
+   590→
+   591→1. The default scenario identifies Bahrain as the destination.
+   592→2. No destination is silently substituted with the UAE.
+   593→3. The configured port, jetty, warehouse, and project-site coordinates are validated.
+   594→4. International maritime routes use appropriate sea-route geometry.
+   595→5. A Europe-to-Bahrain test route follows the applicable navigable corridor.
+   596→6. No ordinary sea leg crosses non-navigable land.
+   597→7. Supplier-to-port and port-to-warehouse feeder connections are displayed separately.
+   598→8. Every vessel marker remains aligned with its own route when playback runs.
+   599→9. Map zooming, panning, filtering, and selection do not break route geometry.
+   600→10. Every selected route terminates at its configured destination.
+   601→
+   602→### Shipment and data tests
+   603→
+   604→11. All seven visible shipment IDs can be searched, displayed, and inspected.
+   605→12. Each route corresponds to the correct shipment record.
+   606→13. The summary counters reconcile with the underlying status dataset.
+   607→14. Cargo quantities, units, financial totals, and document references are validated.
+   608→15. Unknown, stale, conflicting, and missing data are identified correctly.
+   609→16. Historical shipment events remain queryable.
+   610→17. Real, estimated, and simulated positions are distinguishable.
+   611→
+   612→### Operations Assistant tests
+   613→
+   614→18. The assistant can answer “Where is SHP-8801 now?” using the available record and timestamp.
+   615→19. The assistant can answer “How much of this material is in transit, at the port, and received?” without mixing quantities or units.
+   616→20. The assistant can answer a historical location question using stored event history.
+   617→21. The assistant can list shipments at a given port or waypoint and the quantities recorded there.
+   618→22. The assistant can show all updates for a selected shipment in chronological order.
+   619→23. The assistant identifies when no current verified location or quantity is available.
+   620→24. The assistant never fabricates a live position, event, port call, ETA, or cargo quantity.
+   621→
+   622→### Closed-loop decision tests
+   623→
+   624→25. A confirmed exception creates a traceable issue linked to its source records.
+   625→26. Recommended actions have an identifiable owner and deadline.
+   626→27. Approval and execution permissions are enforced.
+   627→28. The system does not mark an issue closed merely because an alert was dismissed.
+   628→29. Closure requires appropriate outcome evidence.
+   629→30. The assistant can explain the current status of the issue and the next required action.
+   630→
+   631→### Final deliverables
+   632→
+   633→After implementation, provide:
+   634→
+   635→1. A concise list of the confirmed root causes.
+   636→2. The files and components changed.
+   637→3. The exact correction made to destination configuration and route geometry.
+   638→4. Validation results for all seven shipment records.
+   639→5. The data sources actually connected, and which fields are still simulated or unavailable.
+   640→6. The operations-assistant capabilities implemented and tested.
+   641→7. The closed-loop decision workflow implemented.
+   642→8. Automated test results and any outstanding failures.
+   643→9. A screenshot of the corrected application with the Bahrain destination visible and valid maritime routes.
+   644→10. Any remaining limitations and the specific data or integration needed to resolve them.
+   645→
+   646→**Final acceptance condition:** The application must operate as the NASS Closed-Loop Control Tower, with Bahrain correctly configured for this scenario, independently traceable shipments, geographically credible maritime routes, timestamped and evidence-backed freight updates, an operations assistant that can answer questions about any recorded shipment or freight event, and a decision-management process that follows issues through verified resolution.
+   647→
+   648→Do not claim full live tracking or completed integrations unless the implementation and connected data prove that they work.

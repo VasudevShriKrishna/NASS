@@ -56,7 +56,7 @@ const NAV: { group: string; items: { id: ViewId; label: string; icon: React.Reac
     items: [
       { id: "live", label: "Live Traceability", icon: <RadioTower className="h-4 w-4" /> },
       { id: "control-tower", label: "Control Tower", icon: <LayoutDashboard className="h-4 w-4" /> },
-      { id: "assistant", label: "Ops Assistant", icon: <MessageSquareText className="h-4 w-4" /> },
+      { id: "assistant", label: "Operations Assistant", icon: <MessageSquareText className="h-4 w-4" /> },
     ],
   },
   {
@@ -86,7 +86,7 @@ const NAV: { group: string; items: { id: ViewId; label: string; icon: React.Reac
     group: "Operate (M16–M19)",
     items: [
       { id: "exceptions", label: "Exceptions (Closed Loop)", icon: <BellRing className="h-4 w-4" /> },
-      { id: "actions", label: "Actions & Approvals", icon: <ArrowLeftRight className="h-4 w-4" /> },
+      { id: "actions", label: "Decision Management", icon: <ArrowLeftRight className="h-4 w-4" /> },
     ],
   },
   {
@@ -143,9 +143,9 @@ function Brand() {
       </div>
       <div className="min-w-0 leading-tight">
         <p className="truncate font-display text-sm font-bold tracking-wide">
-          NASS <span className="text-gold-grad">Supply Chain Intelligence</span>
+          NASS <span className="text-gold-grad">Closed-Loop Control Tower</span>
         </p>
-        <p className="mt-0.5 text-[9px] font-medium uppercase tracking-[0.28em] text-muted-foreground">Closed-loop control tower</p>
+        <p className="mt-0.5 text-[9px] font-medium uppercase tracking-[0.22em] text-muted-foreground">Freight Traceability · Decision Management · Operations Assistant</p>
       </div>
     </div>
   );
@@ -200,7 +200,7 @@ export default function Home() {
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
               <Boxes className="h-4 w-4" />
             </div>
-            <span className="text-sm font-bold">NASS SCI</span>
+            <span className="text-sm font-bold">NASS CT</span>
           </div>
 
           <div className="hidden items-center gap-2 lg:flex">
@@ -211,7 +211,7 @@ export default function Home() {
             <button
               type="button"
               onClick={() => openTrace()}
-              title="Open the Live Traceability Command View"
+              title="Open the NASS Freight Traceability Map"
               className="ml-1 hidden cursor-pointer items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-primary transition-colors hover:bg-primary/20 md:inline-flex"
             >
               <PulsingDot /> live map
@@ -279,8 +279,8 @@ export default function Home() {
         <div className="hairline-gold h-px w-full" aria-hidden />
         <div className="flex flex-col items-center justify-between gap-2 px-4 py-3 text-[11px] text-muted-foreground sm:flex-row">
           <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center sm:text-left">
-            <span className="font-semibold text-foreground">NASS <span className="text-gold-grad">Closed-Loop Supply Chain Intelligence</span></span>
-            <span>· skill spec v1.0.0</span>
+            <span className="font-semibold text-foreground">NASS <span className="text-gold-grad">Closed-Loop Control Tower</span></span>
+            <span>· Freight Traceability, Decision Management &amp; Operations Assistant</span>
             <span>· evidence-before-assertion · vessel ≠ container · verified outcomes only</span>
           </p>
           <p className="flex items-center gap-1.5 whitespace-nowrap">
@@ -289,7 +289,7 @@ export default function Home() {
         </div>
       </footer>
 
-      {/* Live Traceability Command View — full-screen overlay.
+      {/* NASS Freight Traceability Map — full-screen overlay.
           Rendered OUTSIDE PageFade/main: framer-motion's filter on PageFade
           would trap position:fixed inside a transformed containing block. */}
       {view === "live" && <LiveTraceabilityView drillRef={drillRef} />}

@@ -18,12 +18,12 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { config as maplibreConfig, GeoJSONSource, LngLatBounds, Map as MlMap, Marker, StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { Crosshair, Globe2, Minus, Plus } from "lucide-react";
+import { Crosshair, Home, Minus, Plus } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { STATUS_COLOR } from "@/components/app/world-map";
 import { fmtCountdown } from "@/components/app/live-clock";
 import { lookupPort } from "@/lib/geo";
-import { GcRoute, liveProgressAt, valueNorms } from "@/lib/gc-route";
+import { MaritimeRoute, liveProgressAt, resolveMaritimeRoute, valueNorms, viaFromLegs } from "@/lib/maritime-routes";
 import { SUPPLIER_SITES, WAREHOUSE_SITES } from "@/lib/geo-sites";
 import type { TraceShip } from "@/lib/trace-types";
 import { cn } from "@/lib/utils";
@@ -49,10 +49,11 @@ type WorldBundle = {
 };
 
 const EMPTY_FC: FC = { type: "FeatureCollection", features: [] };
-const WORLD_BOUNDS: [LngLat, LngLat] = [
-  [-171, -57],
-  [179, 73],
-];
+
+/* Phase 1.4: the default / reset camera is the BAHRAIN operations view —
+ * Bahrain, KBSP and the surrounding Gulf visible at an appropriate zoom.
+ * The full international journey is one Fit-fleet / zoom-out away.        */
+const BAHRAIN_HOME = { center: [51.8, 25.2] as LngLat, zoom: 3.9 };
 
 /* marching-ants dash sequence (MapLibre "animate a line" pattern) */
 const DASH_SEQ: number[][] = [
@@ -87,7 +88,7 @@ const elFromHTML = (html: string): HTMLElement => {
 
 interface VesselEntry {
   ship: TraceShip;
-  arc: GcRoute;
+  arc: MaritimeRoute;
   marker: Marker;
   el: HTMLButtonElement;
   rotEl: HTMLElement;
@@ -198,7 +199,7 @@ export function OperationMap({
   const dashPhaseRef = useRef(0);
 
   const vesselsRef = useRef<Map<string, VesselEntry>>(new Map());
-  const arcsRef = useRef<Map<string, GcRoute>>(new Map());
+  const arcsRef = useRef<Map<string, MaritimeRoute>>(new Map());
   const portsRef = useRef<Map<string, DotEntry>>(new Map());
   const sitesRef = useRef<Map<string, { kind: "supplier" | "warehouse"; code: string; entry: DotEntry }>>(new Map());
   const labelsRef = useRef<Map<string, LabelEntry>>(new Map());
@@ -416,19 +417,21 @@ export function OperationMap({
   const tipHTML = (ship: TraceShip, p: number) => {
     const c = STATUS_COLOR[ship.liveStatus];
     const eta = ship.eta ? fmtCountdown(+new Date(ship.eta) - Date.now()) : "no carrier ETA";
+    const prov = ship.routeProvenance === "estimated-corridor" ? "estimated corridor" : ship.routeProvenance === "land-leg" ? "land leg" : "route unavailable";
     return `
       <div class="${styles.tipRef}">
         <span style="display:inline-block;width:7px;height:7px;border-radius:999px;background:${c};box-shadow:0 0 6px ${c}"></span>
         <span style="color:${c}">${esc(ship.ref)}</span>
         <span style="color:oklch(0.6 0.02 90);font-weight:600">${esc(ship.vesselName ?? ship.carrier ?? "vessel unlinked")}</span>
       </div>
-      <div class="${styles.tipRoute}">${esc(ship.from?.label ?? ship.originPort)} → ${esc(ship.to?.label ?? ship.destPort)}</div>
+      <div class="${styles.tipRoute}">${esc(ship.from?.label ?? ship.originPort)} → ${esc(ship.to?.label ?? ship.destPort)}${ship.destVerified ? "" : " · ⚠ dest unverified"}</div>
       <div class="${styles.tipGrid}">
         <span class="${styles.tipK}">Carrier</span><span class="${styles.tipV}">${esc(ship.carrier ?? "—")}</span>
         <span class="${styles.tipK}">Progress</span><span class="${styles.tipV}">${(p * 100).toFixed(1)}%</span>
         <span class="${styles.tipK}">Speed</span><span class="${styles.tipV}">${ship.speedKn ? `≈ ${ship.speedKn} kn` : "—"}</span>
         <span class="${styles.tipK}">ETA</span><span class="${styles.tipV}">${eta}</span>
-        <span class="${styles.tipK}">Cargo value</span><span class="${styles.tipV}" style="color:#e9c765">${fmtMoney(ship.importValue, ship.currency)}</span>
+        <span class="${styles.tipK}">Cargo value</span><span class="${styles.tipV}" style="color:#e9c765">${fmtMoney(ship.importValue, ship.currency)}${ship.currency !== "USD" ? ` ≈ $${Math.round(ship.importValueUsd).toLocaleString("en-US")}` : ""}</span>
+        <span class="${styles.tipK}">Route</span><span class="${styles.tipV}" style="color:oklch(0.62 0.03 90)">${prov}${ship.routeDistanceNm ? ` · ${ship.routeDistanceNm.toLocaleString("en-US")} nm` : ""}</span>
       </div>
       <div class="${styles.tipBar}"><div class="${styles.tipBarFill}" style="width:${(p * 100).toFixed(1)}%;color:${c}"></div></div>`;
   };
@@ -498,7 +501,16 @@ export function OperationMap({
       let v = vesselsRef.current.get(ship.ref);
       const old = arcsRef.current.get(ship.ref);
       if (!v || !old) {
-        const arc = new GcRoute(ship.from!.lng, ship.from!.lat, ship.to!.lng, ship.to!.lat);
+        /* Phase 2: route comes from the validated maritime corridor registry.
+         * Ships with NO validated corridor get no fabricated route/marker. */
+        const resolved = resolveMaritimeRoute(
+          ship.originPort,
+          ship.destPort,
+          ship.mode,
+          viaFromLegs(ship.legs ?? []),
+        );
+        if (!resolved.route) continue;
+        const arc = resolved.route;
         arcsRef.current.set(ship.ref, arc);
         const c = STATUS_COLOR[ship.liveStatus];
         const el = elFromHTML(`
@@ -731,14 +743,13 @@ export function OperationMap({
     });
   };
 
-  const fitWorld = (duration = 950) => {
+  /** Phase 1.4: reset returns to the Bahrain operations view (not world). */
+  const resetHome = (duration = 950) => {
     const map = mapRef.current;
     if (!map) return;
-    const cam = map.cameraForBounds(WORLD_BOUNDS, { padding: 24 });
-    if (!cam) return;
     map.flyTo({
-      center: cam.center,
-      zoom: Math.min(2.1, Math.max(cam.zoom ?? 1.55, 1.35)),
+      center: BAHRAIN_HOME.center,
+      zoom: BAHRAIN_HOME.zoom,
       duration: reducedRef.current ? 0 : duration,
       essential: true,
     });
@@ -750,8 +761,8 @@ export function OperationMap({
     const bounds = new LngLatBounds();
     for (const v of vesselsRef.current.values()) {
       bounds.extend([v.pos.lng, v.pos.lat]);
-      bounds.extend(v.arc.pts[0]);
-      bounds.extend(v.arc.pts[v.arc.pts.length - 1]);
+      bounds.extend(v.arc.samples[0]);
+      bounds.extend(v.arc.samples[v.arc.samples.length - 1]);
     }
     if (bounds.isEmpty()) return;
     const isDesktop = window.innerWidth >= 640;
@@ -808,8 +819,9 @@ export function OperationMap({
       const map = new MlMap({
         container: containerRef.current,
         style: baseStyle(world),
-        center: [32, 25],
-        zoom: 1.55,
+        /* open on the Bahrain operations view (Phase 1.4) */
+        center: BAHRAIN_HOME.center,
+        zoom: BAHRAIN_HOME.zoom,
         minZoom: 1.05,
         maxZoom: 12,
         /* NB: lng must stay within ±180 — beyond that MapLibre wraps the
@@ -895,9 +907,9 @@ export function OperationMap({
         readyRef.current = true;
         syncAll();
         refreshRoutes();
-        /* initial camera */
+        /* initial camera: selected shipment → fly to it; otherwise Bahrain home */
         if (selectedRefRef.current) flyToSelected();
-        else fitWorld(0);
+        else resetHome(0);
       });
 
       /* flowing dash animation */
@@ -1055,16 +1067,16 @@ export function OperationMap({
               <button
                 type="button"
                 className={styles.ctrlBtn}
-                aria-label="Reset view — zoom back to the world"
+                aria-label="Reset view — back to the Bahrain operations view"
                 onClick={(e) => {
                   e.stopPropagation();
-                  fitWorld();
+                  resetHome();
                 }}
               >
-                <Globe2 className="h-4 w-4" />
+                <Home className="h-4 w-4" />
               </button>
             </TooltipTrigger>
-            <TooltipContent side="left">Reset view</TooltipContent>
+            <TooltipContent side="left">Reset — Bahrain view</TooltipContent>
           </Tooltip>
         </div>
       </TooltipProvider>

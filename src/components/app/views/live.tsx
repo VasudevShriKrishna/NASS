@@ -23,10 +23,12 @@ import {  Anchor,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useApi } from "@/lib/client";
 import { useAppStore } from "@/lib/app-state";
-import { liveProgressAt } from "@/lib/gc-route";
+import { liveProgressAt } from "@/lib/maritime-routes";
+import { fmtBahrainDateTime, fmtBahrainTime } from "@/lib/bahrain-time";
 import type { TraceShip, TraceSnapshot } from "@/lib/trace-types";
 import {
   CaseStateBadge,
@@ -55,6 +57,17 @@ const OperationMap = dynamic(() => import("@/components/app/map/operation-map").
 type SitePick = { type: "supplier" | "warehouse"; code: string };
 
 const SIM_PRESETS = [1, 60, 600] as const;
+
+/* Phase 10: fleet-rail status filters (same authoritative status set) */
+const STATUS_FILTERS: { key: string; label: string }[] = [
+  { key: "all", label: "all" },
+  { key: "IN_TRANSIT", label: "in transit" },
+  { key: "AT_PORT", label: "at port" },
+  { key: "CUSTOMS_HOLD", label: "hold" },
+  { key: "DELAYED", label: "delayed" },
+  { key: "ARRIVED", label: "arrived" },
+  { key: "BOOKED", label: "booked" },
+];
 
 const fmtMoney = (v: number, ccy: string) => `${ccy} ${v.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
 const fmtPct = (p: number) => `${(p * 100).toFixed(1)}%`;
@@ -144,6 +157,88 @@ function DossierActions({ ship }: { ship: TraceShip }) {
   );
 }
 
+/* ── event timeline (Phase 5): observed time vs platform ingestion time ── */
+function EventTimeline({ ship }: { ship: TraceShip }) {
+  const ms = ship.milestones;
+  if (ms.length === 0) {
+    return <EmptyState message="No milestone events recorded — no history is invented" />;
+  }
+  return (
+    <ol className="relative space-y-2 border-l border-primary/25 pl-3.5">
+      {ms.map((m, i) => {
+        const corrected = Boolean(m.correctedByEventId);
+        const fresh = m.freshness === "stale" || m.freshness === "aging";
+        return (
+          <li key={`${m.code}-${i}`} className="relative">
+            <span
+              className="absolute -left-[19px] top-1.5 h-2 w-2 rounded-full ring-2 ring-background"
+              style={{ background: corrected ? "#34d399" : fresh ? "#fbbf24" : "#d4af37" }}
+              aria-hidden
+            />
+            <div className="rounded-md border border-border/60 bg-background/40 px-2.5 py-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] font-semibold">{m.label}</span>
+                {m.location ? <span className="text-[10px] text-muted-foreground">· {m.location}</span> : null}
+                {m.isEstimated ? <span className="rounded border border-border/70 bg-muted/50 px-1 py-px text-[8px] font-bold uppercase text-muted-foreground">estimated</span> : null}
+                {corrected ? <span className="rounded border border-emerald-400/30 bg-emerald-400/10 px-1 py-px text-[8px] font-bold uppercase text-emerald-300">corrected</span> : null}
+                {m.freshness === "stale" || m.freshness === "aging" ? (
+                  <span className="rounded border border-amber-400/30 bg-amber-400/10 px-1 py-px text-[8px] font-bold uppercase text-amber-300">{m.freshness}</span>
+                ) : null}
+              </div>
+              <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+                <span className="font-semibold text-foreground">observed</span> {fmtBahrainDateTime(m.eventTime)}
+                <span className="mx-1">·</span>
+                <span className="font-semibold text-foreground">received</span> {fmtBahrainDateTime(m.receivedAt)}
+                <span className="mx-1">·</span>
+                <span className="font-mono">src: {m.source}</span>
+              </p>
+              {m.quantity !== null ? (
+                <p className="text-[10px] text-muted-foreground">
+                  cargo at event: <span className="font-semibold tabular-nums text-foreground">{m.quantity.toLocaleString()} {m.uom}</span>
+                </p>
+              ) : null}
+              {m.note ? <p className="mt-0.5 text-[10px] italic text-muted-foreground/80">{m.note}</p> : null}
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/* ── quantities (Phase 5/6/9): dispatched / in-transit / received / outstanding ── */
+function QuantityBlock({ ship }: { ship: TraceShip }) {
+  const q = ship.quantities;
+  const has = q.dispatched.length || q.inTransit.length || q.received.length || q.outstanding.length;
+  if (!has) return <EmptyState message="No allocated cargo lines — quantity not derivable from records" />;
+  const row = (label: string, rows: { material: string; uom: string; quantity: number }[], tone: string) => (
+    <div className="flex items-start justify-between gap-3 border-b border-border/40 py-1.5 last:border-0">
+      <span className="shrink-0 text-[11px] text-muted-foreground">{label}</span>
+      <span className="min-w-0 text-right text-[11px] font-medium tabular-nums">
+        {rows.length === 0
+          ? "—"
+          : rows.map((r, i) => (
+              <span key={`${r.material}-${i}`} className={tone}>
+                {r.quantity.toLocaleString()} {r.uom} <span className="font-normal text-muted-foreground">{r.material}</span>
+                {i < rows.length - 1 ? " · " : ""}
+              </span>
+            ))}
+      </span>
+    </div>
+  );
+  return (
+    <div>
+      {row("Dispatched (PO-allocated)", q.dispatched, "")}
+      {row("Recorded in transit", q.inTransit, "")}
+      {row("Received (GRN)", q.received.map((r) => ({ material: `${r.material}${r.ref ? ` (${r.ref})` : ""}`, uom: r.uom, quantity: r.quantity })), "")}
+      {row("Outstanding", q.outstanding, "text-amber-300")}
+      <p className="mt-1.5 text-[10px] leading-relaxed text-muted-foreground">
+        Quantities stay in their recorded unit of measure — no conversion without a documented basis.
+      </p>
+    </div>
+  );
+}
+
 /* ── THE DOSSIER — full ship picture on click ──────────────────────────── */
 function Dossier({ ship, p, now, onClose }: { ship: TraceShip; p: number; now: number | null; onClose: () => void }) {
   const comp = ship.compliance;
@@ -182,24 +277,62 @@ function Dossier({ ship, p, now, onClose }: { ship: TraceShip; p: number; now: n
           <MiniTitle icon={<Anchor className="h-3 w-3" />}>Vessel &amp; route</MiniTitle>
           <RouteBar ship={ship} p={p} />
           <div className="mt-2 grid grid-cols-2 gap-x-4">
-            <KV k="Mode" v={ship.mode} />
+            <KV
+              k="Mode"
+              v={
+                <span>
+                  {ship.mode}
+                  {ship.mode === "ROAD" ? <span className="ml-1 text-[9px] text-muted-foreground">(bulk — containers n/a)</span> : null}
+                </span>
+              }
+            />
             <KV k="Carrier" v={ship.carrier ?? "—"} />
             <KV k="Forwarder" v={ship.forwarder ?? "—"} />
             <KV k="Speed" v={ship.speedKn ? <span className="tabular-nums">≈ {ship.speedKn} kn</span> : "—"} />
-            <KV k="Departed" v={<span className="tabular-nums">{fmtDate(ship.departure)}</span>} />
+            <KV k="Departed" v={<span className="tabular-nums">{fmtBahrainDateTime(ship.departure)}</span>} />
             <KV
               k="Live position"
               v={
                 ship.vesselName ? (
-                  <span className="tabular-nums">
-                    {Math.round(p * 100)}% of voyage
-                  </span>
+                  <span className="tabular-nums">{Math.round(p * 100)}% of voyage</span>
                 ) : (
                   "position unlinked"
                 )
               }
             />
           </div>
+          {/* destination validation + route provenance (Phase 1.3 / 2.4) */}
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {ship.destVerified ? (
+              <span className="inline-flex items-center gap-1 rounded-md border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-300">
+                <ShieldCheck className="h-3 w-3" /> destination verified · {ship.destPort}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-md border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-300" title={ship.destNote ?? undefined}>
+                ⚠ {ship.destNote ?? "Destination not verified"}
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-muted-foreground">
+              {ship.routeProvenance === "estimated-corridor" ? "estimated corridor (waypoint geometry)" : ship.routeProvenance === "land-leg" ? "land leg" : "no validated route"}
+              {ship.routeDistanceNm ? ` · ${ship.routeDistanceNm.toLocaleString("en-US")} nm` : ""}
+            </span>
+            {ship.routeVia.length > 0 ? (
+              <span className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">
+                via {ship.routeVia.join(" · ")}
+              </span>
+            ) : null}
+          </div>
+          {ship.legs.length > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {ship.legs.map((l) => (
+                <span key={l.seq} className="inline-flex max-w-full items-center gap-1 rounded-md border border-border/60 bg-muted/30 px-1.5 py-0.5 text-[9px] font-medium" title={`${l.carrier ?? ""} · ${l.status}`}>
+                  <span className="font-mono font-bold text-primary/80">L{l.seq}</span>
+                  <span className="uppercase text-muted-foreground">{l.mode}</span>
+                  <span className="min-w-0 truncate">{l.fromPoint} → {l.toPoint}</span>
+                </span>
+              ))}
+            </div>
+          ) : null}
           <div className="mt-2 rounded-lg border border-primary/20 bg-primary/5 p-2.5">
             <div className="flex items-baseline justify-between gap-2">
               <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Arrival countdown</span>
@@ -265,10 +398,19 @@ function Dossier({ ship, p, now, onClose }: { ship: TraceShip; p: number; now: n
               </ScrollTable>
               <div className="mt-2 flex items-baseline justify-between rounded-lg border border-primary/25 bg-primary/5 px-3 py-2">
                 <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Total import value</span>
-                <span className="font-display text-2xl font-bold tabular-nums text-gold-grad">{fmtMoney(ship.importValue, ship.currency)}</span>
+                <span className="text-right">
+                  <span className="block font-display text-2xl font-bold tabular-nums text-gold-grad">{fmtMoney(ship.importValue, ship.currency)}</span>
+                  {ship.currency !== "USD" ? <span className="block text-[9px] text-muted-foreground">≈ USD {ship.importValueUsd.toLocaleString("en-US", { maximumFractionDigits: 0 })} · FX documented</span> : null}
+                </span>
               </div>
             </>
           )}
+        </section>
+
+        {/* quantities (Phase 5/6/9) */}
+        <section className="mb-4">
+          <MiniTitle icon={<Package className="h-3 w-3" />}>Cargo quantities — dispatched · in transit · received</MiniTitle>
+          <QuantityBlock ship={ship} />
         </section>
 
         {/* where to use */}
@@ -348,6 +490,12 @@ function Dossier({ ship, p, now, onClose }: { ship: TraceShip; p: number; now: n
               ))}
             </div>
           ) : null}
+        </section>
+
+        {/* event timeline (Phase 5) */}
+        <section className="mb-4">
+          <MiniTitle icon={<Timer className="h-3 w-3" />}>Event timeline — Asia/Bahrain time (AST, UTC+3)</MiniTitle>
+          <EventTimeline ship={ship} />
         </section>
 
         {/* compliance */}
@@ -610,6 +758,8 @@ export function LiveTraceabilityView({ drillRef }: { drillRef?: string | null })
   const [pickedSite, setPickedSite] = useState<SitePick | null>(null);
   const [factor, setFactor] = useState<number>(600);
   const [simBase, setSimBase] = useState<{ server: number; wall: number } | null>(null);
+  const [fleetQuery, setFleetQuery] = useState("");
+  const [fleetFilter, setFleetFilter] = useState<string>("all");
   const now = useNow(1000);
 
   const activeRef = picked ?? traceShip ?? drillRef ?? null;
@@ -655,6 +805,19 @@ export function LiveTraceabilityView({ drillRef }: { drillRef?: string | null })
   const byRef = useMemo(() => new Map((snap?.ships ?? []).map((s) => [s.ref, s])), [snap]);
   const sel = activeRef ? byRef.get(activeRef) ?? null : null;
 
+  /* Phase 10: searchable, status-filtered fleet rail */
+  const filteredShips = useMemo(() => {
+    const ships = snap?.ships ?? [];
+    const q = fleetQuery.trim().toLowerCase();
+    return ships.filter((s) => {
+      if (fleetFilter !== "all" && s.liveStatus !== fleetFilter) return false;
+      if (!q) return true;
+      return [s.ref, s.vesselName, s.carrier, s.originPort, s.destPort, s.supplier?.name, s.supplier?.code]
+        .filter(Boolean)
+        .some((v) => (v as string).toLowerCase().includes(q));
+    });
+  }, [snap, fleetQuery, fleetFilter]);
+
   /* deep-link URL sync: /?view=trace&ship=SHP-8801 */
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
@@ -699,7 +862,7 @@ export function LiveTraceabilityView({ drillRef }: { drillRef?: string | null })
       className="fixed inset-0 z-[70] flex flex-col bg-background"
       role="dialog"
       aria-modal="true"
-      aria-label="Live Traceability Command View"
+      aria-label="NASS Freight Traceability Map"
     >
       {/* ambient gold + hourly pulse */}
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(1100px_480px_at_50%_-12%,oklch(0.79_0.135_88/9%),transparent_62%)]" />
@@ -720,15 +883,15 @@ export function LiveTraceabilityView({ drillRef }: { drillRef?: string | null })
             </div>
             <div className="min-w-0 leading-tight">
               <p className="truncate font-display text-sm font-bold tracking-wide">
-                Live Traceability <span className="text-gold-grad">Command</span>
+                NASS Freight <span className="text-gold-grad">Traceability</span>
               </p>
-              <p className="flex items-center gap-1.5 text-[9px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
-                <PulsingDot /> every ship · same picture · hourly snapshot
+              <p className="flex items-center gap-1.5 text-[9px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                <PulsingDot /> Bahrain destination · every ship · same picture · hourly snapshot
               </p>
             </div>
           </div>
 
-          {/* live counters */}
+          {/* live counters — one authoritative calculation (Phase 4) */}
           {totals ? (
             <div className="hidden items-center gap-2.5 rounded-lg border border-border/70 bg-card/60 px-3 py-1.5 md:flex">
               {(
@@ -738,6 +901,8 @@ export function LiveTraceabilityView({ drillRef }: { drillRef?: string | null })
                   ["hold", totals.customsHold, STATUS_COLOR.CUSTOMS_HOLD],
                   ["delayed", totals.delayed, STATUS_COLOR.DELAYED],
                   ["arrived", totals.arrived, STATUS_COLOR.ARRIVED],
+                  ["booked", totals.booked, STATUS_COLOR.BOOKED],
+                  ["stale", totals.stale, STATUS_COLOR.UNKNOWN],
                 ] as const
               ).map(([label, value, color]) => (
                 <span key={label} className="flex items-center gap-1 text-[10px] font-semibold text-muted-foreground">
@@ -745,8 +910,9 @@ export function LiveTraceabilityView({ drillRef }: { drillRef?: string | null })
                   {label} <span className="font-display text-[13px] font-bold tabular-nums text-foreground">{value}</span>
                 </span>
               ))}
-              <span className="border-l border-border/60 pl-2.5 text-[10px] font-semibold text-muted-foreground">
-                fleet value <span className="font-display text-[13px] font-bold tabular-nums text-gold-grad">{fmtMoney(totals.importValue, totals.currency)}</span>
+              <span className="border-l border-border/60 pl-2.5 text-[10px] font-semibold text-muted-foreground" title="Sum of shipment import values normalized to USD with documented FX — global fleet totals, unfiltered">
+                fleet value <span className="font-display text-[13px] font-bold tabular-nums text-gold-grad">{fmtMoney(totals.importValueUsd, "USD")}</span>
+                <span className="ml-1 text-[9px]">eq.</span>
               </span>
             </div>
           ) : null}
@@ -864,10 +1030,23 @@ export function LiveTraceabilityView({ drillRef }: { drillRef?: string | null })
               </div>
             </div>
 
-            {/* sim note */}
-            <div className="pointer-events-none absolute right-3 top-3 hidden rounded-lg border border-border/70 bg-card/80 px-3 py-2 text-[10px] text-muted-foreground backdrop-blur sm:block">
-              <span className="font-semibold text-primary">sim ×{factor}</span> · markers glide continuously, data recomputed hourly
-              {snap.ships.length === 0 ? <span className="mt-1 block"><EmptyState message="No shipments to trace" /></span> : null}
+            {/* sim note + data-source honesty (Phase 8) */}
+            <div className="pointer-events-none absolute right-3 top-3 hidden max-w-[280px] rounded-lg border border-border/70 bg-card/80 px-3 py-2 text-[10px] text-muted-foreground backdrop-blur sm:block">
+              {factor !== 1 ? (
+                <p>
+                  <span className="font-semibold text-primary">sim ×{factor} — simulated playback</span> · marker motion is animated between hourly snapshots; recorded event timestamps are never altered
+                </p>
+              ) : (
+                <p><span className="font-semibold text-primary">live cadence ×1</span> · markers glide continuously, data recomputed hourly</p>
+              )}
+              <p className="mt-1 leading-relaxed">
+                source: <span className="font-semibold">scenario snapshot</span> (demo dataset — no live AIS/carrier feed connected)
+                {snap.ships.length === 0 ? <span className="mt-1 block"><EmptyState message="No shipments to trace" /></span> : null}
+              </p>
+              <p className="mt-0.5">
+                last refresh <span className="tabular-nums text-foreground">{fmtBahrainTime(syncedAt ? new Date(syncedAt) : null)}</span>
+                {" · "}next <span className="tabular-nums text-foreground">{fmtBahrainTime(snap.nextUpdateAt)}</span>
+              </p>
             </div>
 
             {/* supplier / warehouse panel */}
@@ -884,19 +1063,47 @@ export function LiveTraceabilityView({ drillRef }: { drillRef?: string | null })
               ) : null}
             </AnimatePresence>
 
-            {/* fleet rail */}
+            {/* fleet rail — searchable + status-filtered (Phase 10) */}
             {snap.ships.length > 0 ? (
               <div className="absolute inset-x-0 bottom-0 z-10 border-t border-primary/10 bg-background/85 px-3 py-2 backdrop-blur">
-                <div className="mb-1.5 flex items-center justify-between text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2 text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
                   <span className="flex items-center gap-1.5">
-                    <Container className="h-3 w-3" /> Fleet — {snap.ships.length} consignments · click any ship on map or below
+                    <Container className="h-3 w-3" /> Fleet — {filteredShips.length}/{snap.ships.length} consignments · click any ship on map or below
                   </span>
-                  <span className="hidden sm:inline">{fmtMoney(totals?.importValue ?? 0, totals?.currency ?? "USD")} total import value</span>
+                  <span className="hidden sm:inline">{fmtMoney(totals?.importValueUsd ?? 0, "USD")} fleet total (USD eq., FX documented)</span>
+                </div>
+                <div className="mb-1.5 flex items-center gap-2">
+                  <Input
+                    value={fleetQuery}
+                    onChange={(e) => setFleetQuery(e.target.value)}
+                    placeholder="Search ref / vessel / port / supplier…"
+                    aria-label="Search fleet"
+                    className="h-7 max-w-[240px] border-border/60 bg-card/60 text-[11px]"
+                  />
+                  <div className="flex flex-1 gap-1 overflow-x-auto">
+                    {STATUS_FILTERS.map((f) => (
+                      <button
+                        key={f.key}
+                        type="button"
+                        aria-pressed={fleetFilter === f.key}
+                        onClick={() => setFleetFilter(f.key)}
+                        className={cn(
+                          "shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide transition-colors",
+                          fleetFilter === f.key
+                            ? "border-primary/60 bg-primary/15 text-primary"
+                            : "border-border/60 bg-card/50 text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="flex gap-2 overflow-x-auto pb-1">
-                  {snap.ships.map((s) => (
+                  {filteredShips.map((s) => (
                     <FleetChip key={s.ref} ship={s} p={progress.get(s.ref) ?? s.progress} active={s.ref === activeRef} onClick={() => setPicked(s.ref)} />
                   ))}
+                  {filteredShips.length === 0 ? <p className="py-3 text-[11px] text-muted-foreground">No consignments match this search/filter.</p> : null}
                 </div>
               </div>
             ) : null}
