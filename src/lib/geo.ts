@@ -24,32 +24,41 @@ export interface PortInfo {
 }
 
 export const PORTS: Record<string, PortInfo> = {
+  // NASS destination (Bahrain) — the only configured POD country
+  KBSP: { lat: 26.177, lng: 50.535, country: "Bahrain", label: "Khalifa Bin Salman Port" },
+  ASKAR: { lat: 26.085, lng: 50.56, country: "Bahrain", label: "Askar" },
+  // Export / origin ports
   SHANGHAI: { lat: 31.23, lng: 121.49, country: "China", label: "Shanghai" },
   NINGBO: { lat: 29.87, lng: 121.85, country: "China", label: "Ningbo" },
   IZMIR: { lat: 38.42, lng: 27.14, country: "Türkiye", label: "Izmir" },
   GENOA: { lat: 44.4, lng: 8.92, country: "Italy", label: "Genoa" },
   ANTWERP: { lat: 51.28, lng: 4.37, country: "Belgium", label: "Antwerp" },
   GOTHENBURG: { lat: 57.71, lng: 11.97, country: "Sweden", label: "Gothenburg" },
+  COLOMBO: { lat: 6.95, lng: 79.85, country: "Sri Lanka", label: "Colombo" },
+  // UAE ports remain visible as geographic context / documented transshipment —
+  // they are NEVER the NASS destination (destination country is Bahrain).
   FUJAIRAH: { lat: 25.12, lng: 56.34, country: "UAE", label: "Fujairah" },
   JEBEL_ALI: { lat: 25.01, lng: 55.06, country: "UAE", label: "Jebel Ali" },
-  DUBAI: { lat: 25.2, lng: 55.27, country: "UAE", label: "Dubai" },
 };
 
 /** Fuzzy-match a free-text port string ("Shanghai, CN", "Fujairah Quarry",
- *  "WH-DIP") to a registry port. Returns null when unknown.              */
+ *  "Khalifa Bin Salman Port, BH") to a registry port. Returns null when
+ *  unknown — callers must NOT substitute a guessed destination.              */
 export function lookupPort(raw: string | null | undefined): PortInfo | null {
   if (!raw) return null;
   const s = raw.toLowerCase();
   const has = (...keys: string[]) => keys.some((k) => s.includes(k));
+  if (has("khalifa bin salman", "kbsp")) return PORTS.KBSP;
+  if (has("askar")) return PORTS.ASKAR;
   if (has("shanghai")) return PORTS.SHANGHAI;
   if (has("ningbo")) return PORTS.NINGBO;
   if (has("izmir")) return PORTS.IZMIR;
   if (has("genoa", "genova")) return PORTS.GENOA;
   if (has("antwerp", "anvers")) return PORTS.ANTWERP;
   if (has("gothenburg", "göteborg", "goteborg")) return PORTS.GOTHENBURG;
+  if (has("colombo")) return PORTS.COLOMBO;
   if (has("fujairah")) return PORTS.FUJAIRAH;
   if (has("jebel ali", "jebel ali, ae", "jebelali")) return PORTS.JEBEL_ALI;
-  if (has("wh-dip", "whdip", "dubai")) return PORTS.DUBAI;
   return null;
 }
 

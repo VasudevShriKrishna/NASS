@@ -22,12 +22,13 @@ const playfair = Playfair_Display({
 });
 
 export const metadata: Metadata = {
-  title: "NASS · Closed-Loop Supply Chain Intelligence",
+  title: "NASS · Closed-Loop Control Tower",
   description:
-    "Luxury black-gold control tower: evidence-before-assertion supply chain intelligence — shipments, BOLs, exceptions, approvals and audit in one operational backbone.",
+    "NASS Closed-Loop Control Tower — Freight Traceability, Decision Management & Operations Assistant: Bahrain-first maritime freight visibility, evidence-before-assertion, verified outcomes only.",
   keywords: [
     "NASS",
-    "supply chain",
+    "Bahrain",
+    "freight traceability",
     "control tower",
     "closed-loop",
     "exceptions",

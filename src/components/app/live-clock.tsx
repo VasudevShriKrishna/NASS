@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 
-/* Ticking operational clock — updates every second (hour/minute/second live). */
+/* Ticking operational clock — updates every second (hour/minute/second live).
+ * Displays Asia/Bahrain time (Phase 8: consistent timezone, explicit label). */
 export function LiveClock({ className, showSeconds = true, prefix }: { className?: string; showSeconds?: boolean; prefix?: string }) {
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
@@ -22,14 +23,25 @@ export function LiveClock({ className, showSeconds = true, prefix }: { className
   }
 
   const d = new Date(now);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}${showSeconds ? `:${pad(d.getSeconds())}` : ""}`;
-  const date = d.toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" });
+  const time = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Bahrain",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: showSeconds ? "2-digit" : undefined,
+    hour12: false,
+  }).format(d);
+  const date = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Bahrain",
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+  }).format(d);
 
   return (
-    <span className={className} suppressHydrationWarning>
+    <span className={className} suppressHydrationWarning title="Operations clock — Asia/Bahrain (AST, UTC+3)">
       {prefix ? `${prefix} ` : ""}
       <span className="tabular-nums">{time}</span>
+      <span className="ml-1 text-[9px] font-bold text-primary/80">AST</span>
       <span className="ml-1.5 text-muted-foreground">· {date}</span>
     </span>
   );
