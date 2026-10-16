@@ -13,7 +13,12 @@
 
 /* ── vessel marker (hero layer) ─────────────────────────────────────── */
 .vessel {
-  position: relative;
+  /* position:absolute (not relative) — MapLibre anchors .maplibregl-marker via
+   * `position:absolute; top:0; left:0` + its per-frame camera transform. A
+   * relative marker participates in normal flow inside the canvas container,
+   * adding a constant per-element flow offset on top of the projection —
+   * icons then drift (in geo-degrees) whenever the camera zooms/pans. */
+  position: absolute;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -96,7 +101,9 @@
 
 /* ── port marker ────────────────────────────────────────────────────── */
 .port {
-  position: relative;
+  /* absolute — see .vessel note: must not join normal flow, or the map SDK's
+   * geographic anchoring gains a constant pixel offset that scales with zoom. */
+  position: absolute;
   width: 14px;
   height: 14px;
   pointer-events: none;
@@ -144,10 +151,13 @@
   border: 1px solid;
   cursor: pointer;
   backdrop-filter: blur(3px);
-  transition: transform 200ms ease, box-shadow 200ms ease, opacity 400ms ease;
+  /* NOTE: no `transform` in the transition — MapLibre rewrites the marker's
+   * inline transform every frame; transitioning it would make the icon lag
+   * its geographic anchor during zoom/pan. Hover feedback stays via shadow. */
+  transition: box-shadow 200ms ease, opacity 400ms ease;
 }
 .site:hover {
-  transform: scale(1.12);
+  box-shadow: 0 0 14px oklch(0.79 0.135 88 / 40%);
 }
 .site:focus-visible {
   outline: 2px solid oklch(0.79 0.135 88);
