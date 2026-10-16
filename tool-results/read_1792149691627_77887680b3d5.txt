@@ -1,0 +1,607 @@
+     1→import { NextRequest } from "next/server";
+     2→import ZAI from "z-ai-web-dev-sdk";
+     3→import { db } from "@/lib/db";
+     4→import { ok, err } from "@/lib/api";
+     5→import { fmtBahrainDateTime } from "@/lib/bahrain-time";
+     6→import type { AssistantResponse, AssistantSection, AssistantStructured } from "@/lib/assistant-types";
+     7→import {
+     8→  parseQueryTime,
+     9→  shipmentLookup,
+    10→  eventHistory,
+    11→  positionAsOf,
+    12→  quantitiesFor,
+    13→  portActivity,
+    14→  delaysAndExceptions,
+    15→  actionStatus,
+    16→  documentLookup,
+    17→  normalizeRef,
+    18→  type ShipmentFacts,
+    19→  type QuantityFacts,
+    20→  type PositionAsOfFacts,
+    21→  type PortActivityFacts,
+    22→  type DelayExceptionFacts,
+    23→  type ActionStatusFacts,
+    24→  type DocumentFacts,
+    25→  type ParsedQueryTime,
+    26→  type EventHistoryResult,
+    27→} from "@/lib/assistant-tools";
+    28→
+    29→export const dynamic = "force-dynamic";
+    30→
+    31→/**
+    32→ * M20 / Phase 6 — NASS Operations Assistant.
+    33→ * Query contract: deterministic query tools FIRST (assistant-tools.ts), then a
+    34→ * compact FACTS block, then the LLM phrases the answer under a strict structured
+    35→ * format. The model has NO write path and CANNOT invent data; the response also
+    36→ * carries a deterministic `structured` payload built purely from tool output so
+    37→ * the UI can render grounded cards even if the model is unavailable (Rule 10).
+    38→ */
+    39→
+    40→const FACTS_CAP = 4500;
+    41→
+    42→const B = (iso: string | null | undefined): string => (iso ? fmtBahrainDateTime(iso) : "not available");
+    43→
+    44→/* ─── Intent detection ───────────────────────────────────────────────────── */
+    45→
+    46→interface Intent {
+    47→  history: boolean;
+    48→  position: boolean;
+    49→  pastPosition: boolean;
+    50→  quantity: boolean;
+    51→  port: boolean;
+    52→  delays: boolean;
+    53→  actions: boolean;
+    54→  documents: boolean;
+    55→  missingContainer: boolean;
+    56→}
+    57→
+    58→function detectIntent(q: string): Intent {
+    59→  const ql = q.toLowerCase();
+    60→  const past = /\b(was|were|had|did)\b/.test(ql);
+    61→  return {
+    62→    history: /(chronological|history|every update|all updates|updates for|timeline|show .*(updates|events))/i.test(ql),
+    63→    position: /\b(where|position|located|location)\b/.test(ql),
+    64→    pastPosition: past && /\b(where|position|located)\b/.test(ql),
+    65→    quantity: /(how much|how many|quantity|quantities|outstanding|dispatched|landed|carrying|carry|material)/.test(ql),
+    66→    port: /(port|kbsp|colombo|jebel ali|shanghai|ningbo|genoa|gothenburg|antwerp|izmir|jetty|terminal|right now|at each|customs clearance|waiting for customs|wh-askar|wh-sitra|warehouse)/.test(ql),
+    67→    delays: /(delay|slip|late|behind|exception|stale|open issues?|issue)/.test(ql),
+    68→    actions: /(action|decision|approv|who owns|owner|requires action|require action|due)/.test(ql),
+    69→    documents: /(bol\b|bols\b|bill of lading|document|packing list|invoice|certificate|container number)/.test(ql),
+    70→    missingContainer: /missing .*container|container .*missing/.test(ql),
+    71→  };
+    72→}
+    73→
+    74→const PORT_WORDS = ["kbsp", "khalifa", "colombo", "jebel ali", "shanghai", "ningbo", "genoa", "gothenburg", "antwerp", "izmir", "wh-askar", "wh-sitra", "askar", "sitra"];
+    75→
+    76→function extractPortQuery(q: string): string | null {
+    77→  const ql = q.toLowerCase();
+    78→  for (const w of PORT_WORDS) if (ql.includes(w)) return w;
+    79→  return null; // unknown place names are NOT guessed — the assistant asks instead
+    80→}
+    81→
+    82→/* ─── Fact collection ────────────────────────────────────────────────────── */
+    83→
+    84→interface Collected {
+    85→  tools: string[];
+    86→  shipments: ShipmentFacts[];
+    87→  quantities: QuantityFacts[];
+    88→  position: (PositionAsOfFacts | { error: string }) | null;
+    89→  history: EventHistoryResult | null;
+    90→  port: PortActivityFacts | null;
+    91→  delays: DelayExceptionFacts | null;
+    92→  actions: ActionStatusFacts | null;
+    93→  documents: DocumentFacts | null;
+    94→  time: ParsedQueryTime;
+    95→}
+    96→
+    97→const AGGREGATE_HUBS = ["KBSP", "Colombo", "Jebel Ali"];
+    98→
+    99→/** Merge several port scans into one aggregate view ("each port" / "all ports"). */
+   100→function mergePortScans(scans: PortActivityFacts[]): PortActivityFacts {
+   101→  return {
+   102→    portQuery: "each port",
+   103→    matchedAliases: scans.flatMap((s) => s.matchedAliases),
+   104→    physicallyPresent: scans.flatMap((s) => s.physicallyPresent),
+   105→    lastRecorded: scans.flatMap((s) => s.lastRecorded),
+   106→    expected: scans.flatMap((s) => s.expected),
+   107→    receivedAtDestination: scans.flatMap((s) => s.receivedAtDestination),
+   108→    cargoAtPort: scans.flatMap((s) => s.cargoAtPort),
+   109→    eventsWindow: scans.flatMap((s) => s.eventsWindow),
+   110→    totalMatchingEvents: scans.reduce((a, s) => a + s.totalMatchingEvents, 0),
+   111→  };
+   112→}
+   113→
+   114→/** Returns null when the time language is ambiguous → the route asks for clarification. */
+   115→async function collectFacts(question: string): Promise<Collected | null> {
+   116→  const intent = detectIntent(question);
+   117→  const time = parseQueryTime(question);
+   118→  if (!time) return null; // ambiguous time → clarification path
+   119→  const out: Collected = {
+   120→    tools: [], shipments: [], quantities: [], position: null, history: null,
+   121→    port: null, delays: null, actions: null, documents: null, time,
+   122→  };
+   123→
+   124→  const hasRef = normalizeRef(question) != null || /\b\d{4}\b/.test(question);
+   125→  const lookupNeeded = intent.position || intent.quantity || intent.history || hasRef;
+   126→  if (lookupNeeded) {
+   127→    const lookup = await shipmentLookup(question);
+   128→    out.shipments = lookup.matches;
+   129→    out.tools.push("shipmentLookup");
+   130→  }
+   131→
+   132→  const refs = out.shipments.map((s) => s.ref);
+   133→  const firstRef = refs[0] ?? normalizeRef(question);
+   134→
+   135→  if (firstRef && (intent.history || (intent.position && !intent.pastPosition && intent.quantity))) {
+   136→    out.history = await eventHistory(firstRef, { from: time.from, to: time.to });
+   137→    out.tools.push("eventHistory");
+   138→  }
+   139→  if (firstRef && intent.pastPosition && (time.at || time.to)) {
+   140→    out.position = await positionAsOf(firstRef, (time.at ?? time.to)!);
+   141→    out.tools.push("positionAsOf");
+   142→  }
+   143→  if (firstRef && intent.quantity) {
+   144→    const q = await quantitiesFor(firstRef);
+   145→    if (!("error" in q)) out.quantities.push(q);
+   146→    out.tools.push("quantitiesFor");
+   147→  }
+   148→  if (intent.port) {
+   149→    if (/(each|all)\s+ports?/.test(question.toLowerCase())) {
+   150→      const scans = await Promise.all(AGGREGATE_HUBS.map((h) => portActivity(h, time.from)));
+   151→      out.port = mergePortScans(scans);
+   152→      out.tools.push("portActivity");
+   153→    } else {
+   154→      const pq = extractPortQuery(question);
+   155→      if (pq) {
+   156→        out.port = await portActivity(pq, time.from);
+   157→        out.tools.push("portActivity");
+   158→      }
+   159→    }
+   160→  }
+   161→  if (intent.delays) {
+   162→    out.delays = await delaysAndExceptions();
+   163→    out.tools.push("delaysAndExceptions");
+   164→  }
+   165→  if (intent.actions) {
+   166→    out.actions = await actionStatus();
+   167→    out.tools.push("actionStatus");
+   168→  }
+   169→  if (intent.documents) {
+   170→    const bolRef = question.toUpperCase().match(/\b[A-Z]{2,5}-\d{3,5}\b/)?.[0];
+   171→    out.documents = await documentLookup(bolRef && !bolRef.startsWith("SHP-") ? bolRef : undefined);
+   172→    out.tools.push("documentLookup");
+   173→  }
+   174→
+   175→  // generic fallback: nothing matched → open operational picture (delays + port)
+   176→  if (out.tools.length === 0) {
+   177→    out.delays = await delaysAndExceptions();
+   178→    out.tools.push("delaysAndExceptions");
+   179→  }
+   180→  return out;
+   181→}
+   182→
+   183→/* ─── FACTS block rendering ──────────────────────────────────────────────── */
+   184→
+   185→function fmtMilestoneLine(m: ShipmentFacts["milestones"][number]): string {
+   186→  const q = m.quantity != null && m.uom ? ` qty ${m.quantity} ${m.uom}` : "";
+   187→  const corr = m.correctedByEventId ? ` [CORRECTED by ${m.correctedByEventId}]` : "";
+   188→  const est = m.isEstimated ? " [estimated]" : "";
+   189→  return `${m.label}${m.location ? ` @ ${m.location}` : ""} — event ${B(m.eventTime)}, received ${B(m.receivedAt)}, source ${m.source}${est}${q}${corr}`;
+   190→}
+   191→
+   192→function renderFacts(c: Collected): string {
+   193→  const lines: string[] = [];
+   194→  if (c.time.note) lines.push(`[time] interpreted: ${c.time.note} (Asia/Bahrain, UTC+3)`);
+   195→
+   196→  for (const s of c.shipments) {
+   197→    const latest = s.milestones[s.milestones.length - 1];
+   198→    const mats = s.allocatedLines.map((l) => `${l.material} ${l.quantity} ${l.uom} @ ${l.unitPrice} ${l.currency}`).join("; ") || (s.allocatedNote ?? "none");
+   199→    lines.push(
+   200→      `[shipment] ${s.ref}: status ${s.status} (${s.liveStatus}), freshness ${s.freshness}, customs ${s.customsStatus ?? "unknown"}. ` +
+   201→      `Supplier ${s.supplier ?? "unlinked"}, PO ${s.poRef ?? "unlinked"}. Route ${s.route.originPort ?? "?"} → ${s.route.destinationPort ?? "?"} (${s.route.podCountry ?? "?"}) destVerified=${s.route.destVerified}. ` +
+   202→      `Vessel ${s.vessel?.name ?? "not evidenced"}${s.vessel?.position ? `, AIS position ${s.vessel.position.lat}/${s.vessel.position.lng} at ${B(s.vessel.position.at)} — vessel position, NOT a container position` : ""}. ` +
+   203→      `Containers: ${s.containers.map((x) => `${x.containerNo ?? "MISSING"} (${x.identityStatus})`).join(", ") || "none evidenced"}. ` +
+   204→      `Cargo lines: ${mats}. Latest event: ${latest ? fmtMilestoneLine(latest) : "none stored"}. ` +
+   205→      `Display ETA ${B(s.displayEta.value)} (${s.displayEta.type ?? "none"}/${s.displayEtaSource ?? "n/a"}); supplier promised ${B(s.supplierPromisedEta)}; carrier ${B(s.carrierEta)} (freshness ${s.carrierEtaFreshness}); actual arrival ${B(s.actualArrival)}. ` +
+   206→      `BOLs: ${s.bols.map((b) => `${b.bolNo} v${b.version} ${b.status}${b.active ? "" : " (SUPERSEDED)"}`).join(", ") || "none"}. ` +
+   207→      `Open exceptions: ${s.exceptions.map((x) => `${x.ref} [${x.severity}] ${x.state}`).join(", ") || "none"}.`
+   208→    );
+   209→    const ms = s.milestones.slice(-14).map(fmtMilestoneLine).join(" | ");
+   210→    if (ms) lines.push(`[milestones ${s.ref}] ${ms}`);
+   211→  }
+   212→
+   213→  for (const q of c.quantities) {
+   214→    lines.push(
+   215→      `[quantities ${q.ref}] dispatched: ${q.dispatched.map((d) => `${d.quantity} ${d.uom} ${d.material}`).join("; ") || "none recorded"}. ` +
+   216→      `In transit (InventoryLot IN_TRANSIT): ${q.inTransit.map((d) => `${d.quantity} ${d.uom} ${d.material}`).join("; ") || "none recorded"}. ` +
+   217→      `Received (goods receipts): ${q.received.map((d) => `${d.quantity} ${d.uom} ${d.material} [${d.ref ?? "GRN"} ${d.status}${d.discrepancyType && d.discrepancyType !== "NONE" ? `, ${d.discrepancyType}` : ""}]`).join("; ") || "none recorded"}. ` +
+   218→      `Outstanding (allocated − received): ${q.outstanding.map((d) => `${d.quantity} ${d.uom} ${d.material}`).join("; ") || "none recorded"}.` +
+   219→      (q.note ? ` NOTE: ${q.note}` : "")
+   220→    );
+   221→  }
+   222→
+   223→  if (c.position) {
+   224→    if ("error" in c.position) lines.push(`[position-as-of] ERROR: ${c.position.error}`);
+   225→    else {
+   226→      const p = c.position;
+   227→      lines.push(
+   228→        `[position-as-of ${p.ref}] as of ${B(p.at)}: ` +
+   229→        (p.milestone
+   230→          ? `${fmtMilestoneLine(p.milestone)}. ${p.statement}; ${p.eventsUpTo} events at/before, ${p.eventsAfter} after.`
+   231→          : `no stored event at or before that time (${p.statement}).`)
+   232→      );
+   233→    }
+   234→  }
+   235→
+   236→  if (c.history) {
+   237→    lines.push(
+   238→      c.history.found
+   239→        ? `[event-history ${c.history.ref}] ${c.history.shown}/${c.history.total} events in window${c.time.note ? ` (${c.time.note})` : " (all)"}: ${c.history.milestones.map(fmtMilestoneLine).join(" | ") || "none in window"}`
+   240→        : `[event-history] ERROR: no shipment record ${c.history.ref}`
+   241→    );
+   242→  }
+   243→
+   244→  if (c.port) {
+   245→    const p = c.port;
+   246→    lines.push(
+   247→      `[port ${p.portQuery}] matches ${p.matchedAliases.join(", ")}. ` +
+   248→      `Physically present (arrival/customs event is the LATEST event): ${p.physicallyPresent.map((x) => `${x.ref} since ${B(x.since)} (${x.lastEvent}, ${x.source})`).join("; ") || "none"}. ` +
+   249→      `Last recorded at port (later event elsewhere): ${p.lastRecorded.map((x) => `${x.ref} — ${x.lastPortEvent} ${B(x.eventTime)}${x.sinceLeft ? `, later event ${B(x.sinceLeft)}` : ""}`).join("; ") || "none"}. ` +
+   250→      `Expected: ${p.expected.map((x) => `${x.ref} (${x.basis}, ETA ${x.eta ? B(x.eta) : "n/a"})`).join("; ") || "none"}. ` +
+   251→      `Cargo quantity last recorded at this location: ${p.cargoAtPort.map((x) => `${x.ref} ${x.quantity} ${x.uom} (${x.label}, ${B(x.eventTime)})`).join("; ") || "none"}. ` +
+   252→      `Received at destination: ${p.receivedAtDestination.map((x) => `${x.ref} ${x.quantity} ${x.uom} [${x.receipt} ${x.status}]`).join("; ") || "none"}. ` +
+   253→      `Matching events${c.time.from ? " in window" : ""}: ${p.eventsWindow.length}${p.eventsWindow.length ? ` — ${p.eventsWindow.slice(0, 8).map((x) => `${x.ref} ${x.label} @ ${x.location ?? "?"} ${B(x.eventTime)}`).join("; ")}` : ""}.`
+   254→    );
+   255→  }
+   256→
+   257→  if (c.delays) {
+   258→    const d = c.delays;
+   259→    lines.push(
+   260→      `[delays] open exception cases: ${d.openCases.map((x) => `${x.ref} [${x.severity}] ${x.state} "${x.title}" — owner ${x.owner ?? "unassigned"}, due ${B(x.dueDate)}, entity ${x.entityRef ?? "n/a"}${x.shipmentRef ? `, shipment ${x.shipmentRef}` : ""}${x.recommendedAction ? `; recommended: ${x.recommendedAction.slice(0, 160)}` : ""}`).join(" | ") || "none"}. ` +
+   261→      `Delayed (carrier ETA > supplier promise + 36h): ${d.delayedShipments.map((x) => `${x.ref} slip ${x.slipHours}h (supplier ${B(x.supplierPromisedEta)} → carrier ${B(x.carrierEta)}); evidence: ${x.evidence.join("; ")}`).join(" | ") || "none"}. ` +
+   262→      `Stale/unavailable tracking: ${d.staleShipments.map((x) => `${x.ref} (${x.freshness}, last event ${x.lastEventAt ? B(x.lastEventAt) : "never"} via ${x.lastEventSource ?? "n/a"})`).join("; ") || "none"}.`
+   263→    );
+   264→  }
+   265→
+   266→  if (c.actions) {
+   267→    const a = c.actions;
+   268→    lines.push(
+   269→      `[actions] awaiting approval: ${a.awaitingApproval.map((x) => `${x.ref} (${x.commandType}, ${x.riskLevel}, target ${x.targetRef ?? "n/a"}, case ${x.caseRef ?? "n/a"}, case due ${B(x.caseDue)}, requested by ${x.requestedBy})`).join("; ") || "none"}. ` +
+   270→      `Overdue (case due date passed, not closed): ${a.overdue.map((x) => `${x.ref} (${x.commandType}, ${x.state}, case ${x.caseRef ?? "n/a"}, due ${B(x.dueDate)}, owner ${x.owner ?? "unassigned"})`).join("; ") || "none"}. ` +
+   271→      `In flight: ${a.inFlight.map((x) => `${x.ref} (${x.commandType}, ${x.state}, case ${x.caseRef ?? "n/a"})`).join("; ") || "none"}. ` +
+   272→      `Verified closures: ${a.verifiedClosures.map((x) => `${x.caseRef} "${x.title}" closed ${B(x.closedAt)}; proof: ${x.closureProof.slice(0, 140)}; actions ${x.actions.map((ac) => `${ac.ref}${ac.verifiedAt ? ` verified ${B(ac.verifiedAt)}` : ""}`).join(", ") || "none"}`).join(" | ") || "none"}.`
+   273→    );
+   274→  }
+   275→
+   276→  if (c.documents) {
+   277→    const d = c.documents;
+   278→    const missing = d.bols.filter((b) => b.missingContainerNo).map((b) => `${b.bolNo} v${b.version}${b.active ? "" : " (SUPERSEDED)"}${b.shipmentRef ? ` (shipment ${b.shipmentRef})` : " (no shipment linked)"}`);
+   279→    const unresolved = d.bols.filter((b) => !b.missingContainerNo && b.containers.some((x) => x.identityStatus === "UNRESOLVED")).map((b) => `${b.bolNo} v${b.version} (container recorded but identity UNRESOLVED)`);
+   280→    lines.push(
+   281→      `[documents] BOLs: ${d.bols.map((b) => `${b.bolNo} v${b.version}${b.active ? "" : " (SUPERSEDED)"} ${b.status}, match ${b.matchStatus}, shipment ${b.shipmentRef ?? "NONE"}, containers [${b.containers.map((x) => `${x.containerNo ?? "MISSING"}:${x.identityStatus}`).join(", ") || "none"}]${b.supersededBy.length ? `, superseded by ${b.supersededBy.join(",")}` : ""}${b.failedFields.length ? `, failed fields: ${b.failedFields.join(",")}` : ""}`).join(" | ") || "none"}. ` +
+   282→      (missing.length ? `DETERMINISTIC ANSWER — BOLs missing a container number: ${missing.join("; ")}. ` : "DETERMINISTIC ANSWER — no BOL is missing a container number. ") +
+   283→      (unresolved.length ? `Identity UNRESOLVED (number recorded, not verified): ${unresolved.join("; ")}. ` : "") +
+   284→      `Other documents: ${d.documents.map((x) => `${x.docType} ${x.refNo ?? "(no ref)"} ${x.fileName} (shipment ${x.shipmentRef ?? "n/a"}, BOL ${x.bolNo ?? "n/a"}, ${x.ocrStatus})`).join("; ") || "none"}.`
+   285→    );
+   286→  }
+   287→
+   288→  return lines.join("\n");
+   289→}
+   290→
+   291→/* ─── Data-quality + structured answer builders ──────────────────────────── */
+   292→
+   293→function dataQualityFor(s: ShipmentFacts): string {
+   294→  const last = s.milestones[s.milestones.length - 1];
+   295→  const estimated = last?.isEstimated ?? false;
+   296→  const corrected = s.milestones.some((m) => m.correctedByEventId);
+   297→  if (s.freshness === "unavailable") return "unavailable";
+   298→  if (s.freshness === "stale") return `stale — last event ${last ? B(last.eventTime) : "never"} (${last?.source ?? "n/a"})`;
+   299→  if (estimated) return "estimated — latest milestone is an estimate";
+   300→  if (s.freshness === "aging") return "aging — treat as indicative, not current";
+   301→  return corrected ? "verified (fresh, includes corrected events)" : "verified (fresh)";
+   302→}
+   303→
+   304→function shipmentSections(s: ShipmentFacts, q: QuantityFacts | null, p: PositionAsOfFacts | null, h: EventHistoryResult | null): AssistantSection[] {
+   305→  const sections: AssistantSection[] = [];
+   306→  const latest = s.milestones[s.milestones.length - 1];
+   307→
+   308→  const cargo = s.allocatedLines.length
+   309→    ? s.allocatedLines.map((l) => `${l.material} — ${l.quantity} ${l.uom} @ ${l.unitPrice} ${l.currency} (${l.sku})`)
+   310→    : [s.allocatedNote ?? "no allocated cargo lines recorded"];
+   311→  sections.push({
+   312→    key: "shipment", label: "Shipment",
+   313→    lines: [`${s.ref} — ${s.mode.toLowerCase()} · carrier ${s.carrier ?? "n/a"} · supplier ${s.supplier ?? "unlinked"} · PO ${s.poRef ?? "unlinked"}`, ...cargo],
+   314→  });
+   315→
+   316→  sections.push({
+   317→    key: "current_state", label: "Current state",
+   318→    lines: [
+   319→      `Status ${s.status} (${s.liveStatus})${s.customsStatus ? ` · customs: ${s.customsStatus}` : ""}`,
+   320→      latest ? `Latest event: ${latest.label}${latest.location ? ` @ ${latest.location}` : ""} — ${B(latest.eventTime)} (${latest.source}${latest.isEstimated ? ", estimated" : ", confirmed"})` : "No milestones stored in the connected records",
+   321→    ],
+   322→  });
+   323→
+   324→  const locLines: string[] = [];
+   325→  if (p) {
+   326→    locLines.push(
+   327→      p.milestone
+   328→        ? `${p.milestone.label}${p.milestone.location ? ` @ ${p.milestone.location}` : ""} — event time ${B(p.milestone.eventTime)} (${p.milestone.source})`
+   329→        : `No stored event at or before that time — last known event is later or none exists`
+   330→    );
+   331→    locLines.push(p.statement.charAt(0).toUpperCase() + p.statement.slice(1) + ".");
+   332→  } else if (latest) {
+   333→    if (latest.code === "underway" && s.vessel?.position) {
+   334→      locLines.push(`Vessel position ${s.vessel.position.lat}°, ${s.vessel.position.lng}° (AIS) at ${B(s.vessel.position.at)} — vessel position, not a confirmed container position`);
+   335→    } else {
+   336→      locLines.push(`Last recorded: ${latest.label}${latest.location ? ` @ ${latest.location}` : ""} — ${B(latest.eventTime)} (${latest.source})`);
+   337→    }
+   338→    const unresolved = s.containers.filter((x) => x.identityStatus !== "RESOLVED");
+   339→    if (unresolved.length) locLines.push(`Container identity not resolved (${unresolved.map((x) => x.containerNo ?? "missing no.").join(", ")}) — position applies to the transport, not the cargo`);
+   340→  } else {
+   341→    locLines.push("No current verified position is available");
+   342→    locLines.push("No stored events for this shipment — a carrier/port event feed or milestone record is missing");
+   343→  }
+   344→  sections.push({ key: "location", label: "Location", lines: locLines });
+   345→
+   346→  if (q) {
+   347→    const qLines = [
+   348→      `Dispatched: ${q.dispatched.map((d) => `${d.quantity} ${d.uom} ${d.material}`).join("; ") || "not recorded"}`,
+   349→      `In transit: ${q.inTransit.map((d) => `${d.quantity} ${d.uom} ${d.material}`).join("; ") || "no in-transit inventory lots recorded for this shipment"}`,
+   350→      `Received: ${q.received.map((d) => `${d.quantity} ${d.uom} ${d.material} [${d.ref ?? "GRN"}${d.status ? `, ${d.status}` : ""}]`).join("; ") || "no goods receipts recorded"}`,
+   351→      `Outstanding: ${q.outstanding.map((d) => `${d.quantity} ${d.uom} ${d.material}`).join("; ") || "not computable from records"}`,
+   352→    ];
+   353→    if (q.note) qLines.push(q.note);
+   354→    sections.push({ key: "quantity", label: "Quantity", lines: qLines });
+   355→  }
+   356→
+   357→  const tLines = latest
+   358→    ? [`Event time ${B(latest.eventTime)} · received by platform ${B(latest.receivedAt)} · source ${latest.source}`, `Last successful source update: ${s.lastEvent.at ? B(s.lastEvent.at) : "not available"} (${s.lastEvent.source ?? "n/a"})`]
+   359→    : ["Event time: not available (no stored events)"];
+   360→  sections.push({ key: "time", label: "Time", lines: tLines });
+   361→
+   362→  const legLines = s.legs.length
+   363→    ? s.legs.map((l) => `#${l.seq} ${l.mode}: ${l.fromPoint ?? "?"} → ${l.toPoint ?? "?"} [${l.status}]${l.carrier ? ` · ${l.carrier}` : ""}`)
+   364→    : [`Route ${s.route.originPort ?? "?"} → ${s.route.destinationPort ?? "?"} (no leg records)`];
+   365→  sections.push({
+   366→    key: "route", label: "Route",
+   367→    lines: [...legLines, `Destination verified: ${s.route.destVerified ? "yes — Bahrain (KBSP)" : "no validated Bahrain destination in the record"}`],
+   368→  });
+   369→
+   370→  const etaLines: string[] = [];
+   371→  if (s.actualArrival) etaLines.push(`Arrived (actual): ${B(s.actualArrival)} — verified`);
+   372→  if (s.displayEta.value) etaLines.push(`Display ETA: ${B(s.displayEta.value)} (${s.displayEta.type ?? "unknown type"} / ${s.displayEtaSource ?? "unknown source"}) — estimated`);
+   373→  if (s.supplierPromisedEta) etaLines.push(`Supplier promised: ${B(s.supplierPromisedEta)} — contractual estimate`);
+   374→  if (s.carrierEta) etaLines.push(`Carrier ETA: ${B(s.carrierEta)} (freshness: ${s.carrierEtaFreshness}) — estimated`);
+   375→  for (const e of s.etas.slice(0, 2)) etaLines.push(`${e.estimateType} observation: ${e.etaValue ? B(e.etaValue) : "insufficient data"} (${e.sourceName}, calculated ${B(e.calculatedAt)}${e.confidence != null ? `, confidence ${e.confidence}` : ""})`);
+   376→  if (!s.actualArrival && !s.displayEta.value && !s.carrierEta && !s.supplierPromisedEta) etaLines.push("ETA unavailable — no carrier, port or supplier estimate on record");
+   377→  sections.push({ key: "eta", label: "ETA", lines: etaLines });
+   378→
+   379→  const evLines = [
+   380→    ...s.bols.map((b) => `BOL ${b.bolNo} v${b.version} (${b.status}${b.active ? "" : ", superseded"})`),
+   381→    latest ? `Milestone event via ${latest.source} (provider event retained, received ${B(latest.receivedAt)})` : null,
+   382→    ...s.evidence.map((e) => `${e.entityRef} — ${e.sourceSystem} (${e.label})`),
+   383→  ].filter((x): x is string => Boolean(x));
+   384→  sections.push({ key: "evidence", label: "Evidence", lines: evLines.length ? evLines : ["No source evidence records linked"] });
+   385→
+   386→  sections.push({ key: "data_quality", label: "Data quality", lines: [dataQualityFor(s)] });
+   387→
+   388→  if (s.exceptions.length) {
+   389→    sections.push({
+   390→      key: "next_action", label: "Next action",
+   391→      lines: s.exceptions.map((x) => `${x.ref} [${x.severity}] ${x.title} (${x.state}) — follow exception case for the recommended step`),
+   392→    });
+   393→  }
+   394→
+   395→  if (h && h.found) {
+   396→    sections.push({
+   397→      key: "history", label: "Event history",
+   398→      lines: [`${h.shown} of ${h.total} stored events shown — full chronology below`],
+   399→    });
+   400→  }
+   401→  return sections;
+   402→}
+   403→
+   404→function buildStructured(c: Collected): AssistantStructured | undefined {
+   405→  const sections: AssistantSection[] = [];
+   406→  const s = c.shipments[0];
+   407→
+   408→  // shipment-centric answer
+   409→  if (s) {
+   410→    const q = c.quantities.find((x) => x.ref === s.ref) ?? null;
+   411→    const p = c.position && !("error" in c.position) && c.position.ref === s.ref ? c.position : null;
+   412→    const h = c.history?.found ? c.history : null;
+   413→    sections.push(...shipmentSections(s, q, p, h));
+   414→  }
+   415→
+   416→  // port-centric answer
+   417→  if (c.port) {
+   418→    const p = c.port;
+   419→    sections.push({ key: "port", label: "Port", lines: [`Query "${p.portQuery}" → ${p.matchedAliases.join(", ")}`] });
+   420→    sections.push({
+   421→      key: "physically_present", label: "Physically present now",
+   422→      lines: p.physicallyPresent.map((x) => `${x.ref} — ${x.lastEvent} at ${B(x.eventTime)} (${x.source})`).concat(p.physicallyPresent.length ? [] : ["No shipment has an arrival/customs event as its latest event at this port"]),
+   423→    });
+   424→    sections.push({
+   425→      key: "last_recorded", label: "Last recorded at port",
+   426→      lines: p.lastRecorded.map((x) => `${x.ref} — ${x.lastPortEvent}, ${B(x.eventTime)}${x.sinceLeft ? ` (later event ${B(x.sinceLeft)})` : ""}`).concat(p.lastRecorded.length ? [] : ["None"]),
+   427→    });
+   428→    sections.push({
+   429→      key: "expected", label: "Expected",
+   430→      lines: p.expected.map((x) => `${x.ref} — ${x.basis}${x.eta ? `, ETA ${B(x.eta)}` : " (ETA not available)"}`).concat(p.expected.length ? [] : ["None"]),
+   431→    });
+   432→    if (p.cargoAtPort.length) {
+   433→      sections.push({ key: "cargo_at_port", label: "Cargo last recorded at port", lines: p.cargoAtPort.map((x) => `${x.ref} — ${x.quantity} ${x.uom} (${x.label}, ${B(x.eventTime)})`) });
+   434→    }
+   435→    if (p.receivedAtDestination.length) {
+   436→      sections.push({ key: "received", label: "Confirmed received", lines: p.receivedAtDestination.map((x) => `${x.ref} — ${x.quantity} ${x.uom} [${x.receipt}, ${x.status}]`) });
+   437→    }
+   438→    sections.push({
+   439→      key: "events", label: "Events recorded",
+   440→      lines: [`${p.eventsWindow.length} matching event(s)${c.time.note ? ` (${c.time.note})` : ""}`],
+   441→    });
+   442→  }
+   443→
+   444→  // delays / exceptions
+   445→  if (c.delays) {
+   446→    const d = c.delays;
+   447→    if (d.openCases.length) {
+   448→      sections.push({
+   449→        key: "open_exceptions", label: "Open exceptions",
+   450→        lines: d.openCases.map((x) => `${x.ref} [${x.severity}] ${x.title} — ${x.state}, owner ${x.owner ?? "unassigned"}, due ${B(x.dueDate)}${x.shipmentRef ? `, shipment ${x.shipmentRef}` : ""}`),
+   451→      });
+   452→    }
+   453→    if (d.delayedShipments.length) {
+   454→      sections.push({
+   455→        key: "delayed", label: "Delayed (>36h slip)",
+   456→        lines: d.delayedShipments.map((x) => `${x.ref} — slip ${x.slipHours}h (supplier ${B(x.supplierPromisedEta)} → carrier ${B(x.carrierEta)})`),
+   457→      });
+   458→    }
+   459→    if (d.staleShipments.length) {
+   460→      sections.push({ key: "stale", label: "Stale tracking", lines: d.staleShipments.map((x) => `${x.ref} — ${x.freshness}, last event ${x.lastEventAt ? B(x.lastEventAt) : "never"}`) });
+   461→    }
+   462→    if (!d.openCases.length && !d.delayedShipments.length && !d.staleShipments.length) {
+   463→      sections.push({ key: "clean", label: "Status", lines: ["No open exception cases, no >36h ETA slips, no stale tracking in connected records"] });
+   464→    }
+   465→  }
+   466→
+   467→  // actions / decisions
+   468→  if (c.actions) {
+   469→    const a = c.actions;
+   470→    if (a.awaitingApproval.length) sections.push({ key: "awaiting_approval", label: "Decisions awaiting approval", lines: a.awaitingApproval.map((x) => `${x.ref} — ${x.commandType} (${x.riskLevel}) target ${x.targetRef ?? "n/a"}, case ${x.caseRef ?? "n/a"}, case due ${B(x.caseDue)}`) });
+   471→    if (a.overdue.length) sections.push({ key: "overdue", label: "Overdue actions", lines: a.overdue.map((x) => `${x.ref} — ${x.commandType} (${x.state}), case ${x.caseRef ?? "n/a"}, due ${B(x.dueDate)}, owner ${x.owner ?? "unassigned"}`) });
+   472→    if (a.inFlight.length) sections.push({ key: "in_flight", label: "In flight", lines: a.inFlight.map((x) => `${x.ref} — ${x.commandType} (${x.state}), case ${x.caseRef ?? "n/a"}`) });
+   473→    if (a.verifiedClosures.length) sections.push({ key: "verified_closures", label: "Verified closures", lines: a.verifiedClosures.map((x) => `${x.caseRef} — ${x.title}: ${x.closureProof.slice(0, 160)}`) });
+   474→  }
+   475→
+   476→  // documents
+   477→  if (c.documents) {
+   478→    const d = c.documents;
+   479→    if (d.bols.length) sections.push({ key: "bols", label: "Bills of lading", lines: d.bols.map((b) => `${b.bolNo} v${b.version}${b.active ? "" : " (SUPERSEDED)"} — ${b.status}, match ${b.matchStatus}, shipment ${b.shipmentRef ?? "NONE"}${b.missingContainerNo ? ", MISSING container number" : `, container ${b.containers.map((x) => x.containerNo ?? "missing").join(", ")}`}`) });
+   480→    if (d.documents.length) sections.push({ key: "docs", label: "Other documents", lines: d.documents.map((x) => `${x.docType} ${x.refNo ?? "(no ref)"} — ${x.fileName} (shipment ${x.shipmentRef ?? "n/a"})`) });
+   481→  }
+   482→
+   483→  if (!sections.length) return undefined;
+   484→
+   485→  const structured: AssistantStructured = { sections };
+   486→  if (s) {
+   487→    structured.ref = s.ref;
+   488→    structured.shipmentRef = s.ref;
+   489→  }
+   490→  if (c.history?.found && c.history.milestones.length) {
+   491→    structured.asOfEvents = c.history.milestones.map((m) => ({ label: `${m.label}${m.location ? ` @ ${m.location}` : ""} (${m.source}${m.isEstimated ? ", estimated" : ""})`, eventTime: fmtBahrainDateTime(m.eventTime) }));
+   492→  } else if (c.position && !("error" in c.position) && c.position.milestone) {
+   493→    structured.asOfEvents = [{ label: `${c.position.milestone.label}${c.position.milestone.location ? ` @ ${c.position.milestone.location}` : ""} — position as of query time`, eventTime: fmtBahrainDateTime(c.position.milestone.eventTime) }];
+   494→  }
+   495→  return structured;
+   496→}
+   497→
+   498→/* ─── POST handler ───────────────────────────────────────────────────────── */
+   499→
+   500→export async function POST(req: NextRequest) {
+   501→  const body = (await req.json().catch(() => null)) as { question?: string } | null;
+   502→  const question = body?.question?.trim();
+   503→  if (!question) return err("BAD_REQUEST", "question is required", 400);
+   504→  if (question.length > 2000) return err("BAD_REQUEST", "question too long", 400);
+   505→
+   506→  const asOf = new Date();
+   507→  const asOfStr = asOf.toISOString();
+   508→  const sources: string[] = [];
+   509→
+   510→  // 1. deterministic retrieval (null → ambiguous time → clarification, Phase 6.1/6.3)
+   511→  const collected = await collectFacts(question);
+   512→  if (!collected) {
+   513→    const answer =
+   514→      "The time in your question is ambiguous, so I won't guess. Please restate it with an explicit Bahrain date and time " +
+   515→      "(e.g. \u201cat 14:00 Bahrain time on 15 Oct 2026\u201d, or \u201cbetween 08:00 and 12:00 yesterday\u201d). " +
+   516→      "Ambiguities I cannot resolve: hours 1\u201312 without am/pm, \u201con the 14th\u201d without a month, or two different dates in one question.";
+   517→    return ok({ answer, as_of: asOfStr, sources, dataQuality: "unavailable" } satisfies AssistantResponse);
+   518→  }
+   519→  for (const s of collected.shipments) sources.push(`shipment:${s.ref}`);
+   520→  if (collected.position) sources.push("tool:positionAsOf");
+   521→  if (collected.history?.found) sources.push(`milestones:${collected.history.ref}`);
+   522→  for (const q of collected.quantities) {
+   523→    sources.push(`po-lines:${q.ref}`);
+   524→    if (q.inTransit.length) sources.push(`inventory:${q.ref}`);
+   525→    if (q.received.length) sources.push(`goods-receipts:${q.ref}`);
+   526→  }
+   527→  if (collected.port) sources.push("milestones:port-scan");
+   528→  if (collected.delays) {
+   529→    sources.push("exception-cases:open");
+   530→    if (collected.delays.delayedShipments.length) sources.push("eta-observations:active");
+   531→  }
+   532→  if (collected.actions) sources.push("actions+approvals");
+   533→  if (collected.documents) sources.push("bols+documents");
+   534→
+   535→  // 2. deterministic structured payload (LLM-independent)
+   536→  const structured = buildStructured(collected);
+   537→  const primaryShip = collected.shipments[0];
+   538→  const dataQuality = primaryShip ? dataQualityFor(primaryShip) : undefined;
+   539→
+   540→  // 3. FACTS block
+   541→  const factsBlock = [
+   542→    `AS_OF: ${fmtBahrainDateTime(asOfStr)} (Asia/Bahrain, UTC+3)`,
+   543→    collected.time.note ? `TIME INTERPRETED FROM QUESTION: ${collected.time.note}` : null,
+   544→    "FACTS (deterministic tool output — cite only these records):",
+   545→    renderFacts(collected).slice(0, FACTS_CAP),
+   546→  ].filter(Boolean).join("\n");
+   547→
+   548→  // 4. LLM phrasing under strict structured format
+   549→  const system = [
+   550→    "You are the NASS Operations Assistant for the NASS Closed-Loop Control Tower (Bahrain).",
+   551→    "You answer ONLY from the FACTS block below. You have no other knowledge of positions, events, ETAs, quantities or decisions.",
+   552→    "",
+   553→    "ANSWER FORMAT — use short headed sections, ONLY those supported by the facts, in this order:",
+   554→    "Shipment / Current state / Location / Quantity / Time / Route / ETA / Evidence / Data quality / Next action",
+   555→    "For port/exception/action/document questions use matching labels instead (e.g. Physically present / Expected / Open exceptions / Decisions awaiting approval).",
+   556→    "",
+   557→    "RULES (non-negotiable):",
+   558→    "1. Never print an empty section. Skip sections the facts do not support.",
+   559→    "2. ALL timestamps in Bahrain local time (UTC+3, AST) — copy the formatted times from the facts; never recompute or shift them.",
+   560→    "3. Label data verified / estimated / simulated / stale / unavailable. A vessel AIS position is NOT a container position.",
+   561→    "4. Never fabricate positions, events, port calls, ETAs, quantities or closures. If records are missing, say exactly what is missing.",
+   562→    "5. Use the 'Next action' section ONLY for exception-driven steps present in the facts (open cases, recommended actions, approvals needed) — never for generic advice like 'monitor'.",
+   563→    "6. Say exactly 'No current verified position is available' ONLY in the Location section, and ONLY when the facts show no reliable current position (no/stale events); then give last known position + timestamp and what data is missing.",
+   564→    "7. If multiple shipments or ports match the question, ask ONE clarifying question instead of guessing.",
+   565→    "8. Distinguish physically-present cargo from quantity last-recorded, expected, and received.",
+   566→    "9. Historical questions: positions are reconstructed from stored events, not interpolated — say so.",
+   567→    "10. Where the facts include a line starting 'DETERMINISTIC ANSWER', reproduce its list verbatim — do not re-classify or extend it yourself.",
+   568→    "11. Max 180 words. Then a final line 'Sources: …' listing the record refs you used.",
+   569→  ].join("\n");
+   570→
+   571→  let answer: string;
+   572→  let degraded = false;
+   573→  try {
+   574→    const zai = await ZAI.create();
+   575→    const completion = await zai.chat.completions.create({
+   576→      messages: [
+   577→        { role: "assistant", content: `${system}\n\n${factsBlock}` },
+   578→        { role: "user", content: question },
+   579→      ],
+   580→      thinking: { type: "disabled" },
+   581→    });
+   582→    answer = completion.choices[0]?.message?.content?.trim() || "";
+   583→    if (!answer) throw new Error("empty completion");
+   584→  } catch {
+   585→    // Degrade safely (Rule 10): deterministic answer from the structured payload alone.
+   586→    degraded = true;
+   587→    answer = structured
+   588→      ? structured.sections.map((sec) => `${sec.label}: ${sec.lines.join(" | ")}`).join("\n")
+   589→      : "No matching source records retrieved for this question in the connected operational store.";
+   590→    answer += "\n\n(Assistant model unavailable — deterministic fallback from retrieved records; core workflows unaffected.)";
+   591→  }
+   592→
+   593→  // deterministic note for as-of/time interpretation when the model is up
+   594→  if (!degraded && collected.time.note) {
+   595→    answer += `\n\nTime interpreted: ${collected.time.note}.`;
+   596→  }
+   597→
+   598→  return ok({
+   599→    answer,
+   600→    as_of: asOfStr,
+   601→    sources,
+   602→    degraded: degraded || undefined,
+   603→    structured,
+   604→    dataQuality,
+   605→  } satisfies AssistantResponse);
+   606→}
+   607→

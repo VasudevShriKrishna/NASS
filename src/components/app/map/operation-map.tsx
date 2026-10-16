@@ -74,7 +74,7 @@ const DASH_SEQ: number[][] = [
   [0, 3.5, 3, 0.5],
 ];
 
-const SHIP_SVG = `<svg class="vessel-glyph" width="21" height="13" viewBox="-11.5 -6.5 23 13" aria-hidden="true"><path d="M 8 0 L 2.2 2.9 L -6.5 2.9 L -6.5 -2.9 L 2.2 -2.9 Z" fill="currentColor" stroke="oklch(0.1 0.01 80 / 90%)" stroke-width="1" stroke-linejoin="round"/></svg>`;
+const SHIP_SVG = `<svg class="${styles.vesselGlyph}" width="30" height="18" viewBox="-11.5 -6.5 23 13" aria-hidden="true"><path d="M 8 0 L 2.2 2.9 L -6.5 2.9 L -6.5 -2.9 L 2.2 -2.9 Z" fill="currentColor" stroke="oklch(0.1 0.01 80 / 90%)" stroke-width="1" stroke-linejoin="round"/></svg>`;
 const FACTORY_SVG = `<svg class="siteSvg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M17 18h1"/><path d="M12 18h1"/><path d="M7 18h1"/></svg>`;
 const WAREHOUSE_SVG = `<svg class="siteSvg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 8.35V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.35A2 2 0 0 1 3.26 6.5l8-3.2a2 2 0 0 1 1.48 0l8 3.2A2 2 0 0 1 22 8.35Z"/><path d="M6 18h12"/><path d="M6 14h12"/><rect width="12" height="12" x="6" y="10"/></svg>`;
 
@@ -442,6 +442,20 @@ export function OperationMap({
     const c = STATUS_COLOR[ship.liveStatus];
     const eta = ship.eta ? fmtCountdown(+new Date(ship.eta) - Date.now()) : "no carrier ETA";
     const prov = ship.routeProvenance === "estimated-corridor" ? "estimated corridor" : ship.routeProvenance === "land-leg" ? "land leg" : "route unavailable";
+    const posSrc =
+      ship.progressSource === "ais-anchored"
+        ? "AIS fix"
+        : ship.progressSource === "hold"
+          ? "customs hold — at port"
+          : ship.progressSource === "arrived"
+            ? "arrived"
+            : ship.progressSource === "transit-point"
+              ? "last event"
+              : "est.";
+    const fix =
+      ship.vesselPosition != null
+        ? `${ship.vesselPosition.lat.toFixed(2)}°, ${ship.vesselPosition.lng.toFixed(2)}° (${esc(ship.vesselPosition.source ?? "recorded")})`
+        : "none recorded — corridor estimate";
     return `
       <div class="${styles.tipRef}">
         <span style="display:inline-block;width:7px;height:7px;border-radius:999px;background:${c};box-shadow:0 0 6px ${c}"></span>
@@ -451,8 +465,9 @@ export function OperationMap({
       <div class="${styles.tipRoute}">${esc(ship.from?.label ?? ship.originPort)} → ${esc(ship.to?.label ?? ship.destPort)}${ship.destVerified ? "" : " · ⚠ dest unverified"}</div>
       <div class="${styles.tipGrid}">
         <span class="${styles.tipK}">Carrier</span><span class="${styles.tipV}">${esc(ship.carrier ?? "—")}</span>
-        <span class="${styles.tipK}">Progress</span><span class="${styles.tipV}">${(p * 100).toFixed(1)}%</span>
-        <span class="${styles.tipK}">Speed</span><span class="${styles.tipV}">${ship.speedKn ? `≈ ${ship.speedKn} kn` : "—"}</span>
+        <span class="${styles.tipK}">Progress</span><span class="${styles.tipV}">${(p * 100).toFixed(1)}% · ${posSrc}</span>
+        <span class="${styles.tipK}">Position</span><span class="${styles.tipV}">${fix}</span>
+        <span class="${styles.tipK}">Speed</span><span class="${styles.tipV}">${ship.speedKn ? `≈ ${ship.speedKn} kn (est.)` : "not underway"}</span>
         <span class="${styles.tipK}">ETA</span><span class="${styles.tipV}">${eta}</span>
         <span class="${styles.tipK}">Cargo value</span><span class="${styles.tipV}" style="color:#e9c765">${fmtMoney(ship.importValue, ship.currency)}${ship.currency !== "USD" ? ` ≈ $${Math.round(ship.importValueUsd).toLocaleString("en-US")}` : ""}</span>
         <span class="${styles.tipK}">Route</span><span class="${styles.tipV}" style="color:oklch(0.62 0.03 90)">${prov}${ship.routeDistanceNm ? ` · ${ship.routeDistanceNm.toLocaleString("en-US")} nm` : ""}</span>

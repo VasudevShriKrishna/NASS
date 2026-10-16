@@ -111,6 +111,13 @@ export interface TraceShip {
   actualArrival: string | null;
   /** 0..1 at snapshot time — client advances it with the sim clock */
   progress: number;
+  /** how `progress` was derived (spec §2: every position traceable to its source) */
+  progressSource: "arrived" | "booked" | "hold" | "ais-anchored" | "calendar" | "transit-point";
+  /** progress value AT the anchor point (AIS fix) — client advances from here */
+  progressAnchor: number | null;
+  /** latest recorded vessel position fix (AIS), verbatim from the record —
+   * null = no verified position exists (position is estimated along the corridor) */
+  vesselPosition: { lat: number; lng: number; at: string; source: string | null } | null;
   voyageHours: number;
   speedKn: number | null;
   freshness: string;

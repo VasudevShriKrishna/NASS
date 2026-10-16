@@ -1,0 +1,738 @@
+     1→"use client";
+     2→
+     3→import { useMemo, useState } from "react";
+     4→import { ArrowRight, FileText, History, Link2, Mail, Send, ShieldCheck } from "lucide-react";
+     5→import { Button } from "@/components/ui/button";
+     6→import { Card, CardContent } from "@/components/ui/card";
+     7→import { Input } from "@/components/ui/input";
+     8→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+     9→import { Textarea } from "@/components/ui/textarea";
+    10→import { cn } from "@/lib/utils";
+    11→import { useApi, postJson } from "@/lib/client";
+    12→import { useAppStore } from "@/lib/app-state";
+    13→import { useToast } from "@/hooks/use-toast";
+    14→import {
+    15→  CaseStateBadge,
+    16→  EmptyState,
+    17→  ErrorState,
+    18→  EvidenceBadge,
+    19→  LoadingState,
+    20→  ScrollTable,
+    21→  SectionCard,
+    22→  SeverityBadge,
+    23→  StatusPill,
+    24→  fmtDateTime,
+    25→  fmtRelative,
+    26→  parseArr,
+    27→} from "@/components/app/shared";
+    28→
+    29→/* ── M17 closed-loop state machine — client mirror of src/lib/case-machine.ts ── */
+    30→const CASE_STATES_LINEAR = [
+    31→  "DETECTED",
+    32→  "TRIAGED",
+    33→  "ASSIGNED",
+    34→  "INVESTIGATING",
+    35→  "ACTION_PROPOSED",
+    36→  "AWAITING_APPROVAL",
+    37→  "ACTION_SUBMITTED",
+    38→  "OUTCOME_PENDING_VERIFICATION",
+    39→  "RESOLVED",
+    40→] as const;
+    41→const ALL_CASE_STATES: string[] = [...CASE_STATES_LINEAR, "CANCELLED"];
+    42→
+    43→interface TransitionOption {
+    44→  to: string;
+    45→  reopen?: boolean;
+    46→}
+    47→function allowedTransitions(state: string): TransitionOption[] {
+    48→  const out: TransitionOption[] = [];
+    49→  if (state === "RESOLVED") {
+    50→    out.push({ to: "INVESTIGATING", reopen: true });
+    51→  } else if (state !== "CANCELLED") {
+    52→    const idx = CASE_STATES_LINEAR.indexOf(state as (typeof CASE_STATES_LINEAR)[number]);
+    53→    if (idx >= 0 && idx < CASE_STATES_LINEAR.length - 1) out.push({ to: CASE_STATES_LINEAR[idx + 1] });
+    54→    out.push({ to: "CANCELLED" });
+    55→  }
+    56→  return out;
+    57→}
+    58→
+    59→/* ── Types (mirror API payloads) ── */
+    60→interface CaseRow {
+    61→  id: string;
+    62→  ref: string;
+    63→  title: string;
+    64→  category: string;
+    65→  severity: string;
+    66→  state: string;
+    67→  trigger: string | null;
+    68→  ruleVersion: string | null;
+    69→  entityType: string | null;
+    70→  entityId: string | null;
+    71→  entityRef: string | null;
+    72→  ownerTeam: string | null;
+    73→  ownerUser: string | null;
+    74→  slaHours: number | null;
+    75→  dueDate: string | null;
+    76→  evidenceRefs: string | null;
+    77→  recommendedAction: string | null;
+    78→  resolutionCode: string | null;
+    79→  closureProof: string | null;
+    80→  reopenReason: string | null;
+    81→  createdAt: string;
+    82→  updatedAt: string;
+    83→  closedAt: string | null;
+    84→  actions?: { id: string; ref: string; state: string; commandType: string }[];
+    85→}
+    86→interface CaseEventRow {
+    87→  id: string;
+    88→  type: string;
+    89→  fromState: string | null;
+    90→  toState: string | null;
+    91→  actor: string;
+    92→  actorType: string;
+    93→  note: string | null;
+    94→  at: string;
+    95→}
+    96→interface ApprovalRow {
+    97→  id: string;
+    98→  approver: string;
+    99→  role: string;
+   100→  decision: string;
+   101→  comment: string | null;
+   102→  at: string;
+   103→}
+   104→interface DetailAction {
+   105→  id: string;
+   106→  ref: string;
+   107→  commandType: string;
+   108→  riskLevel: string;
+   109→  state: string;
+   110→  targetType: string | null;
+   111→  targetRef: string | null;
+   112→  approvals: ApprovalRow[];
+   113→}
+   114→interface NotificationRow {
+   115→  id: string;
+   116→  channel: string;
+   117→  template: string;
+   118→  templateVersion: string;
+   119→  recipient: string;
+   120→  audienceType: string;
+   121→  state: string;
+   122→  urgency: string;
+   123→  at: string;
+   124→  note: string | null;
+   125→}
+   126→interface EvidenceRow {
+   127→  id: string;
+   128→  sourceSystem: string;
+   129→  sourceRef: string | null;
+   130→  contentHash: string | null;
+   131→  issuer: string | null;
+   132→  receivedAt: string;
+   133→  label: string;
+   134→  originalOrDerived: string;
+   135→}
+   136→interface CaseDetail extends CaseRow {
+   137→  events: CaseEventRow[];
+   138→  actions: DetailAction[];
+   139→  notifications: NotificationRow[];
+   140→  supplier?: { code: string; name: string; status: string } | null;
+   141→  shipment?: { ref: string; status: string; freshness: string; displayEta: string | null; supplierPromisedEta: string | null; vesselName: string | null } | null;
+   142→  bol?: { id: string; bolNo: string; version: number; status: string; matchStatus: string; isActive: boolean } | null;
+   143→}
+   144→
+   145→/* ── Chip palettes (allowed palette only: emerald/teal/amber/orange/rose/violet/zinc) ── */
+   146→const EVENT_TYPE_CLS: Record<string, string> = {
+   147→  STATE_TRANSITION: "bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-400/10 dark:text-teal-300",
+   148→  COMMENT: "bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-900 dark:text-zinc-300",
+   149→  EVIDENCE: "bg-violet-100 text-violet-800 border-violet-300 dark:bg-violet-400/10 dark:text-violet-300",
+   150→  ASSIGNMENT: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-400/10 dark:text-amber-300",
+   151→  COMMUNICATION: "bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-400/10 dark:text-orange-300",
+   152→};
+   153→const NTF_STATE_CLS: Record<string, string> = {
+   154→  DELIVERED: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-400/10 dark:text-emerald-300",
+   155→  SENT: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-400/10 dark:text-amber-300",
+   156→  QUEUED: "bg-zinc-100 text-zinc-600 border-zinc-300 dark:bg-zinc-900 dark:text-zinc-400",
+   157→  FAILED: "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-400/10 dark:text-rose-300",
+   158→  BOUNCED: "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-400/10 dark:text-rose-300",
+   159→};
+   160→const CHANNEL_CLS: Record<string, string> = {
+   161→  IN_APP: "bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-900 dark:text-zinc-300",
+   162→  EMAIL: "bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-400/10 dark:text-teal-300",
+   163→  SMS_WHATSAPP: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-400/10 dark:text-amber-300",
+   164→  SUPPLIER_PORTAL: "bg-violet-100 text-violet-800 border-violet-300 dark:bg-violet-400/10 dark:text-violet-300",
+   165→};
+   166→const RISK_CLS: Record<string, string> = {
+   167→  SAFE: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-400/10 dark:text-emerald-300",
+   168→  HIGH_RISK: "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-400/10 dark:text-rose-300",
+   169→};
+   170→
+   171→function chipCls(cls: string | undefined) {
+   172→  return cn("inline-flex items-center whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[10px] font-semibold tracking-wide", cls ?? "bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-900 dark:text-zinc-300");
+   173→}
+   174→function isOverdue(c: { dueDate: string | null; state: string }) {
+   175→  return !!c.dueDate && new Date(c.dueDate).getTime() < Date.now() && !["RESOLVED", "CANCELLED"].includes(c.state);
+   176→}
+   177→function hash12(h: string | null | undefined) {
+   178→  if (!h) return "—";
+   179→  return h.length > 14 ? `${h.slice(0, 14)}…` : h;
+   180→}
+   181→
+   182→/* ── Inline mini state-flow of the case's own journey ── */
+   183→function MiniFlow({ state, visited }: { state: string; visited: string[] }) {
+   184→  return (
+   185→    <div className="flex flex-wrap items-center gap-x-1 gap-y-1.5">
+   186→      {ALL_CASE_STATES.map((s, i) => {
+   187→        const isCurrent = s === state;
+   188→        const seen = visited.includes(s);
+   189→        return (
+   190→          <span key={s} className="inline-flex items-center gap-1">
+   191→            {i > 0 ? <ArrowRight className="h-3 w-3 text-muted-foreground/50" /> : null}
+   192→            <CaseStateBadge state={s} className={cn(isCurrent && "ring-2 ring-foreground/30 ring-offset-1", !isCurrent && !seen && "opacity-35")} />
+   193→          </span>
+   194→        );
+   195→      })}
+   196→    </div>
+   197→  );
+   198→}
+   199→
+   200→/* ── Transition control (interactive core) ── */
+   201→function TransitionPanel({ kase, events, onSuccess }: { kase: CaseDetail; events: CaseEventRow[]; onSuccess: () => void }) {
+   202→  const { toast } = useToast();
+   203→  const options = useMemo(() => allowedTransitions(kase.state), [kase.state]);
+   204→  const [toState, setToState] = useState<string>(options[0]?.to ?? "");
+   205→  const [actor, setActor] = useState("Ops Supervisor");
+   206→  const [note, setNote] = useState("");
+   207→  const [busy, setBusy] = useState(false);
+   208→
+   209→  const isReopen = kase.state === "RESOLVED" && toState === "INVESTIGATING";
+   210→  const noteRequired = toState === "RESOLVED" || isReopen;
+   211→  const visited = useMemo(() => {
+   212→    const set = new Set<string>([kase.state]);
+   213→    for (const e of events) {
+   214→      if (e.fromState) set.add(e.fromState);
+   215→      if (e.toState) set.add(e.toState);
+   216→    }
+   217→    return Array.from(set);
+   218→  }, [events, kase.state]);
+   219→
+   220→  async function submit() {
+   221→    if (!toState || busy) return;
+   222→    if (!actor.trim()) {
+   223→      toast({ title: "Actor required", description: "The audit trail (M22) must record who performed this transition.", variant: "destructive" });
+   224→      return;
+   225→    }
+   226→    if (noteRequired && !note.trim()) {
+   227→      toast({
+   228→        title: "Closure evidence / reason required",
+   229→        description: isReopen ? "Reopening a resolved case requires the regression reason." : "A case can only reach RESOLVED with verified closure evidence (M17).",
+   230→        variant: "destructive",
+   231→      });
+   232→      return;
+   233→    }
+   234→    setBusy(true);
+   235→    const res = await postJson<{ case: CaseRow; transition: { from: string; to: string } }>(`/api/exceptions/${kase.id}/transition`, {
+   236→      toState,
+   237→      actor: actor.trim(),
+   238→      note: note.trim() || undefined,
+   239→    });
+   240→    setBusy(false);
+   241→    if (res.ok) {
+   242→      toast({
+   243→        title: `Case ${kase.ref} advanced`,
+   244→        description: `${res.data?.transition.from ?? kase.state} → ${toState}${isReopen ? " (REOPEN)" : ""} recorded by ${actor.trim()}.`,
+   245→      });
+   246→      setNote("");
+   247→      setToState("");
+   248→      onSuccess();
+   249→    } else {
+   250→      toast({ title: "Transition rejected", description: res.error?.message ?? "Invalid transition.", variant: "destructive" });
+   251→    }
+   252→  }
+   253→
+   254→  return (
+   255→    <SectionCard
+   256→      title={
+   257→        <span className="inline-flex items-center gap-1.5">
+   258→          <ShieldCheck className="h-4 w-4 text-teal-700 dark:text-teal-400" /> Advance closed loop (M17)
+   259→        </span>
+   260→      }
+   261→      subtitle="Linear order with CANCELLED exit; RESOLVED may reopen to INVESTIGATING on regression. Server validates every transition."
+   262→    >
+   263→      <div className="mb-4">
+   264→        <p className="mb-1.5 text-xs font-medium text-muted-foreground">Case journey</p>
+   265→        <MiniFlow state={kase.state} visited={visited} />
+   266→      </div>
+   267→      <div className="grid gap-3 sm:grid-cols-2">
+   268→        <div className="space-y-1.5">
+   269→          <label className="text-xs font-medium text-muted-foreground" htmlFor="next-state">
+   270→            Next state (allowed from {kase.state})
+   271→          </label>
+   272→          <Select value={toState} onValueChange={setToState}>
+   273→            <SelectTrigger id="next-state" aria-label="Next state">
+   274→              <SelectValue placeholder="Select next state" />
+   275→            </SelectTrigger>
+   276→            <SelectContent>
+   277→              {options.map((o) => (
+   278→                <SelectItem key={o.to} value={o.to}>
+   279→                  {o.reopen ? "INVESTIGATING — REOPEN: condition regressed" : o.to.replaceAll("_", " ")}
+   280→                </SelectItem>
+   281→              ))}
+   282→            </SelectContent>
+   283→          </Select>
+   284→        </div>
+   285→        <div className="space-y-1.5">
+   286→          <label className="text-xs font-medium text-muted-foreground" htmlFor="actor">
+   287→            Actor (recorded in audit trail)
+   288→          </label>
+   289→          <Input id="actor" value={actor} onChange={(e) => setActor(e.target.value)} placeholder="Ops Supervisor" />
+   290→        </div>
+   291→        <div className="space-y-1.5 sm:col-span-2">
+   292→          <label className="text-xs font-medium text-muted-foreground" htmlFor="transition-note">
+   293→            Note {noteRequired ? <span className="font-semibold text-rose-600 dark:text-rose-400">— closure evidence / reason (required)</span> : "(optional)"}
+   294→          </label>
+   295→          <Textarea
+   296→            id="transition-note"
+   297→            value={note}
+   298→            onChange={(e) => setNote(e.target.value)}
+   299→            placeholder={noteRequired ? "e.g. GRN-5003 read-back confirms full receipt; ledger reconciled" : "Context for the case timeline"}
+   300→            rows={3}
+   301→          />
+   302→        </div>
+   303→      </div>
+   304→      <div className="mt-3 flex items-center justify-between gap-3">
+   305→        <p className="text-xs text-muted-foreground">
+   306→          Every transition writes a CaseEvent and an append-only AuditEvent with a correlation id.
+   307→        </p>
+   308→        <Button type="button" onClick={submit} disabled={busy || !toState} className="min-h-9 shrink-0">
+   309→          {busy ? <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden /> : <Send className="h-4 w-4" aria-hidden />}
+   310→          Submit transition
+   311→        </Button>
+   312→      </div>
+   313→    </SectionCard>
+   314→  );
+   315→}
+   316→
+   317→/* ── Main view ── */
+   318→export function ExceptionsView({ drillRef }: { drillRef?: string | null }) {
+   319→  const drillTo = useAppStore((s) => s.drillTo);
+   320→  const list = useApi<{ cases: CaseRow[]; stateCounts: Record<string, number> }>("/api/exceptions");
+   321→  const [manualId, setManualId] = useState<string | null>(null);
+   322→  const [filter, setFilter] = useState<string>("ALL");
+   323→
+   324→  const cases = useMemo(() => list.data?.cases ?? [], [list.data]);
+   325→  const counts = list.data?.stateCounts ?? {};
+   326→  const filtered = useMemo(() => (filter === "ALL" ? cases : cases.filter((c) => c.state === filter)), [cases, filter]);
+   327→
+   328→  /* drillRef preselection is derived (no effect needed) — manual selection wins once the user clicks */
+   329→  const drillId = useMemo(() => (drillRef ? cases.find((c) => c.ref === drillRef)?.id ?? null : null), [drillRef, cases]);
+   330→  const selectedId = manualId ?? drillId;
+   331→
+   332→  const detail = useApi<{ case: CaseDetail; evidence: EvidenceRow[] }>(selectedId ? `/api/exceptions/${selectedId}` : null);
+   333→
+   334→  const kase = detail.data?.case ?? null;
+   335→  const evidence = detail.data?.evidence ?? [];
+   336→
+   337→  return (
+   338→    <div className="space-y-4">
+   339→      {/* State machine strip */}
+   340→      <SectionCard
+   341→        title="Closed-loop state machine (M17)"
+   342→        subtitle="DETECTED → … → RESOLVED, CANCELLED exit at any non-terminal state, REOPEN on regression. Click a state to filter the queue."
+   343→      >
+   344→        <div className="flex flex-wrap items-center gap-1.5">
+   345→          <button
+   346→            type="button"
+   347→            onClick={() => setFilter("ALL")}
+   348→            aria-pressed={filter === "ALL"}
+   349→            className={cn(
+   350→              "inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 transition",
+   351→              filter === "ALL" ? "border-foreground/30 bg-accent shadow-sm" : "border-transparent hover:bg-accent/50"
+   352→            )}
+   353→          >
+   354→            <span className="inline-flex items-center rounded-md border border-zinc-300 bg-zinc-100 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-zinc-700 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-300">
+   355→              ALL
+   356→            </span>
+   357→            <span className="text-xs font-semibold tabular-nums">{cases.length}</span>
+   358→          </button>
+   359→          {ALL_CASE_STATES.map((s) => {
+   360→            const n = counts[s] ?? 0;
+   361→            return (
+   362→              <button
+   363→                key={s}
+   364→                type="button"
+   365→                onClick={() => setFilter(s)}
+   366→                aria-pressed={filter === s}
+   367→                className={cn(
+   368→                  "inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 transition",
+   369→                  filter === s ? "border-foreground/30 bg-accent shadow-sm" : "border-transparent hover:bg-accent/50"
+   370→                )}
+   371→              >
+   372→                <CaseStateBadge state={s} className={n === 0 && filter !== s ? "opacity-40" : undefined} />
+   373→                <span className="text-xs font-semibold tabular-nums">{n}</span>
+   374→              </button>
+   375→            );
+   376→          })}
+   377→        </div>
+   378→      </SectionCard>
+   379→
+   380→      {/* Master-detail */}
+   381→      <div className="grid items-start gap-4 xl:grid-cols-[420px_1fr]">
+   382→        {/* Master: case queue */}
+   383→        <SectionCard
+   384→          title={`Exception queue${filter !== "ALL" ? ` — ${filter.replaceAll("_", " ")}` : ""}`}
+   385→          subtitle={`${filtered.length} case${filtered.length === 1 ? "" : "s"} · SLA overdue highlighted`}
+   386→          bodyClass="pt-0"
+   387→        >
+   388→          {list.loading ? (
+   389→            <LoadingState />
+   390→          ) : list.error ? (
+   391→            <ErrorState message={list.error} />
+   392→          ) : filtered.length === 0 ? (
+   393→            <EmptyState message="No cases in this state" hint="Switch state chips above or advance a case through the loop." />
+   394→          ) : (
+   395→            <ScrollTable maxHeight="max-h-[560px]">
+   396→              <table className="w-full text-sm tabular-nums">
+   397→                <thead className="sticky top-0 bg-background">
+   398→                  <tr className="border-b text-left text-[10px] uppercase tracking-wide text-muted-foreground">
+   399→                    <th className="py-2 pr-2 font-medium">Ref</th>
+   400→                    <th className="py-2 pr-2 font-medium">Sev</th>
+   401→                    <th className="py-2 pr-2 font-medium">Category</th>
+   402→                    <th className="py-2 pr-2 font-medium">State</th>
+   403→                    <th className="py-2 pr-2 font-medium">Title</th>
+   404→                    <th className="py-2 pr-2 font-medium">Owner</th>
+   405→                    <th className="py-2 pr-2 font-medium">SLA due</th>
+   406→                    <th className="py-2 font-medium">Created</th>
+   407→                  </tr>
+   408→                </thead>
+   409→                <tbody>
+   410→                  {filtered.map((c) => (
+   411→                    <tr
+   412→                      key={c.id}
+   413→                      onClick={() => setManualId(c.id)}
+   414→                      onKeyDown={(e) => e.key === "Enter" && setManualId(c.id)}
+   415→                      tabIndex={0}
+   416→                      aria-selected={selectedId === c.id}
+   417→                      className={cn(
+   418→                        "cursor-pointer border-b border-border/60 transition-colors hover:bg-accent/50",
+   419→                        selectedId === c.id && "bg-accent"
+   420→                      )}
+   421→                    >
+   422→                      <td className="py-2 pr-2 font-mono text-xs font-semibold">{c.ref}</td>
+   423→                      <td className="py-2 pr-2">
+   424→                        <SeverityBadge value={c.severity} />
+   425→                      </td>
+   426→                      <td className="py-2 pr-2">{chipClsChip(c.category)}</td>
+   427→                      <td className="py-2 pr-2">
+   428→                        <CaseStateBadge state={c.state} />
+   429→                      </td>
+   430→                      <td className="max-w-[220px] truncate py-2 pr-2" title={c.title}>
+   431→                        {c.title}
+   432→                      </td>
+   433→                      <td className="py-2 pr-2 text-xs text-muted-foreground">{c.ownerTeam ?? "—"}</td>
+   434→                      <td className={cn("py-2 pr-2 text-xs", isOverdue(c) ? "font-semibold text-rose-600 dark:text-rose-400" : "text-muted-foreground")}>
+   435→                        {c.dueDate ? fmtRelative(c.dueDate) : "—"}
+   436→                        {isOverdue(c) ? " · overdue" : ""}
+   437→                      </td>
+   438→                      <td className="py-2 text-xs text-muted-foreground">{fmtRelative(c.createdAt)}</td>
+   439→                    </tr>
+   440→                  ))}
+   441→                </tbody>
+   442→              </table>
+   443→            </ScrollTable>
+   444→          )}
+   445→        </SectionCard>
+   446→
+   447→        {/* Detail panel */}
+   448→        <div className="space-y-4">
+   449→          {!selectedId ? (
+   450→            <Card>
+   451→              <CardContent className="py-2">
+   452→                <EmptyState message="Select a case from the queue" hint="The dossier shows evidence, actions, communications and the transition control." />
+   453→              </CardContent>
+   454→            </Card>
+   455→          ) : detail.loading && !kase ? (
+   456→            <Card>
+   457→              <CardContent>
+   458→                <LoadingState label="Loading case dossier…" />
+   459→              </CardContent>
+   460→            </Card>
+   461→          ) : detail.error ? (
+   462→            <Card>
+   463→              <CardContent>
+   464→                <ErrorState message={detail.error} />
+   465→              </CardContent>
+   466→            </Card>
+   467→          ) : kase ? (
+   468→            <>
+   469→              {/* a) Header */}
+   470→              <SectionCard
+   471→                title={
+   472→                  <span className="inline-flex flex-wrap items-center gap-2">
+   473→                    <span className="font-mono text-base font-bold">{kase.ref}</span>
+   474→                    <SeverityBadge value={kase.severity} />
+   475→                    <CaseStateBadge state={kase.state} />
+   476→                    {chipClsChip(kase.category)}
+   477→                  </span>
+   478→                }
+   479→                subtitle={kase.title}
+   480→              >
+   481→                <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+   482→                  <div>
+   483→                    <dt className="text-xs text-muted-foreground">Trigger / rule</dt>
+   484→                    <dd className="font-medium">
+   485→                      {kase.trigger ?? "—"} {kase.ruleVersion ? <span className="ml-1 font-mono text-xs text-muted-foreground">{kase.ruleVersion}</span> : null}
+   486→                    </dd>
+   487→                  </div>
+   488→                  <div>
+   489→                    <dt className="text-xs text-muted-foreground">Entity</dt>
+   490→                    <dd className="flex flex-wrap items-center gap-1.5 font-medium">
+   491→                      <span className="text-xs uppercase tracking-wide text-muted-foreground">{kase.entityType ?? "—"}</span>
+   492→                      <span className="font-mono text-xs">{kase.entityRef ?? kase.entityId ?? "—"}</span>
+   493→                      {kase.entityType === "shipment" && kase.entityRef ? (
+   494→                        <button type="button" className="inline-flex items-center gap-1 text-xs text-teal-700 underline-offset-2 hover:underline dark:text-teal-400" onClick={() => drillTo("import-tracking", kase.entityRef ?? undefined)}>
+   495→                          <Link2 className="h-3 w-3" /> open in Import Tracking
+   496→                        </button>
+   497→                      ) : null}
+   498→                      {kase.entityType === "bol" && kase.entityRef ? (
+   499→                        <button type="button" className="inline-flex items-center gap-1 text-xs text-teal-700 underline-offset-2 hover:underline dark:text-teal-400" onClick={() => drillTo("bol-intelligence", kase.entityRef ?? undefined)}>
+   500→                          <Link2 className="h-3 w-3" /> open in BOL Intelligence
+   501→                        </button>
+   502→                      ) : null}
+   503→                    </dd>
+   504→                  </div>
+   505→                  <div>
+   506→                    <dt className="text-xs text-muted-foreground">Owner</dt>
+   507→                    <dd className="font-medium">
+   508→                      {kase.ownerTeam ?? "—"} {kase.ownerUser ? <span className="text-muted-foreground">/ {kase.ownerUser}</span> : null}
+   509→                    </dd>
+   510→                  </div>
+   511→                  <div>
+   512→                    <dt className="text-xs text-muted-foreground">SLA</dt>
+   513→                    <dd className={cn("font-medium", isOverdue(kase) && "text-rose-600 dark:text-rose-400")}>
+   514→                      {kase.slaHours ? `${kase.slaHours}h · ` : ""}
+   515→                      {kase.dueDate ? `due ${fmtDateTime(kase.dueDate)} (${fmtRelative(kase.dueDate)})` : "—"}
+   516→                      {isOverdue(kase) ? " · OVERDUE" : ""}
+   517→                    </dd>
+   518→                  </div>
+   519→                  {kase.supplier ? (
+   520→                    <div>
+   521→                      <dt className="text-xs text-muted-foreground">Linked supplier</dt>
+   522→                      <dd className="font-medium">
+   523→                        <span className="font-mono text-xs">{kase.supplier.code}</span> {kase.supplier.name}
+   524→                      </dd>
+   525→                    </div>
+   526→                  ) : null}
+   527→                  {kase.shipment ? (
+   528→                    <div>
+   529→                      <dt className="text-xs text-muted-foreground">Linked shipment</dt>
+   530→                      <dd className="font-medium">
+   531→                        <span className="font-mono text-xs">{kase.shipment.ref}</span> · {kase.shipment.status} · {kase.shipment.freshness}
+   532→                        {kase.shipment.displayEta ? ` · display ETA ${fmtDateTime(kase.shipment.displayEta)}` : ""}
+   533→                      </dd>
+   534→                    </div>
+   535→                  ) : null}
+   536→                  {kase.bol ? (
+   537→                    <div>
+   538→                      <dt className="text-xs text-muted-foreground">Linked BOL</dt>
+   539→                      <dd className="font-medium">
+   540→                        <span className="font-mono text-xs">{kase.bol.bolNo}</span> v{kase.bol.version} · {kase.bol.status} · {kase.bol.matchStatus}
+   541→                        {kase.bol.isActive ? " · active" : " · superseded"}
+   542→                      </dd>
+   543→                    </div>
+   544→                  ) : null}
+   545→                  <div>
+   546→                    <dt className="text-xs text-muted-foreground">Timestamps</dt>
+   547→                    <dd className="text-xs text-muted-foreground">
+   548→                      created {fmtDateTime(kase.createdAt)} · updated {fmtDateTime(kase.updatedAt)}
+   549→                      {kase.closedAt ? ` · closed ${fmtDateTime(kase.closedAt)}` : ""}
+   550→                    </dd>
+   551→                  </div>
+   552→                  {kase.closureProof ? (
+   553→                    <div>
+   554→                      <dt className="text-xs text-muted-foreground">Closure proof</dt>
+   555→                      <dd className="text-xs font-medium text-emerald-700 dark:text-emerald-400">{kase.closureProof}</dd>
+   556→                    </div>
+   557→                  ) : null}
+   558→                  {kase.reopenReason ? (
+   559→                    <div>
+   560→                      <dt className="text-xs text-muted-foreground">Reopen reason</dt>
+   561→                      <dd className="text-xs font-medium text-orange-700 dark:text-orange-400">{kase.reopenReason}</dd>
+   562→                    </div>
+   563→                  ) : null}
+   564→                </dl>
+   565→              </SectionCard>
+   566→
+   567→              {/* b) Recommended action */}
+   568→              {kase.recommendedAction ? (
+   569→                <div className="rounded-lg border border-teal-300 bg-teal-50 p-4 dark:border-teal-400/25 dark:bg-teal-400/10">
+   570→                  <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-teal-800 dark:text-teal-300">
+   571→                    <ShieldCheck className="h-3.5 w-3.5" /> Recommended action (proposal — requires approval gateway M18)
+   572→                  </p>
+   573→                  <p className="mt-1 text-sm text-teal-900 dark:text-teal-200">{kase.recommendedAction}</p>
+   574→                </div>
+   575→              ) : null}
+   576→
+   577→              {/* c) Evidence bundle */}
+   578→              <SectionCard
+   579→                title={
+   580→                  <span className="inline-flex items-center gap-1.5">
+   581→                    <FileText className="h-4 w-4 text-violet-700 dark:text-violet-400" /> Evidence bundle
+   582→                  </span>
+   583→                }
+   584→                subtitle="Every assertion traces to source evidence with content hash and issuer."
+   585→              >
+   586→                {parseArr(kase.evidenceRefs).length > 0 ? (
+   587→                  <div className="mb-3 flex flex-wrap gap-1.5">
+   588→                    {parseArr(kase.evidenceRefs).map((r) => (
+   589→                      <span key={r} className="inline-flex items-center gap-1 rounded-md border border-zinc-300 bg-zinc-100 px-1.5 py-0.5 font-mono text-[10px] text-zinc-700 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-300">
+   590→                        <FileText className="h-3 w-3" /> {r}
+   591→                      </span>
+   592→                    ))}
+   593→                  </div>
+   594→                ) : null}
+   595→                {evidence.length === 0 ? (
+   596→                  <p className="text-xs text-muted-foreground">No fetched source evidence rows linked to this entity.</p>
+   597→                ) : (
+   598→                  <ul className="space-y-2">
+   599→                    {evidence.map((e) => (
+   600→                      <li key={e.id} className="flex flex-wrap items-center gap-2 rounded-md border border-border/70 px-2.5 py-2 text-xs">
+   601→                        <EvidenceBadge label={e.label} />
+   602→                        <span className="font-semibold">{e.sourceSystem}</span>
+   603→                        {e.issuer ? <span className="text-muted-foreground">issuer: {e.issuer}</span> : null}
+   604→                        {e.sourceRef ? <span className="font-mono text-muted-foreground">{e.sourceRef}</span> : null}
+   605→                        <span className="font-mono text-muted-foreground" title={e.contentHash ?? undefined}>
+   606→                          sha:{hash12(e.contentHash)}
+   607→                        </span>
+   608→                        <span className="ml-auto text-muted-foreground">received {fmtDateTime(e.receivedAt)}</span>
+   609→                      </li>
+   610→                    ))}
+   611→                  </ul>
+   612→                )}
+   613→              </SectionCard>
+   614→
+   615→              {/* d) Transition control */}
+   616→              <TransitionPanel key={`${kase.id}-${kase.state}`} kase={kase} events={kase.events} onSuccess={() => { list.refresh(); detail.refresh(); }} />
+   617→
+   618→              {/* e) Event history timeline */}
+   619→              <SectionCard
+   620→                title={
+   621→                  <span className="inline-flex items-center gap-1.5">
+   622→                    <History className="h-4 w-4 text-teal-700 dark:text-teal-400" /> Event history
+   623→                  </span>
+   624→                }
+   625→                subtitle={`${kase.events.length} events, oldest first — append-only.`}
+   626→                bodyClass="pt-0"
+   627→              >
+   628→                {kase.events.length === 0 ? (
+   629→                  <EmptyState message="No events recorded" />
+   630→                ) : (
+   631→                  <ScrollTable maxHeight="max-h-80">
+   632→                    <ol className="space-y-2.5">
+   633→                      {kase.events.map((ev) => (
+   634→                        <li key={ev.id} className="flex flex-wrap items-start gap-2 text-xs">
+   635→                          <span className={chipCls(EVENT_TYPE_CLS[ev.type])}>{ev.type.replaceAll("_", " ")}</span>
+   636→                          {ev.fromState && ev.toState ? (
+   637→                            <span className="inline-flex items-center gap-1">
+   638→                              <CaseStateBadge state={ev.fromState} />
+   639→                              <ArrowRight className="h-3 w-3 text-muted-foreground" />
+   640→                              <CaseStateBadge state={ev.toState} />
+   641→                            </span>
+   642→                          ) : null}
+   643→                          <span className="font-semibold">{ev.actor}</span>
+   644→                          <span className={chipCls("bg-zinc-100 text-zinc-600 border-zinc-300 dark:bg-zinc-900 dark:text-zinc-400")}>{ev.actorType}</span>
+   645→                          <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">{fmtDateTime(ev.at)}</span>
+   646→                          {ev.note ? <p className="w-full whitespace-pre-wrap text-muted-foreground">{ev.note}</p> : null}
+   647→                        </li>
+   648→                      ))}
+   649→                    </ol>
+   650→                  </ScrollTable>
+   651→                )}
+   652→              </SectionCard>
+   653→
+   654→              {/* f) Linked actions */}
+   655→              <SectionCard
+   656→                title={
+   657→                  <span className="inline-flex items-center gap-1.5">
+   658→                    <Link2 className="h-4 w-4 text-orange-700 dark:text-orange-400" /> Linked actions
+   659→                  </span>
+   660→                }
+   661→                subtitle="Commands executed only through the action gateway (M18) after approval."
+   662→                bodyClass="pt-0"
+   663→              >
+   664→                {(kase.actions ?? []).length === 0 ? (
+   665→                  <EmptyState message="No action commands linked to this case" hint="Proposed actions appear here once investigation proposes one." />
+   666→                ) : (
+   667→                  <ul className="space-y-2">
+   668→                    {(kase.actions ?? []).map((a) => (
+   669→                      <li key={a.id} className="flex flex-wrap items-center gap-2 rounded-md border border-border/70 px-2.5 py-2 text-xs">
+   670→                        <span className="font-mono text-xs font-semibold">{a.ref}</span>
+   671→                        <span className="font-medium">{a.commandType.replaceAll("_", " ")}</span>
+   672→                        <span className={chipCls(RISK_CLS[a.riskLevel])}>{a.riskLevel === "HIGH_RISK" ? "HIGH RISK" : "SAFE"}</span>
+   673→                        <StatusPill value={a.state} />
+   674→                        {a.approvals?.length ? <span className="text-muted-foreground">{a.approvals.length} approval{a.approvals.length === 1 ? "" : "s"} recorded</span> : null}
+   675→                        <button
+   676→                          type="button"
+   677→                          className="ml-auto inline-flex items-center gap-1 text-teal-700 underline-offset-2 hover:underline dark:text-teal-400"
+   678→                          onClick={() => drillTo("actions", a.ref)}
+   679→                        >
+   680→                          manage in Actions view <ArrowRight className="h-3 w-3" />
+   681→                        </button>
+   682→                      </li>
+   683→                    ))}
+   684→                  </ul>
+   685→                )}
+   686→              </SectionCard>
+   687→
+   688→              {/* g) Communications */}
+   689→              <SectionCard
+   690→                title={
+   691→                  <span className="inline-flex items-center gap-1.5">
+   692→                    <Mail className="h-4 w-4 text-violet-700 dark:text-violet-400" /> Communications (M19)
+   693→                  </span>
+   694→                }
+   695→                subtitle="Internal notes and external comms are separated; delivery evidence required before 'supplier contacted'."
+   696→                bodyClass="pt-0"
+   697→              >
+   698→                {kase.notifications.length === 0 ? (
+   699→                  <EmptyState message="No communications recorded for this case" />
+   700→                ) : (
+   701→                  <ScrollTable maxHeight="max-h-72">
+   702→                    <ul className="space-y-2">
+   703→                      {kase.notifications.map((n) => (
+   704→                        <li key={n.id} className="flex flex-wrap items-center gap-2 text-xs">
+   705→                          <span className={chipCls(CHANNEL_CLS[n.channel])}>{n.channel.replaceAll("_", " ")}</span>
+   706→                          <span className="font-medium">
+   707→                            {n.template} <span className="font-mono text-muted-foreground">{n.templateVersion}</span>
+   708→                          </span>
+   709→                          <span className="text-muted-foreground">to {n.recipient}</span>
+   710→                          <span className={chipCls(n.audienceType === "EXTERNAL" ? "bg-violet-100 text-violet-800 border-violet-300 dark:bg-violet-400/10 dark:text-violet-300" : "bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-900 dark:text-zinc-300")}>
+   711→                            {n.audienceType}
+   712→                          </span>
+   713→                          <span className={chipCls(NTF_STATE_CLS[n.state])}>{n.state}</span>
+   714→                          <span className="ml-auto tabular-nums text-muted-foreground">{fmtDateTime(n.at)}</span>
+   715→                          {n.note ? <p className="w-full whitespace-pre-wrap text-muted-foreground">{n.note}</p> : null}
+   716→                        </li>
+   717→                      ))}
+   718→                    </ul>
+   719→                  </ScrollTable>
+   720→                )}
+   721→              </SectionCard>
+   722→            </>
+   723→          ) : null}
+   724→        </div>
+   725→      </div>
+   726→    </div>
+   727→  );
+   728→}
+   729→
+   730→/* small local chip for category values */
+   731→function chipClsChip(v: string | null | undefined) {
+   732→  return (
+   733→    <span className="inline-flex items-center whitespace-nowrap rounded-md border border-zinc-300 bg-zinc-100 px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-wide text-zinc-700 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-300">
+   734→      {v ?? "—"}
+   735→    </span>
+   736→  );
+   737→}
+   738→

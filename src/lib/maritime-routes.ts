@@ -57,21 +57,28 @@ export const SEA_NODES: Record<string, { lng: number; lat: number; name: string 
   GULF_INNER: { lng: 55.0, lat: 25.8, name: "Southern Persian Gulf" },
   JEBEL_ALI: { lng: 55.06, lat: 25.01, name: "Jebel Ali (transshipment)" },
   HORMUZ_S: { lng: 56.45, lat: 26.35, name: "Strait of Hormuz" },
-  OMAN_CAPE: { lng: 59.8, lat: 22.7, name: "Ras al Hadd offshore" },
+  HORMUZ_W: { lng: 55.95, lat: 26.45, name: "Hormuz westward track" },
+  OMAN_CAPE: { lng: 59.95, lat: 22.75, name: "Ras al Hadd offshore" },
+  RAS_AL_HADD_W: { lng: 60.0, lat: 21.8, name: "Ras al Hadd westward track" },
   OMAN_COAST: { lng: 59.7, lat: 20.8, name: "Oman offshore" },
   ARABIAN_SEA_N: { lng: 60.5, lat: 17.5, name: "Arabian Sea" },
   ARABIAN_SEA_W: { lng: 66.0, lat: 13.5, name: "Arabian Sea" },
   ARABIAN_SEA_SW: { lng: 72.0, lat: 10.5, name: "Arabian Sea" },
   LACCADIVE: { lng: 78.0, lat: 8.0, name: "Laccadive Sea" },
+  INDIA_TIP_W: { lng: 76.3, lat: 7.6, name: "South of India offshore" },
   CEYLON_SE: { lng: 82.3, lat: 6.2, name: "South of Sri Lanka" },
   CEYLON_S: { lng: 80.6, lat: 5.75, name: "Dondra offshore" },
   COLOMBO: { lng: 79.85, lat: 6.95, name: "Colombo (transshipment)" },
   COLOMBO_S: { lng: 79.6, lat: 5.9, name: "Colombo approach" },
   BAY_OF_BENGAL_S: { lng: 88.0, lat: 5.8, name: "Bay of Bengal" },
-  SUMATRA_W: { lng: 97.5, lat: 5.2, name: "West of Sumatra" },
+  ANDAMAN_APPROACH: { lng: 97.9, lat: 5.3, name: "Andaman Sea approach" },
+  ACEH_NW: { lng: 94.3, lat: 6.5, name: "NW of Banda Aceh" },
   MALACCA_N: { lng: 100.3, lat: 3.8, name: "Malacca Strait" },
-  MALACCA_S: { lng: 102.3, lat: 2.2, name: "Malacca Strait" },
+  MALACCA_MID: { lng: 101.45, lat: 2.2, name: "Malacca Strait mid" },
+  MALACCA_S: { lng: 102.35, lat: 1.7, name: "Malacca Strait" },
+  PHILLIP_CHANNEL: { lng: 103.6, lat: 1.15, name: "Phillip Channel" },
   SINGAPORE_STRAIT: { lng: 104.1, lat: 1.25, name: "Singapore Strait" },
+  NATUNA_S: { lng: 104.8, lat: 1.7, name: "Natuna southward track" },
   NATUNA_W: { lng: 105.5, lat: 3.5, name: "Natuna offshore" },
   BORNEO_W: { lng: 107.5, lat: 6.5, name: "West of Borneo" },
   VIETNAM_COAST: { lng: 109.5, lat: 10.5, name: "South China Sea" },
@@ -79,6 +86,8 @@ export const SEA_NODES: Record<string, { lng: number; lat: number; name: string 
   SCS_WEST: { lng: 116.0, lat: 20.5, name: "South China Sea" },
   TAIWAN_STRAIT: { lng: 119.7, lat: 24.3, name: "Taiwan Strait" },
   EAST_CHINA_SEA: { lng: 122.6, lat: 29.5, name: "East China Sea" },
+  SHANGHAI_OUT: { lng: 122.15, lat: 30.4, name: "Yangtze mouth offshore" },
+  NINGBO_OUT: { lng: 122.35, lat: 29.6, name: "Zhoushan offshore" },
   SHANGHAI: { lng: 121.49, lat: 31.23, name: "Shanghai" },
   NINGBO: { lng: 121.85, lat: 29.87, name: "Ningbo" },
   // Suez corridor
@@ -86,13 +95,15 @@ export const SEA_NODES: Record<string, { lng: number; lat: number; name: string 
   PORT_SAID: { lng: 32.32, lat: 31.42, name: "Port Said (Suez Canal N)" },
   SUEZ_CANAL: { lng: 32.35, lat: 30.4, name: "Suez Canal (Great Bitter Lake)" },
   GULF_OF_SUEZ: { lng: 32.75, lat: 29.2, name: "Gulf of Suez" },
+  GUBAL: { lng: 33.65, lat: 27.9, name: "Strait of Gubal" },
   RED_SEA_N: { lng: 34.3, lat: 27.3, name: "Red Sea" },
   RED_SEA_MID: { lng: 37.5, lat: 22.5, name: "Red Sea" },
   RED_SEA_MID2: { lng: 39.3, lat: 19.5, name: "Red Sea" },
   RED_SEA_S: { lng: 41.5, lat: 15.0, name: "Southern Red Sea" },
   RED_SEA_MOUTH: { lng: 42.2, lat: 14.5, name: "Red Sea mouth" },
   BAB_EL_MANDEB: { lng: 43.35, lat: 12.65, name: "Bab el-Mandeb" },
-  ADEN_W: { lng: 46.0, lat: 12.9, name: "Gulf of Aden" },
+  ADEN_M: { lng: 44.9, lat: 12.2, name: "Gulf of Aden mid" },
+  ADEN_W: { lng: 46.0, lat: 12.7, name: "Gulf of Aden" },
   ADEN_E: { lng: 49.5, lat: 13.3, name: "Gulf of Aden" },
   // Mediterranean
   MED_EAST: { lng: 29.5, lat: 32.9, name: "Eastern Mediterranean" },
@@ -110,24 +121,31 @@ export const SEA_NODES: Record<string, { lng: number; lat: number; name: string 
   LIGURIAN_W: { lng: 7.0, lat: 43.2, name: "Ligurian Sea" },
   GENOA: { lng: 8.92, lat: 44.4, name: "Genoa" },
   IZMIR: { lng: 27.14, lat: 38.42, name: "Izmir" },
+  IZMIR_OUT: { lng: 27.0, lat: 38.32, name: "Gulf of Izmir exit" },
+  AEGEAN_M: { lng: 26.55, lat: 38.1, name: "Chios–Karaburun strait" },
   AEGEAN_S: { lng: 26.3, lat: 37.5, name: "Southern Aegean" },
+  KASOS_E: { lng: 26.9, lat: 35.3, name: "Kasos Strait (east of Crete)" },
   DODECANESE: { lng: 25.6, lat: 35.8, name: "Dodecanese offshore" },
   RHODES_S: { lng: 25.0, lat: 34.5, name: "Rhodes offshore" },
   // Atlantic / NW Europe
   DOVER: { lng: 1.35, lat: 50.95, name: "Dover Strait" },
   CHANNEL_MID: { lng: 0.0, lat: 50.05, name: "English Channel" },
-  CHANNEL_W: { lng: -2.2, lat: 49.6, name: "English Channel" },
+  CHANNEL_W: { lng: -2.8, lat: 49.75, name: "English Channel" },
+  USHANT_W: { lng: -5.4, lat: 48.55, name: "Ushant offshore" },
   BISCAY_N: { lng: -4.8, lat: 48.2, name: "Bay of Biscay" },
   BISCAY_W: { lng: -6.5, lat: 45.0, name: "Bay of Biscay" },
+  FINISTERRE_W: { lng: -9.9, lat: 43.2, name: "Finisterre offshore" },
   GALICIA: { lng: -9.5, lat: 42.5, name: "Galicia offshore" },
   PORTUGAL: { lng: -9.8, lat: 38.0, name: "Portugal offshore" },
-  GIBRALTAR_W: { lng: -6.5, lat: 36.1, name: "Gibraltar approach" },
-  GIBRALTAR: { lng: -5.45, lat: 36.05, name: "Strait of Gibraltar" },
+  ST_VINCENT_W: { lng: -9.2, lat: 36.9, name: "Cape St Vincent offshore" },
+  GIBRALTAR_W: { lng: -6.55, lat: 35.95, name: "Gibraltar approach" },
+  GIBRALTAR: { lng: -5.5, lat: 35.92, name: "Strait of Gibraltar" },
   ALBORAN: { lng: -3.0, lat: 36.35, name: "Alboran Sea" },
   ALBORAN_E: { lng: 0.5, lat: 37.4, name: "Alboran Sea" },
   BALEARIC_S: { lng: 5.5, lat: 38.2, name: "South of Balearics" },
   ANTWERP: { lng: 4.37, lat: 51.28, name: "Antwerp" },
-  ANTWERP_OUT: { lng: 3.4, lat: 51.7, name: "Antwerp approach" },
+  SCHELDT_MID: { lng: 3.8, lat: 51.6, name: "Westerschelde mid" },
+  ANTWERP_OUT: { lng: 3.45, lat: 51.95, name: "Antwerp approach" },
   DUTCH_COAST: { lng: 1.9, lat: 51.3, name: "Dutch coast" },
   NORTH_SEA: { lng: 3.5, lat: 54.5, name: "North Sea" },
   NORTH_SEA_DK: { lng: 8.0, lat: 57.0, name: "North Sea" },
@@ -141,26 +159,27 @@ export const SEA_NODES: Record<string, { lng: number; lat: number; name: string 
 
 /* ── Corridor lanes: ordered waypoint keys from each registered origin to
  *    the NASS Bahrain destination. Every list stays in navigable water. ── */
-const KBS_APPROACH: string[] = ["HORMUZ_S", "GULF_INNER", "GULF_MID", "GULF_MID_W", "BAHRAIN_CHANNEL", "KBSP_APPROACH", "KBSP"];
+const KBS_APPROACH: string[] = ["HORMUZ_S", "HORMUZ_W", "GULF_INNER", "GULF_MID", "GULF_MID_W", "BAHRAIN_CHANNEL", "KBSP_APPROACH", "KBSP"];
 
-const LANES_TO_KBSP: Record<string, string[]> = {
-  SHANGHAI: ["SHANGHAI", "EAST_CHINA_SEA", "TAIWAN_STRAIT", "SCS_WEST", "SCS_CENTRAL", "VIETNAM_COAST", "BORNEO_W", "NATUNA_W", "SINGAPORE_STRAIT", "MALACCA_S", "MALACCA_N", "SUMATRA_W", "BAY_OF_BENGAL_S", "CEYLON_SE", "CEYLON_S", "COLOMBO_S", "LACCADIVE", "ARABIAN_SEA_SW", "ARABIAN_SEA_W", "ARABIAN_SEA_N", "OMAN_COAST", "OMAN_CAPE", ...KBS_APPROACH],
-  NINGBO: ["NINGBO", "EAST_CHINA_SEA", "TAIWAN_STRAIT", "SCS_WEST", "SCS_CENTRAL", "VIETNAM_COAST", "BORNEO_W", "NATUNA_W", "SINGAPORE_STRAIT", "MALACCA_S", "MALACCA_N", "SUMATRA_W", "BAY_OF_BENGAL_S", "CEYLON_SE", "CEYLON_S", "COLOMBO_S", "LACCADIVE", "ARABIAN_SEA_SW", "ARABIAN_SEA_W", "ARABIAN_SEA_N", "OMAN_COAST", "OMAN_CAPE", ...KBS_APPROACH],
-  GENOA: ["GENOA", "LIGURIAN_W", "W_CORSA_SARD", "W_SARDINIA", "W_SARDINIA_S", "S_OF_SARDINIA", "SICILY_STRAIT_W", "SICILY_STRAIT", "MALTA_S", "S_OF_MALTA", "MED_SEA_E", "S_OF_CRETE", "S_OF_CRETE_E", "MED_EAST", "PORT_SAID_APPROACH", "PORT_SAID", "SUEZ_CANAL", "GULF_OF_SUEZ", "RED_SEA_N", "RED_SEA_MID", "RED_SEA_MID2", "RED_SEA_S", "RED_SEA_MOUTH", "BAB_EL_MANDEB", "ADEN_W", "ADEN_E", "ARABIAN_SEA_N", "OMAN_COAST", "OMAN_CAPE", ...KBS_APPROACH],
-  ANTWERP: ["ANTWERP", "ANTWERP_OUT", "DUTCH_COAST", "DOVER", "CHANNEL_MID", "CHANNEL_W", "BISCAY_N", "BISCAY_W", "GALICIA", "PORTUGAL", "GIBRALTAR_W", "GIBRALTAR", "ALBORAN", "ALBORAN_E", "BALEARIC_S", "W_SARDINIA_S", "S_OF_SARDINIA", "SICILY_STRAIT_W", "SICILY_STRAIT", "MALTA_S", "S_OF_MALTA", "MED_SEA_E", "S_OF_CRETE", "S_OF_CRETE_E", "MED_EAST", "PORT_SAID_APPROACH", "PORT_SAID", "SUEZ_CANAL", "GULF_OF_SUEZ", "RED_SEA_N", "RED_SEA_MID", "RED_SEA_MID2", "RED_SEA_S", "RED_SEA_MOUTH", "BAB_EL_MANDEB", "ADEN_W", "ADEN_E", "ARABIAN_SEA_N", "OMAN_COAST", "OMAN_CAPE", ...KBS_APPROACH],
-  GOTHENBURG: ["GOTHENBURG", "KATTEGAT", "SKAGEN", "NORTH_SEA_DK", "NORTH_SEA", "DOVER", "CHANNEL_MID", "CHANNEL_W", "BISCAY_N", "BISCAY_W", "GALICIA", "PORTUGAL", "GIBRALTAR_W", "GIBRALTAR", "ALBORAN", "ALBORAN_E", "BALEARIC_S", "W_SARDINIA_S", "S_OF_SARDINIA", "SICILY_STRAIT_W", "SICILY_STRAIT", "MALTA_S", "S_OF_MALTA", "MED_SEA_E", "S_OF_CRETE", "S_OF_CRETE_E", "MED_EAST", "PORT_SAID_APPROACH", "PORT_SAID", "SUEZ_CANAL", "GULF_OF_SUEZ", "RED_SEA_N", "RED_SEA_MID", "RED_SEA_MID2", "RED_SEA_S", "RED_SEA_MOUTH", "BAB_EL_MANDEB", "ADEN_W", "ADEN_E", "ARABIAN_SEA_N", "OMAN_COAST", "OMAN_CAPE", ...KBS_APPROACH],
-  IZMIR: ["IZMIR", "AEGEAN_S", "DODECANESE", "RHODES_S", "S_OF_CRETE_E", "MED_EAST", "PORT_SAID_APPROACH", "PORT_SAID", "SUEZ_CANAL", "GULF_OF_SUEZ", "RED_SEA_N", "RED_SEA_MID", "RED_SEA_MID2", "RED_SEA_S", "RED_SEA_MOUTH", "BAB_EL_MANDEB", "ADEN_W", "ADEN_E", "ARABIAN_SEA_N", "OMAN_COAST", "OMAN_CAPE", ...KBS_APPROACH],
+export const LANES_TO_KBSP: Record<string, string[]> = {
+  SHANGHAI: ["SHANGHAI", "SHANGHAI_OUT", "EAST_CHINA_SEA", "TAIWAN_STRAIT", "SCS_WEST", "SCS_CENTRAL", "VIETNAM_COAST", "BORNEO_W", "NATUNA_W", "NATUNA_S", "SINGAPORE_STRAIT", "PHILLIP_CHANNEL", "MALACCA_S", "MALACCA_MID", "MALACCA_N", "ANDAMAN_APPROACH", "ACEH_NW", "BAY_OF_BENGAL_S", "CEYLON_SE", "CEYLON_S", "COLOMBO_S", "LACCADIVE", "INDIA_TIP_W", "ARABIAN_SEA_SW", "ARABIAN_SEA_W", "ARABIAN_SEA_N", "OMAN_COAST", "RAS_AL_HADD_W", "OMAN_CAPE", ...KBS_APPROACH],
+  NINGBO: ["NINGBO", "NINGBO_OUT", "EAST_CHINA_SEA", "TAIWAN_STRAIT", "SCS_WEST", "SCS_CENTRAL", "VIETNAM_COAST", "BORNEO_W", "NATUNA_W", "NATUNA_S", "SINGAPORE_STRAIT", "PHILLIP_CHANNEL", "MALACCA_S", "MALACCA_MID", "MALACCA_N", "ANDAMAN_APPROACH", "ACEH_NW", "BAY_OF_BENGAL_S", "CEYLON_SE", "CEYLON_S", "COLOMBO_S", "LACCADIVE", "INDIA_TIP_W", "ARABIAN_SEA_SW", "ARABIAN_SEA_W", "ARABIAN_SEA_N", "OMAN_COAST", "RAS_AL_HADD_W", "OMAN_CAPE", ...KBS_APPROACH],
+  GENOA: ["GENOA", "LIGURIAN_W", "W_CORSA_SARD", "W_SARDINIA", "W_SARDINIA_S", "S_OF_SARDINIA", "SICILY_STRAIT_W", "SICILY_STRAIT", "MALTA_S", "S_OF_MALTA", "MED_SEA_E", "S_OF_CRETE", "S_OF_CRETE_E", "MED_EAST", "PORT_SAID_APPROACH", "PORT_SAID", "SUEZ_CANAL", "GULF_OF_SUEZ", "GUBAL", "RED_SEA_N", "RED_SEA_MID", "RED_SEA_MID2", "RED_SEA_S", "RED_SEA_MOUTH", "BAB_EL_MANDEB", "ADEN_M", "ADEN_W", "ADEN_E", "ARABIAN_SEA_N", "OMAN_COAST", "RAS_AL_HADD_W", "OMAN_CAPE", ...KBS_APPROACH],
+  ANTWERP: ["ANTWERP", "SCHELDT_MID", "ANTWERP_OUT", "DUTCH_COAST", "DOVER", "CHANNEL_MID", "CHANNEL_W", "USHANT_W", "BISCAY_N", "BISCAY_W", "FINISTERRE_W", "GALICIA", "PORTUGAL", "ST_VINCENT_W", "GIBRALTAR_W", "GIBRALTAR", "ALBORAN", "ALBORAN_E", "BALEARIC_S", "W_SARDINIA_S", "S_OF_SARDINIA", "SICILY_STRAIT_W", "SICILY_STRAIT", "MALTA_S", "S_OF_MALTA", "MED_SEA_E", "S_OF_CRETE", "S_OF_CRETE_E", "MED_EAST", "PORT_SAID_APPROACH", "PORT_SAID", "SUEZ_CANAL", "GULF_OF_SUEZ", "GUBAL", "RED_SEA_N", "RED_SEA_MID", "RED_SEA_MID2", "RED_SEA_S", "RED_SEA_MOUTH", "BAB_EL_MANDEB", "ADEN_M", "ADEN_W", "ADEN_E", "ARABIAN_SEA_N", "OMAN_COAST", "RAS_AL_HADD_W", "OMAN_CAPE", ...KBS_APPROACH],
+  GOTHENBURG: ["GOTHENBURG", "KATTEGAT", "SKAGEN", "NORTH_SEA_DK", "NORTH_SEA", "DOVER", "CHANNEL_MID", "CHANNEL_W", "USHANT_W", "BISCAY_N", "BISCAY_W", "FINISTERRE_W", "GALICIA", "PORTUGAL", "ST_VINCENT_W", "GIBRALTAR_W", "GIBRALTAR", "ALBORAN", "ALBORAN_E", "BALEARIC_S", "W_SARDINIA_S", "S_OF_SARDINIA", "SICILY_STRAIT_W", "SICILY_STRAIT", "MALTA_S", "S_OF_MALTA", "MED_SEA_E", "S_OF_CRETE", "S_OF_CRETE_E", "MED_EAST", "PORT_SAID_APPROACH", "PORT_SAID", "SUEZ_CANAL", "GULF_OF_SUEZ", "GUBAL", "RED_SEA_N", "RED_SEA_MID", "RED_SEA_MID2", "RED_SEA_S", "RED_SEA_MOUTH", "BAB_EL_MANDEB", "ADEN_M", "ADEN_W", "ADEN_E", "ARABIAN_SEA_N", "OMAN_COAST", "RAS_AL_HADD_W", "OMAN_CAPE", ...KBS_APPROACH],
+  IZMIR: ["IZMIR", "IZMIR_OUT", "AEGEAN_M", "AEGEAN_S", "KASOS_E", "S_OF_CRETE_E", "MED_EAST", "PORT_SAID_APPROACH", "PORT_SAID", "SUEZ_CANAL", "GULF_OF_SUEZ", "GUBAL", "RED_SEA_N", "RED_SEA_MID", "RED_SEA_MID2", "RED_SEA_S", "RED_SEA_MOUTH", "BAB_EL_MANDEB", "ADEN_M", "ADEN_W", "ADEN_E", "ARABIAN_SEA_N", "OMAN_COAST", "RAS_AL_HADD_W", "OMAN_CAPE", ...KBS_APPROACH],
 };
 
 /** Transshipment insertions — only when a shipment's legs document the call. */
-const VIA_INSERTIONS: Record<string, Record<string, string[]>> = {
+export const VIA_INSERTIONS: Record<string, Record<string, string[]>> = {
   JEBEL_ALI: {
     // after GULF_INNER, call at Jebel Ali, then rejoin the gulf lane
     GULF_INNER: ["GULF_INNER", "JEBEL_ALI", "GULF_MID", "GULF_MID_W", "BAHRAIN_CHANNEL", "KBSP_APPROACH", "KBSP"],
   },
   COLOMBO: {
-    // replace the Ceylon bypass with a documented Colombo call
-    CEYLON_SE: ["CEYLON_SE", "COLOMBO_S", "COLOMBO", "CEYLON_SE", "LACCADIVE"],
+    // replace the Ceylon bypass with a documented Colombo call — out and back
+    // along the offshore Dondra track (never cutting across the island)
+    CEYLON_SE: ["CEYLON_SE", "CEYLON_S", "COLOMBO_S", "COLOMBO", "COLOMBO_S", "CEYLON_S"],
   },
 };
 
@@ -264,6 +283,21 @@ export class MaritimeRoute {
     return Math.round(this.totalKm * NM_PER_KM);
   }
 
+  /** Project a recorded vessel position onto the corridor (spec 1.2: progress
+   * from the recorded fix, never from endpoint interpolation). */
+  projectPoint(lng: number, lat: number): { progress: number; offRouteKm: number } {
+    let best = 0;
+    let bestKm = Infinity;
+    for (let i = 0; i < this.samples.length; i++) {
+      const d = haversineKm(lat, lng, this.samples[i][1], this.samples[i][0]);
+      if (d < bestKm) {
+        bestKm = d;
+        best = i;
+      }
+    }
+    return { progress: best / (this.samples.length - 1), offRouteKm: bestKm };
+  }
+
   pointAt(p: number): GcPos {
     const t = clamp01(p) * (this.samples.length - 1);
     const i = Math.min(this.samples.length - 2, Math.floor(t));
@@ -359,13 +393,29 @@ export function viaFromLegs(legs: { mode: string; fromPoint: string | null; toPo
   return [...new Set(via)];
 }
 
-/* ── shared sim-clock progress (same formula the overlay UI uses) ─────────── */
+/* ── shared sim-clock progress (same formula the overlay UI uses) ───────────
+ * Position truth rules (spec §1.2/§2/§3):
+ *  - ARRIVED → 1 · BOOKED → 0 · CUSTOMS_HOLD → pinned at destination customs
+ *  - a recorded AIS fix anchors progress (calendar advance resumes FROM the fix)
+ *  - otherwise calendar interpolation along the corridor (labeled estimated) */
 export function liveProgressAt(ship: TraceShip, simNow: number): number {
   if (ship.liveStatus === "ARRIVED") return 1;
   if (ship.liveStatus === "BOOKED") return 0;
+  if (ship.liveStatus === "CUSTOMS_HOLD") return 1; // hold is recorded at destination customs (KBSP)
   const end = ship.actualArrival ? +new Date(ship.actualArrival) : ship.eta ? +new Date(ship.eta) : null;
   const start = ship.departure ? +new Date(ship.departure) : 0;
   if (!end) return 0;
+  if (ship.progressSource === "ais-anchored" && ship.progressAnchor != null && ship.vesselPosition) {
+    const anchorAt = Math.max(+new Date(ship.vesselPosition.at), start);
+    const span = Math.max(1, end - anchorAt);
+    const t = clamp01((simNow - anchorAt) / span);
+    return clamp01(ship.progressAnchor + t * (1 - ship.progressAnchor));
+  }
+  if (ship.liveStatus === "AT_PORT") {
+    // at a transit point — freeze at the last recorded event, never sail past it
+    const anchor = ship.lastEventAt ? +new Date(ship.lastEventAt) : simNow;
+    return clamp01((Math.min(simNow, anchor) - start) / Math.max(1, end - start));
+  }
   return clamp01((simNow - start) / Math.max(1, end - start));
 }
 
