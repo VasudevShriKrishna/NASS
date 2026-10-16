@@ -1,0 +1,1110 @@
+     1→"use client";
+     2→
+     3→/* ═══════════════════════════════════════════════════════════════════════
+     4→ * OPERATION MAP — Google-Maps-style interactive live operations map.
+     5→ * Engine: MapLibre GL JS — ArcGIS (Esri World Dark Gray Canvas) raster basemap
+     6→ * with the bundled world GeoJSON kept as a graceful offline fallback
+     7→ *   • drag-pan with inertia · wheel/pinch/double-click/buttons/keys zoom
+     8→ *   • eased flyTo camera · world-clamped panning · 60fps GPU rendering
+     9→ * Hero layer: shipment & freight movement — vessels gliding along true
+    10→ *   great-circle routes (interpolated between hourly snapshots), status
+    11→ *   halos, wake trails, flowing traveled arcs, spiderfy for overlaps.
+    12→ * Context layer: supplier sites → feeder → ports → ocean arc → dest
+    13→ *   port → feeder → NASS warehouse.
+    14→ * Labels: DOM labels driven by a greedy collision engine (priority +
+    15→ *   zoom-gated reveal + leader lines) — two labels never overlap.
+    16→ * All data comes from the /api/live-trace snapshot only. No mocks.
+    17→ * ═══════════════════════════════════════════════════════════════════════ */
+    18→
+    19→import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+    20→import { config as maplibreConfig, GeoJSONSource, LngLatBounds, Map as MlMap, Marker, StyleSpecification } from "maplibre-gl";
+    21→import "maplibre-gl/dist/maplibre-gl.css";
+    22→import { Crosshair, Home, Minus, Plus } from "lucide-react";
+    23→import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+    24→import { STATUS_COLOR } from "@/components/app/world-map";
+    25→import { fmtCountdown } from "@/components/app/live-clock";
+    26→import { lookupPort } from "@/lib/geo";
+    27→import { MaritimeRoute, liveProgressAt, resolveMaritimeRoute, valueNorms, viaFromLegs } from "@/lib/maritime-routes";
+    28→import { SUPPLIER_SITES, WAREHOUSE_SITES } from "@/lib/geo-sites";
+    29→import type { TraceShip } from "@/lib/trace-types";
+    30→import { cn } from "@/lib/utils";
+    31→import styles from "./operation-map.module.css";
+    32→
+    33→/* self-hosted worker (works under any bundler — see public/maplibre/) */
+    34→maplibreConfig.WORKER_URL = "/maplibre/maplibre-gl-worker.mjs";
+    35→
+    36→type LngLat = [number, number];
+    37→type SitePick = { type: "supplier" | "warehouse"; code: string };
+    38→
+    39→interface LineFeature {
+    40→  type: "Feature";
+    41→  properties: Record<string, number | string>;
+    42→  geometry: { type: "LineString"; coordinates: LngLat[] };
+    43→}
+    44→type FC = { type: "FeatureCollection"; features: LineFeature[] };
+    45→type WorldBundle = {
+    46→  fill?: { geometry: { coordinates: number[][][] | number[][][][] } & object; type: string };
+    47→  coast?: { geometry: object };
+    48→  borders?: { geometry: object };
+    49→  graticule?: { geometry: object };
+    50→};
+    51→
+    52→const EMPTY_FC: FC = { type: "FeatureCollection", features: [] };
+    53→
+    54→/* Phase 1.4: the default / reset camera is the BAHRAIN operations view —
+    55→ * Bahrain, KBSP and the surrounding Gulf visible at an appropriate zoom.
+    56→ * The full international journey is one Fit-fleet / zoom-out away.        */
+    57→const BAHRAIN_HOME = { center: [51.8, 25.2] as LngLat, zoom: 3.9 };
+    58→
+    59→/* marching-ants dash sequence (MapLibre "animate a line" pattern) */
+    60→const DASH_SEQ: number[][] = [
+    61→  [0, 4, 3],
+    62→  [0.5, 4, 2.5],
+    63→  [1, 4, 2],
+    64→  [1.5, 4, 1.5],
+    65→  [2, 4, 1],
+    66→  [2.5, 4, 0.5],
+    67→  [3, 4, 0],
+    68→  [0, 0.5, 3, 3.5],
+    69→  [0, 1, 3, 3],
+    70→  [0, 1.5, 3, 2.5],
+    71→  [0, 2, 3, 2],
+    72→  [0, 2.5, 3, 1.5],
+    73→  [0, 3, 3, 1],
+    74→  [0, 3.5, 3, 0.5],
+    75→];
+    76→
+    77→const SHIP_SVG = `<svg class="vessel-glyph" width="21" height="13" viewBox="-11.5 -6.5 23 13" aria-hidden="true"><path d="M 8 0 L 2.2 2.9 L -6.5 2.9 L -6.5 -2.9 L 2.2 -2.9 Z" fill="currentColor" stroke="oklch(0.1 0.01 80 / 90%)" stroke-width="1" stroke-linejoin="round"/></svg>`;
+    78→const FACTORY_SVG = `<svg class="siteSvg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M17 18h1"/><path d="M12 18h1"/><path d="M7 18h1"/></svg>`;
+    79→const WAREHOUSE_SVG = `<svg class="siteSvg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 8.35V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.35A2 2 0 0 1 3.26 6.5l8-3.2a2 2 0 0 1 1.48 0l8 3.2A2 2 0 0 1 22 8.35Z"/><path d="M6 18h12"/><path d="M6 14h12"/><rect width="12" height="12" x="6" y="10"/></svg>`;
+    80→
+    81→const esc = (s: string) =>
+    82→  s.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch] ?? ch);
+    83→const fmtMoney = (v: number, ccy: string) => `${ccy} ${v.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+    84→const elFromHTML = (html: string): HTMLElement => {
+    85→  const t = document.createElement("template");
+    86→  t.innerHTML = html.trim();
+    87→  return t.content.firstElementChild as HTMLElement;
+    88→};
+    89→
+    90→interface VesselEntry {
+    91→  ship: TraceShip;
+    92→  arc: MaritimeRoute;
+    93→  marker: Marker;
+    94→  el: HTMLButtonElement;
+    95→  rotEl: HTMLElement;
+    96→  chipEl: HTMLElement;
+    97→  pos: { lng: number; lat: number; angle: number };
+    98→  p: number;
+    99→  px: number;
+   100→  py: number;
+   101→  clusterSize: number;
+   102→}
+   103→interface DotEntry {
+   104→  marker: Marker;
+   105→  el: HTMLElement;
+   106→  px: number;
+   107→  py: number;
+   108→}
+   109→interface LabelEntry {
+   110→  id: string;
+   111→  kind: "vessel" | "port" | "supplier" | "warehouse";
+   112→  text: string;
+   113→  priority: number;
+   114→  baseMinZoom: number;
+   115→  color: string | null;
+   116→  anchor: () => LngLat;
+   117→  el: HTMLDivElement;
+   118→  leaderEl: HTMLDivElement;
+   119→}
+   120→
+   121→function baseStyle(world: FC): StyleSpecification {
+   122→  return {
+   123→    version: 8,
+   124→    sources: {
+   125→      world: { type: "geojson", data: world },
+   126→      /* ArcGIS basemap (Esri World Dark Gray Canvas) — requested base layer.
+   127→       * Rendered ABOVE the bundled land fill and BELOW the gold accents, so it
+   128→       * becomes the visible basemap whenever tiles load, while the bundled
+   129→       * geometry stays as a graceful offline fallback (raster renders
+   130→       * transparent where tiles cannot be fetched — map never blanks). */
+   131→      "esri-dark": {
+   132→        type: "raster",
+   133→        tiles: [
+   134→          "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+   135→        ],
+   136→        tileSize: 256,
+   137→        maxzoom: 16,
+   138→        attribution:
+   139→          "Basemap © Esri — Source: Esri, HERE, Garmin, FAO, NOAA, USGS",
+   140→      },
+   141→    },
+   142→    layers: [
+   143→      { id: "bg", type: "background", paint: { "background-color": "#080706" } },
+   144→      {
+   145→        id: "land",
+   146→        type: "fill",
+   147→        source: "world",
+   148→        filter: ["==", ["get", "kind"], "fill"],
+   149→        paint: { "fill-color": "#1a1610", "fill-opacity": 1 },
+   150→      },
+   151→      {
+   152→        id: "esri-basemap",
+   153→        type: "raster",
+   154→        source: "esri-dark",
+   155→        paint: { "raster-opacity": 0.85, "raster-fade-duration": 300 },
+   156→      },
+   157→      {
+   158→        id: "grat",
+   159→        type: "line",
+   160→        source: "world",
+   161→        filter: ["==", ["get", "kind"], "grat"],
+   162→        paint: { "line-color": "#d4af37", "line-opacity": 0.055, "line-width": 0.6 },
+   163→      },
+   164→      {
+   165→        id: "borders",
+   166→        type: "line",
+   167→        source: "world",
+   168→        filter: ["==", ["get", "kind"], "borders"],
+   169→        paint: { "line-color": "#d4af37", "line-opacity": 0.09, "line-width": 0.5 },
+   170→      },
+   171→      {
+   172→        id: "coast",
+   173→        type: "line",
+   174→        source: "world",
+   175→        filter: ["==", ["get", "kind"], "coast"],
+   176→        paint: { "line-color": "#d4af37", "line-opacity": 0.28, "line-width": 0.9 },
+   177→      },
+   178→    ],
+   179→  };
+   180→}
+   181→
+   182→const line = (coordinates: LngLat[], properties: Record<string, number | string>): LineFeature => ({
+   183→  type: "Feature",
+   184→  properties,
+   185→  geometry: { type: "LineString", coordinates },
+   186→});
+   187→
+   188→export function OperationMap({
+   189→  ships,
+   190→  simBase,
+   191→  factor,
+   192→  selectedRef,
+   193→  onPick,
+   194→  onBackgroundClick,
+   195→  onSitePick,
+   196→}: {
+   197→  ships: TraceShip[];
+   198→  simBase: { server: number; wall: number } | null;
+   199→  factor: number;
+   200→  selectedRef: string | null;
+   201→  onPick: (ref: string) => void;
+   202→  onBackgroundClick?: () => void;
+   203→  onSitePick: (pick: SitePick) => void;
+   204→}) {
+   205→  const containerRef = useRef<HTMLDivElement>(null);
+   206→  const labelLayerRef = useRef<HTMLDivElement>(null);
+   207→  const tooltipRef = useRef<HTMLDivElement>(null);
+   208→  const [noWebGL, setNoWebGL] = useState(false);
+   209→
+   210→  const mapRef = useRef<MlMap | null>(null);
+   211→  const readyRef = useRef(false);
+   212→  const disposedRef = useRef(false);
+   213→  const rafRef = useRef(0);
+   214→  const timersRef = useRef<number[]>([]);
+   215→
+   216→  const shipsRef = useRef<TraceShip[]>(ships);
+   217→  const simBaseRef = useRef(simBase);
+   218→  const factorRef = useRef(factor);
+   219→  const selectedRefRef = useRef<string | null>(selectedRef);
+   220→  const normRef = useRef<Map<string, number>>(new Map());
+   221→  const reducedRef = useRef(false);
+   222→  const cbRef = useRef({ onPick, onBackgroundClick, onSitePick });
+   223→  const dashPhaseRef = useRef(0);
+   224→
+   225→  const vesselsRef = useRef<Map<string, VesselEntry>>(new Map());
+   226→  const arcsRef = useRef<Map<string, MaritimeRoute>>(new Map());
+   227→  const portsRef = useRef<Map<string, DotEntry>>(new Map());
+   228→  const sitesRef = useRef<Map<string, { kind: "supplier" | "warehouse"; code: string; entry: DotEntry }>>(new Map());
+   229→  const labelsRef = useRef<Map<string, LabelEntry>>(new Map());
+   230→  const tipRef = useRef<{ ref: string | null; lastBuild: number }>({ ref: null, lastBuild: 0 });
+   231→
+   232→  /* mirror latest props into refs (after commit, before any effect work) */
+   233→  useEffect(() => {
+   234→    shipsRef.current = ships;
+   235→    simBaseRef.current = simBase;
+   236→    factorRef.current = factor;
+   237→    selectedRefRef.current = selectedRef;
+   238→    cbRef.current = { onPick, onBackgroundClick, onSitePick };
+   239→    normRef.current = valueNorms(ships);
+   240→  });
+   241→  const computeSimNow = () => {
+   242→    const b = simBaseRef.current;
+   243→    return b ? b.server + (Date.now() - b.wall) * factorRef.current : Date.now();
+   244→  };
+   245→
+   246→  /* ── route + feeder GeoJSON refresh ────────────────────────────────── */
+   247→  const refreshRoutes = () => {
+   248→    const map = mapRef.current;
+   249→    if (!map || !readyRef.current) return;
+   250→    const simNow = computeSimNow();
+   251→    const sel = selectedRefRef.current;
+   252→
+   253→    const traveled: LineFeature[] = [];
+   254→    const remaining: LineFeature[] = [];
+   255→    for (const [ref, v] of vesselsRef.current) {
+   256→      const p = reducedRef.current ? v.ship.progress : liveProgressAt(v.ship, simNow);
+   257→      v.p = p;
+   258→      const c = STATUS_COLOR[v.ship.liveStatus];
+   259→      const w = (normRef.current.get(ref) ?? 0.6) * 1.5 + 0.75;
+   260→      const o = !sel ? 0.9 : ref === sel ? 1 : 0.12;
+   261→      const or = !sel ? 0.3 : ref === sel ? 0.45 : 0.05;
+   262→      const of = !sel ? 0.5 : ref === sel ? 0.8 : 0.06;
+   263→      if (p > 0.004) traveled.push(line(v.arc.traveledCoords(p), { ref, color: c, o, w, of }));
+   264→      if (p < 0.996) remaining.push(line(v.arc.remainingCoords(p), { ref, color: c, w: w * 0.9, or }));
+   265→    }
+   266→    const tSrc = map.getSource("src-traveled") as GeoJSONSource | undefined;
+   267→    const rSrc = map.getSource("src-remaining") as GeoJSONSource | undefined;
+   268→    tSrc?.setData({ type: "FeatureCollection", features: traveled });
+   269→    rSrc?.setData({ type: "FeatureCollection", features: remaining });
+   270→
+   271→    const feeders: LineFeature[] = [];
+   272→    for (const ship of shipsRef.current) {
+   273→      const oFor = (mine: boolean) => (!sel ? 0.5 : mine ? 0.9 : 0.06);
+   274→      const sSite = ship.supplier ? SUPPLIER_SITES[ship.supplier.code] : null;
+   275→      if (sSite && ship.from) {
+   276→        feeders.push(
+   277→          line(
+   278→            [
+   279→              [sSite.lng, sSite.lat],
+   280→              [ship.from.lng, ship.from.lat],
+   281→            ],
+   282→            { color: "#d4af37", o: oFor(ship.ref === sel) },
+   283→          ),
+   284→        );
+   285→      }
+   286→      const wSite = ship.destinationWarehouse ? WAREHOUSE_SITES[ship.destinationWarehouse.code] : null;
+   287→      if (wSite && ship.to) {
+   288→        feeders.push(
+   289→          line(
+   290→            [
+   291→              [ship.to.lng, ship.to.lat],
+   292→              [wSite.lng, wSite.lat],
+   293→            ],
+   294→            { color: "#34d399", o: oFor(ship.ref === sel) },
+   295→          ),
+   296→        );
+   297→      }
+   298→    }
+   299→    const fSrc = map.getSource("src-feeders") as GeoJSONSource | undefined;
+   300→    fSrc?.setData({ type: "FeatureCollection", features: feeders });
+   301→  };
+   302→
+   303→  /* ── labels: greedy collision engine ───────────────────────────────── */
+   304→  const updateLabels = () => {
+   305→    const map = mapRef.current;
+   306→    const layer = labelLayerRef.current;
+   307→    if (!map || !layer) return;
+   308→    const zoom = map.getZoom();
+   309→    const w = layer.clientWidth || map.getContainer().clientWidth;
+   310→    const h = layer.clientHeight || map.getContainer().clientHeight;
+   311→    const sel = selectedRefRef.current;
+   312→
+   313→    const rects: { x: number; y: number; w: number; h: number; id: string }[] = [];
+   314→    const push = (cx: number, cy: number, rw: number, rh: number, id: string) =>
+   315→      rects.push({ x: cx - rw / 2, y: cy - rh / 2, w: rw, h: rh, id });
+   316→    for (const v of vesselsRef.current.values()) push(v.px, v.py, 26, 26, `ship:${v.ship.ref}`);
+   317→    for (const [key, p] of portsRef.current) push(p.px, p.py, 13, 13, `port:${key}`);
+   318→    for (const [id, s] of sitesRef.current) push(s.entry.px, s.entry.py, 24, 24, id);
+   319→
+   320→    const items = [...labelsRef.current.values()].sort((a, b) => a.priority - b.priority);
+   321→    for (const it of items) {
+   322→      let minZoom = it.baseMinZoom;
+   323→      if (sel && it.id !== `ship:${sel}`) minZoom += 0.9;
+   324→      const [lng, lat] = it.anchor();
+   325→      const proj = map.project([lng, lat]);
+   326→      /* clustered vessels: anchor to the spiderfy-offset screen position */
+   327→      let pt: { x: number; y: number } = { x: proj.x, y: proj.y };
+   328→      if (it.kind === "vessel") {
+   329→        const v = vesselsRef.current.get(it.id.slice(5));
+   330→        if (v && (v.px || v.py)) pt = { x: v.px, y: v.py };
+   331→      }
+   332→      const off = pt.x < 34 || pt.y < 26 || pt.x > w - 34 || pt.y > h - 58;
+   333→      if (!Number.isFinite(pt.x) || off || zoom < minZoom) {
+   334→        it.el.classList.remove(styles.labelVisible);
+   335→        it.leaderEl.style.opacity = "0";
+   336→        continue;
+   337→      }
+   338→      const charW = it.kind === "vessel" ? 6.5 : 5.7;
+   339→      const bw = it.text.length * charW + 10;
+   340→      const bh = 14;
+   341→      const cands = [
+   342→        { x: pt.x - bw / 2, y: pt.y - bh - 12, side: 0 },
+   343→        { x: pt.x + 13, y: pt.y - bh / 2, side: 1 },
+   344→        { x: pt.x - bw / 2, y: pt.y + 11, side: 2 },
+   345→        { x: pt.x - bw - 13, y: pt.y - bh / 2, side: 3 },
+   346→      ];
+   347→      let placed: { x: number; y: number; box: { x: number; y: number; w: number; h: number } } | null = null;
+   348→      for (const c of cands) {
+   349→        const box = { x: c.x - 3, y: c.y - 2, w: bw + 6, h: bh + 4 };
+   350→        if (!rects.some((r) => r.id !== it.id && r.x < box.x + box.w && r.x + r.w > box.x && r.y < box.y + box.h && r.y + r.h > box.y)) {
+   351→          placed = { x: c.x, y: c.y, box };
+   352→          break;
+   353→        }
+   354→      }
+   355→      if (!placed) {
+   356→        it.el.classList.remove(styles.labelVisible);
+   357→        it.leaderEl.style.opacity = "0";
+   358→        continue;
+   359→      }
+   360→      rects.push({ ...placed.box, id: it.id });
+   361→      it.el.style.transform = `translate3d(${placed.x.toFixed(1)}px, ${placed.y.toFixed(1)}px, 0)`;
+   362→      it.el.classList.add(styles.labelVisible);
+   363→      /* leader line from anchor toward the label when displaced */
+   364→      const ex = placed.x + bw / 2;
+   365→      const ey = placed.y + bh / 2;
+   366→      const dx = ex - pt.x;
+   367→      const dy = ey - pt.y;
+   368→      const dist = Math.hypot(dx, dy);
+   369→      if (dist > 15) {
+   370→        it.leaderEl.style.transform = `translate3d(${pt.x.toFixed(1)}px, ${pt.y.toFixed(1)}px, 0) rotate(${((Math.atan2(dy, dx) * 180) / Math.PI).toFixed(1)}deg)`;
+   371→        it.leaderEl.style.width = `${Math.min(dist - 6, 30).toFixed(0)}px`;
+   372→        it.leaderEl.style.opacity = "0.8";
+   373→      } else {
+   374→        it.leaderEl.style.opacity = "0";
+   375→      }
+   376→    }
+   377→  };
+   378→
+   379→  /* ── vessels: glide + spiderfy + cluster chips ─────────────────────── */
+   380→  const updateVessels = (simNow: number) => {
+   381→    const map = mapRef.current;
+   382→    if (!map) return;
+   383→    const entries = [...vesselsRef.current.values()];
+   384→    const pts: { x: number; y: number }[] = [];
+   385→    for (const v of entries) {
+   386→      v.p = reducedRef.current ? v.ship.progress : liveProgressAt(v.ship, simNow);
+   387→      v.pos = v.arc.pointAt(v.p);
+   388→      v.marker.setLngLat([v.pos.lng, v.pos.lat]);
+   389→      const pt = map.project([v.pos.lng, v.pos.lat]);
+   390→      pts.push(pt);
+   391→      v.rotEl.style.transform = `rotate(${v.pos.angle.toFixed(1)}deg)`;
+   392→    }
+   393→    /* spiderfy overlapping vessels (same corridor at low zoom) */
+   394→    const parent = entries.map((_, i) => i);
+   395→    const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+   396→    for (let i = 0; i < entries.length; i++) {
+   397→      for (let j = i + 1; j < entries.length; j++) {
+   398→        if (Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y) < 26) parent[find(i)] = find(j);
+   399→      }
+   400→    }
+   401→    const groups = new Map<number, number[]>();
+   402→    entries.forEach((_, i) => {
+   403→      const root = find(i);
+   404→      const g = groups.get(root);
+   405→      if (g) g.push(i);
+   406→      else groups.set(root, [i]);
+   407→    });
+   408→    for (const g of groups.values()) {
+   409→      const n = g.length;
+   410→      if (n < 2) {
+   411→        const v = entries[g[0]];
+   412→        v.marker.setOffset([0, 0]);
+   413→        v.clusterSize = 1;
+   414→        v.px = pts[g[0]].x;
+   415→        v.py = pts[g[0]].y;
+   416→        v.el.classList.remove(styles.clustered);
+   417→        continue;
+   418→      }
+   419→      const cx = g.reduce((s, i) => s + pts[i].x, 0) / n;
+   420→      const cy = g.reduce((s, i) => s + pts[i].y, 0) / n;
+   421→      const radius = 15 + n * 3.2;
+   422→      const ordered = [...g].sort(
+   423→        (a, b) => Math.atan2(pts[a].y - cy, pts[a].x - cx) - Math.atan2(pts[b].y - cy, pts[b].x - cx),
+   424→      );
+   425→      ordered.forEach((idx, k) => {
+   426→        const a = (2 * Math.PI * k) / n - Math.PI / 2 + Math.atan2(pts[ordered[0]].y - cy, pts[ordered[0]].x - cx);
+   427→        const tx = cx + radius * Math.cos(a);
+   428→        const ty = cy + radius * Math.sin(a);
+   429→        const v = entries[idx];
+   430→        v.marker.setOffset([tx - pts[idx].x, ty - pts[idx].y]);
+   431→        v.px = tx;
+   432→        v.py = ty;
+   433→        v.clusterSize = n;
+   434→        v.el.classList.add(styles.clustered);
+   435→        v.chipEl.textContent = `×${n}`;
+   436→      });
+   437→    }
+   438→  };
+   439→
+   440→  /* ── tooltip ───────────────────────────────────────────────────────── */
+   441→  const tipHTML = (ship: TraceShip, p: number) => {
+   442→    const c = STATUS_COLOR[ship.liveStatus];
+   443→    const eta = ship.eta ? fmtCountdown(+new Date(ship.eta) - Date.now()) : "no carrier ETA";
+   444→    const prov = ship.routeProvenance === "estimated-corridor" ? "estimated corridor" : ship.routeProvenance === "land-leg" ? "land leg" : "route unavailable";
+   445→    return `
+   446→      <div class="${styles.tipRef}">
+   447→        <span style="display:inline-block;width:7px;height:7px;border-radius:999px;background:${c};box-shadow:0 0 6px ${c}"></span>
+   448→        <span style="color:${c}">${esc(ship.ref)}</span>
+   449→        <span style="color:oklch(0.6 0.02 90);font-weight:600">${esc(ship.vesselName ?? ship.carrier ?? "vessel unlinked")}</span>
+   450→      </div>
+   451→      <div class="${styles.tipRoute}">${esc(ship.from?.label ?? ship.originPort)} → ${esc(ship.to?.label ?? ship.destPort)}${ship.destVerified ? "" : " · ⚠ dest unverified"}</div>
+   452→      <div class="${styles.tipGrid}">
+   453→        <span class="${styles.tipK}">Carrier</span><span class="${styles.tipV}">${esc(ship.carrier ?? "—")}</span>
+   454→        <span class="${styles.tipK}">Progress</span><span class="${styles.tipV}">${(p * 100).toFixed(1)}%</span>
+   455→        <span class="${styles.tipK}">Speed</span><span class="${styles.tipV}">${ship.speedKn ? `≈ ${ship.speedKn} kn` : "—"}</span>
+   456→        <span class="${styles.tipK}">ETA</span><span class="${styles.tipV}">${eta}</span>
+   457→        <span class="${styles.tipK}">Cargo value</span><span class="${styles.tipV}" style="color:#e9c765">${fmtMoney(ship.importValue, ship.currency)}${ship.currency !== "USD" ? ` ≈ $${Math.round(ship.importValueUsd).toLocaleString("en-US")}` : ""}</span>
+   458→        <span class="${styles.tipK}">Route</span><span class="${styles.tipV}" style="color:oklch(0.62 0.03 90)">${prov}${ship.routeDistanceNm ? ` · ${ship.routeDistanceNm.toLocaleString("en-US")} nm` : ""}</span>
+   459→      </div>
+   460→      <div class="${styles.tipBar}"><div class="${styles.tipBarFill}" style="width:${(p * 100).toFixed(1)}%;color:${c}"></div></div>`;
+   461→  };
+   462→
+   463→  const updateTooltip = () => {
+   464→    const tip = tooltipRef.current;
+   465→    const map = mapRef.current;
+   466→    const layer = labelLayerRef.current;
+   467→    if (!tip || !map || !layer) return;
+   468→    const ref = tipRef.current.ref;
+   469→    if (!ref) {
+   470→      tip.classList.remove(styles.tooltipVisible);
+   471→      return;
+   472→    }
+   473→    const v = vesselsRef.current.get(ref);
+   474→    if (!v) {
+   475→      tipRef.current.ref = null;
+   476→      tip.classList.remove(styles.tooltipVisible);
+   477→      return;
+   478→    }
+   479→    const now = Date.now();
+   480→    if (now - tipRef.current.lastBuild > 500) {
+   481→      tipRef.current.lastBuild = now;
+   482→      tip.innerHTML = tipHTML(v.ship, v.p);
+   483→    }
+   484→    const w = layer.clientWidth;
+   485→    const px = Math.min(Math.max(v.px, 122), Math.max(122, w - 122));
+   486→    tip.style.transform = `translate3d(${px.toFixed(0)}px, ${(v.py - 30).toFixed(0)}px, 0) translate(-50%, -100%)`;
+   487→    tip.classList.add(styles.tooltipVisible);
+   488→  };
+   489→
+   490→  /* ── rAF loop ──────────────────────────────────────────────────────── */
+   491→  useEffect(() => {
+   492→    const loop = () => {
+   493→      rafRef.current = requestAnimationFrame(loop);
+   494→      if (!mapRef.current || !readyRef.current) return;
+   495→      updateVessels(computeSimNow());
+   496→      const map = mapRef.current;
+   497→      for (const p of portsRef.current.values()) {
+   498→        const ll = p.marker.getLngLat();
+   499→        const pt = map.project([ll.lng, ll.lat]);
+   500→        p.px = pt.x;
+   501→        p.py = pt.y;
+   502→      }
+   503→      for (const s of sitesRef.current.values()) {
+   504→        const ll = s.entry.marker.getLngLat();
+   505→        const pt = map.project([ll.lng, ll.lat]);
+   506→        s.entry.px = pt.x;
+   507→        s.entry.py = pt.y;
+   508→      }
+   509→      updateLabels();
+   510→      updateTooltip();
+   511→    };
+   512→    rafRef.current = requestAnimationFrame(loop);
+   513→    return () => cancelAnimationFrame(rafRef.current);
+   514→  }, []);
+   515→
+   516→  /* ── registry sync: markers, ports, sites, labels ──────────────────── */
+   517→  const syncAll = () => {
+   518→    const map = mapRef.current;
+   519→    const layer = labelLayerRef.current;
+   520→    if (!map || !layer || !readyRef.current) return;
+   521→
+   522→    /* vessels (diff by ref so gliding markers survive hourly snapshots) */
+   523→    const next = shipsRef.current.filter((s) => s.from && s.to);
+   524→    for (const ship of next) {
+   525→      let v = vesselsRef.current.get(ship.ref);
+   526→      const old = arcsRef.current.get(ship.ref);
+   527→      if (!v || !old) {
+   528→        /* Phase 2: route comes from the validated maritime corridor registry.
+   529→         * Ships with NO validated corridor get no fabricated route/marker. */
+   530→        const resolved = resolveMaritimeRoute(
+   531→          ship.originPort,
+   532→          ship.destPort,
+   533→          ship.mode,
+   534→          viaFromLegs(ship.legs ?? []),
+   535→        );
+   536→        if (!resolved.route) continue;
+   537→        const arc = resolved.route;
+   538→        arcsRef.current.set(ship.ref, arc);
+   539→        const c = STATUS_COLOR[ship.liveStatus];
+   540→        const el = elFromHTML(`
+   541→          <button type="button" class="${styles.vessel}" style="color:${c}"
+   542→            aria-label="Open dossier for ${esc(ship.ref)} — ${esc(ship.vesselName ?? ship.carrier ?? "vessel")} (${ship.liveStatus})"
+   543→            data-ref="${esc(ship.ref)}">
+   544→            <span class="${styles.vesselHalo}"></span>
+   545→            <span class="${styles.vesselRot}">
+   546→              <span class="${styles.vesselWake}"></span>
+   547→              ${SHIP_SVG}
+   548→            </span>
+   549→            <span class="${styles.clusterChip}"></span>
+   550→          </button>`) as HTMLButtonElement;
+   551→        el.addEventListener("click", (e) => {
+   552→          e.stopPropagation();
+   553→          const zoom = mapRef.current?.getZoom() ?? 0;
+   554→          const entry = vesselsRef.current.get(el.dataset.ref ?? "");
+   555→          if (!entry) return;
+   556→          if (entry.clusterSize >= 2 && zoom < 4.6) {
+   557→            mapRef.current?.flyTo({
+   558→              center: [entry.pos.lng, entry.pos.lat],
+   559→              zoom: Math.min(7, zoom + 2.2),
+   560→              duration: reducedRef.current ? 0 : 750,
+   561→              essential: true,
+   562→            });
+   563→            return;
+   564→          }
+   565→          cbRef.current.onPick?.(entry.ship.ref);
+   566→        });
+   567→        el.addEventListener("mouseenter", () => (tipRef.current.ref = ship.ref));
+   568→        el.addEventListener("mouseleave", () => {
+   569→          if (tipRef.current.ref === ship.ref) tipRef.current.ref = null;
+   570→        });
+   571→        el.addEventListener("focus", () => (tipRef.current.ref = ship.ref));
+   572→        el.addEventListener("blur", () => {
+   573→          if (tipRef.current.ref === ship.ref) tipRef.current.ref = null;
+   574→        });
+   575→        const marker = new Marker({ element: el, anchor: "center" })
+   576→          .setLngLat([ship.from!.lng, ship.from!.lat])
+   577→          .addTo(map);
+   578→        v = {
+   579→          ship,
+   580→          arc,
+   581→          marker,
+   582→          el,
+   583→          rotEl: el.querySelector(`.${styles.vesselRot}`) as HTMLElement,
+   584→          chipEl: el.querySelector(`.${styles.clusterChip}`) as HTMLElement,
+   585→          pos: { lng: ship.from!.lng, lat: ship.from!.lat, angle: 0 },
+   586→          p: ship.progress,
+   587→          px: 0,
+   588→          py: 0,
+   589→          clusterSize: 1,
+   590→        };
+   591→        vesselsRef.current.set(ship.ref, v);
+   592→      } else {
+   593→        /* status may have flipped on the hourly snapshot */
+   594→        v.ship = ship;
+   595→        v.el.style.color = STATUS_COLOR[ship.liveStatus];
+   596→      }
+   597→    }
+   598→    for (const [ref, v] of vesselsRef.current) {
+   599→      if (!next.some((s) => s.ref === ref)) {
+   600→        v.marker.remove();
+   601→        vesselsRef.current.delete(ref);
+   602→        arcsRef.current.delete(ref);
+   603→      }
+   604→    }
+   605→
+   606→    /* ports (from real route endpoints, registry-cleaned labels) */
+   607→    for (const p of portsRef.current.values()) p.marker.remove();
+   608→    portsRef.current.clear();
+   609→    interface PortAcc {
+   610→      label: string;
+   611→      lng: number;
+   612→      lat: number;
+   613→      count: number;
+   614→      hold: boolean;
+   615→    }
+   616→    const portAcc = new Map<string, PortAcc>();
+   617→    for (const s of shipsRef.current) {
+   618→      for (const end of [s.from, s.to]) {
+   619→        if (!end) continue;
+   620→        const reg = lookupPort(end.label);
+   621→        const label = reg?.label ?? end.label.split(",")[0].trim();
+   622→        const key = label.toUpperCase();
+   623→        const acc = portAcc.get(key) ?? { label, lng: end.lng, lat: end.lat, count: 0, hold: false };
+   624→        acc.count += 1;
+   625→        acc.hold = acc.hold || s.liveStatus === "CUSTOMS_HOLD";
+   626→        portAcc.set(key, acc);
+   627→      }
+   628→    }
+   629→    for (const [key, p] of portAcc) {
+   630→      const el = elFromHTML(`<div class="${cn(styles.port, p.hold && styles.portHold)}" aria-hidden="true"><i class="${styles.portRing}"></i><i class="${styles.portDot}"></i></div>`);
+   631→      const marker = new Marker({ element: el, anchor: "center" })
+   632→        .setLngLat([p.lng, p.lat])
+   633→        .addTo(map);
+   634→      portsRef.current.set(key, { marker, el, px: 0, py: 0 });
+   635→    }
+   636→
+   637→    /* supplier + warehouse sites */
+   638→    for (const s of sitesRef.current.values()) s.entry.marker.remove();
+   639→    sitesRef.current.clear();
+   640→    const supCodes = new Set(shipsRef.current.map((s) => s.supplier?.code).filter(Boolean) as string[]);
+   641→    for (const code of supCodes) {
+   642→      const site = SUPPLIER_SITES[code];
+   643→      if (!site || sitesRef.current.has(`sup:${code}`)) continue;
+   644→      const name = shipsRef.current.find((s) => s.supplier?.code === code)?.supplier?.name ?? code;
+   645→      const el = elFromHTML(`
+   646→        <button type="button" class="${cn(styles.site, styles.supplier)}" title="${esc(name)} — ${esc(site.city ?? "")}, ${esc(site.country)}"
+   647→          aria-label="Open supplier panel for ${esc(code)} — ${esc(name)}" data-code="${esc(code)}">
+   648→          ${FACTORY_SVG}
+   649→        </button>`);
+   650→      el.addEventListener("click", (e) => {
+   651→        e.stopPropagation();
+   652→        cbRef.current.onSitePick?.({ type: "supplier", code });
+   653→      });
+   654→      const marker = new Marker({ element: el, anchor: "center" }).setLngLat([site.lng, site.lat]).addTo(map);
+   655→      sitesRef.current.set(`sup:${code}`, { kind: "supplier", code, entry: { marker, el, px: 0, py: 0 } });
+   656→    }
+   657→    const whCodes = new Set(shipsRef.current.map((s) => s.destinationWarehouse?.code).filter(Boolean) as string[]);
+   658→    for (const code of whCodes) {
+   659→      const site = WAREHOUSE_SITES[code];
+   660→      if (!site || sitesRef.current.has(`wh:${code}`)) continue;
+   661→      const name = shipsRef.current.find((s) => s.destinationWarehouse?.code === code)?.destinationWarehouse?.name ?? code;
+   662→      const el = elFromHTML(`
+   663→        <button type="button" class="${cn(styles.site, styles.warehouse)}" title="${esc(name)} — ${esc(site.city ?? "")}"
+   664→          aria-label="Open warehouse panel for ${esc(code)} — ${esc(name)}" data-code="${esc(code)}">
+   665→          ${WAREHOUSE_SVG}
+   666→        </button>`);
+   667→      el.addEventListener("click", (e) => {
+   668→        e.stopPropagation();
+   669→        cbRef.current.onSitePick?.({ type: "warehouse", code });
+   670→      });
+   671→      const marker = new Marker({ element: el, anchor: "center" }).setLngLat([site.lng, site.lat]).addTo(map);
+   672→      sitesRef.current.set(`wh:${code}`, { kind: "warehouse", code, entry: { marker, el, px: 0, py: 0 } });
+   673→    }
+   674→
+   675→    /* labels — rebuilt each sync; vessel anchors are live */
+   676→    labelsRef.current.clear();
+   677→    layer.textContent = "";
+   678→    const addLabel = (l: Omit<LabelEntry, "el" | "leaderEl">) => {
+   679→      const el = elFromHTML(`<div class="${cn(styles.label, l.kind === "port" && (l.priority <= 3.5 ? styles.labelPort : styles.labelPortMinor), l.kind === "vessel" && styles.labelVessel, l.kind !== "port" && styles.labelSite)}"></div>`) as HTMLDivElement;
+   680→      el.textContent = l.text;
+   681→      if (l.color) el.style.color = l.color;
+   682→      const leaderEl = elFromHTML(`<div class="${styles.labelLeader}"></div>`) as HTMLDivElement;
+   683→      leaderEl.style.opacity = "0";
+   684→      layer.append(leaderEl, el);
+   685→      labelsRef.current.set(l.id, { ...l, el, leaderEl });
+   686→    };
+   687→    for (const p of portAcc) {
+   688→      const [key, acc] = p;
+   689→      const major = acc.count >= 2;
+   690→      addLabel({
+   691→        id: `port:${key}`,
+   692→        kind: "port",
+   693→        text: acc.label,
+   694→        priority: major ? 3 : acc.hold ? 3.4 : 4,
+   695→        baseMinZoom: major ? 0.9 : acc.hold ? 1.2 : 2.15,
+   696→        color: acc.hold ? "#fbbf24" : null,
+   697→        anchor: () => {
+   698→          const dot = portsRef.current.get(key);
+   699→          const ll = dot?.marker.getLngLat();
+   700→          return ll ? [ll.lng, ll.lat] : [acc.lng, acc.lat];
+   701→        },
+   702→      });
+   703→    }
+   704→    for (const [id, s] of sitesRef.current) {
+   705→      const site = s.kind === "supplier" ? SUPPLIER_SITES[s.code] : WAREHOUSE_SITES[s.code];
+   706→      if (!site) continue;
+   707→      addLabel({
+   708→        id,
+   709→        kind: s.kind,
+   710→        text: s.kind === "supplier" ? `${s.code} · ${site.label}` : s.code,
+   711→        priority: s.kind === "warehouse" ? 5 : 6,
+   712→        baseMinZoom: s.kind === "warehouse" ? 1.9 : 2.35,
+   713→        color: s.kind === "supplier" ? "#e9c765" : "#34d399",
+   714→        anchor: () => {
+   715→          const ll = s.entry.marker.getLngLat();
+   716→          return ll ? [ll.lng, ll.lat] : [site.lng, site.lat];
+   717→        },
+   718→      });
+   719→    }
+   720→    for (const [ref, v] of vesselsRef.current) {
+   721→      const hold = v.ship.liveStatus === "CUSTOMS_HOLD";
+   722→      const sel = ref === selectedRefRef.current;
+   723→      addLabel({
+   724→        id: `ship:${ref}`,
+   725→        kind: "vessel",
+   726→        text: ref,
+   727→        priority: sel ? 0 : hold ? 1 : 2,
+   728→        baseMinZoom: sel || hold ? -1 : 1.75,
+   729→        color: STATUS_COLOR[v.ship.liveStatus],
+   730→        anchor: () => {
+   731→          const e = vesselsRef.current.get(ref);
+   732→          return e ? [e.pos.lng, e.pos.lat] : [0, 0];
+   733→        },
+   734→      });
+   735→    }
+   736→
+   737→    applySelectionClasses();
+   738→    refreshRoutes();
+   739→  };
+   740→
+   741→  /* ── selection visuals + camera ────────────────────────────────────── */
+   742→  const applySelectionClasses = () => {
+   743→    const sel = selectedRefRef.current;
+   744→    for (const [ref, v] of vesselsRef.current) {
+   745→      v.el.classList.toggle(styles.vesselSelected, ref === sel);
+   746→      v.el.classList.toggle(styles.vesselDim, !!sel && ref !== sel);
+   747→    }
+   748→    for (const s of sitesRef.current.values()) s.entry.el.classList.toggle(styles.siteDim, !!sel);
+   749→  };
+   750→
+   751→  const flyToSelected = () => {
+   752→    const map = mapRef.current;
+   753→    const sel = selectedRefRef.current;
+   754→    if (!map || !sel) return;
+   755→    const v = vesselsRef.current.get(sel);
+   756→    if (!v) return;
+   757→    const isMobile = window.innerWidth < 640;
+   758→    const zoom = Math.min(6.5, Math.max(map.getZoom(), 3.4));
+   759→    /* shift the target center east so the vessel sits left of the dossier drawer */
+   760→    const shiftPx = isMobile ? 0 : 240;
+   761→    const lngPerPx = 360 / (512 * 2 ** zoom);
+   762→    map.flyTo({
+   763→      center: [v.pos.lng + shiftPx * lngPerPx, v.pos.lat],
+   764→      zoom,
+   765→      duration: reducedRef.current ? 0 : 950,
+   766→      essential: true,
+   767→    });
+   768→  };
+   769→
+   770→  /** Phase 1.4: reset returns to the Bahrain operations view (not world). */
+   771→  const resetHome = (duration = 950) => {
+   772→    const map = mapRef.current;
+   773→    if (!map) return;
+   774→    map.flyTo({
+   775→      center: BAHRAIN_HOME.center,
+   776→      zoom: BAHRAIN_HOME.zoom,
+   777→      duration: reducedRef.current ? 0 : duration,
+   778→      essential: true,
+   779→    });
+   780→  };
+   781→
+   782→  const fitFleet = () => {
+   783→    const map = mapRef.current;
+   784→    if (!map || vesselsRef.current.size === 0) return;
+   785→    const bounds = new LngLatBounds();
+   786→    for (const v of vesselsRef.current.values()) {
+   787→      bounds.extend([v.pos.lng, v.pos.lat]);
+   788→      bounds.extend(v.arc.samples[0]);
+   789→      bounds.extend(v.arc.samples[v.arc.samples.length - 1]);
+   790→    }
+   791→    if (bounds.isEmpty()) return;
+   792→    const isDesktop = window.innerWidth >= 640;
+   793→    const cam = map.cameraForBounds(bounds, {
+   794→      padding: { top: 70, bottom: 150, left: 70, right: isDesktop ? (selectedRefRef.current ? 460 : 70) : 60 },
+   795→    });
+   796→    if (!cam) return;
+   797→    map.flyTo({
+   798→      center: cam.center,
+   799→      zoom: Math.min(4.4, Math.max(cam.zoom ?? 2.2, map.getMinZoom())),
+   800→      duration: reducedRef.current ? 0 : 950,
+   801→      essential: true,
+   802→    });
+   803→  };
+   804→
+   805→  /* ── map init ──────────────────────────────────────────────────────── */
+   806→  useEffect(() => {
+   807→    disposedRef.current = false;
+   808→    let disposed = false;
+   809→
+   810→    const reducedMq = window.matchMedia("(prefers-reduced-motion: reduce)");
+   811→    reducedRef.current = reducedMq.matches;
+   812→    const onMq = (e: MediaQueryListEvent) => (reducedRef.current = e.matches);
+   813→    reducedMq.addEventListener("change", onMq);
+   814→
+   815→    const boot = async () => {
+   816→      /* WebGL probe — graceful fallback */
+   817→      const probe = document.createElement("canvas");
+   818→      const gl = probe.getContext("webgl2") ?? probe.getContext("webgl");
+   819→      if (!gl) {
+   820→        setNoWebGL(true);
+   821→        return;
+   822→      }
+   823→      /* bundled world geometry — fallback layer beneath the ArcGIS raster basemap */
+   824→      let world: FC = EMPTY_FC;
+   825→      try {
+   826→        const res = await fetch("/geo/world-land-110m.json");
+   827→        if (res.ok) {
+   828→          const j = (await res.json()) as WorldBundle;
+   829→          const feats: LineFeature[] = [];
+   830→          const geo = (kind: string, geometry: object | undefined) =>
+   831→            geometry ? feats.push({ type: "Feature", properties: { kind }, geometry: geometry as LineFeature["geometry"] }) : null;
+   832→          geo("fill", j.fill?.geometry);
+   833→          geo("coast", j.coast?.geometry);
+   834→          geo("borders", j.borders?.geometry);
+   835→          geo("grat", j.graticule?.geometry);
+   836→          world = { type: "FeatureCollection", features: feats };
+   837→        }
+   838→      } catch {
+   839→        /* ocean-only fallback */
+   840→      }
+   841→      if (disposed || !containerRef.current) return;
+   842→
+   843→      const map = new MlMap({
+   844→        container: containerRef.current,
+   845→        style: baseStyle(world),
+   846→        /* open on the Bahrain operations view (Phase 1.4) */
+   847→        center: BAHRAIN_HOME.center,
+   848→        zoom: BAHRAIN_HOME.zoom,
+   849→        minZoom: 1.05,
+   850→        maxZoom: 12,
+   851→        /* NB: lng must stay within ±180 — beyond that MapLibre wraps the
+   852→         * antimeridian and its constrain logic corrupts the camera */
+   853→        maxBounds: [
+   854→          [-179.9, -84],
+   855→          [179.9, 84],
+   856→        ],
+   857→        attributionControl: false,
+   858→        renderWorldCopies: false,
+   859→        dragRotate: false,
+   860→        pitchWithRotate: false,
+   861→        touchPitch: false,
+   862→        fadeDuration: 0,
+   863→      });
+   864→      mapRef.current = map;
+   865→      /* debug/test hook — read-only introspection for E2E verification */
+   866→      (window as unknown as Record<string, unknown>).__nassMap = map;
+   867→
+   868→      map.on("click", () => cbRef.current.onBackgroundClick?.());
+   869→      map.on("error", (e) => console.warn("[operation-map]", e.error?.message ?? e));
+   870→
+   871→      map.on("load", () => {
+   872→        if (disposed) return;
+   873→        /* route + feeder layers */
+   874→        map.addSource("src-traveled", { type: "geojson", data: EMPTY_FC });
+   875→        map.addSource("src-remaining", { type: "geojson", data: EMPTY_FC });
+   876→        map.addSource("src-feeders", { type: "geojson", data: EMPTY_FC });
+   877→        map.addLayer({
+   878→          id: "arc-feeders",
+   879→          type: "line",
+   880→          source: "src-feeders",
+   881→          paint: {
+   882→            "line-color": ["get", "color"],
+   883→            "line-opacity": ["get", "o"],
+   884→            "line-width": 1,
+   885→            "line-dasharray": [0.4, 1.4],
+   886→          },
+   887→        });
+   888→        map.addLayer({
+   889→          id: "arc-glow",
+   890→          type: "line",
+   891→          source: "src-traveled",
+   892→          paint: {
+   893→            "line-color": ["get", "color"],
+   894→            "line-opacity": ["*", ["get", "o"], 0.22],
+   895→            "line-width": ["*", ["get", "w"], 3.6],
+   896→            "line-blur": 4,
+   897→          },
+   898→        });
+   899→        map.addLayer({
+   900→          id: "arc-remaining",
+   901→          type: "line",
+   902→          source: "src-remaining",
+   903→          paint: {
+   904→            "line-color": ["get", "color"],
+   905→            "line-opacity": ["get", "or"],
+   906→            "line-width": ["get", "w"],
+   907→            "line-dasharray": [1.2, 1.6],
+   908→          },
+   909→        });
+   910→        map.addLayer({
+   911→          id: "arc-traveled",
+   912→          type: "line",
+   913→          source: "src-traveled",
+   914→          paint: {
+   915→            "line-color": ["get", "color"],
+   916→            "line-opacity": ["get", "o"],
+   917→            "line-width": ["get", "w"],
+   918→          },
+   919→        });
+   920→        map.addLayer({
+   921→          id: "arc-flow",
+   922→          type: "line",
+   923→          source: "src-traveled",
+   924→          paint: {
+   925→            "line-color": "#fff3d6",
+   926→            "line-opacity": ["*", ["get", "of"], 0.75],
+   927→            "line-width": ["*", ["get", "w"], 0.5],
+   928→            "line-dasharray": DASH_SEQ[0],
+   929→          },
+   930→        });
+   931→        readyRef.current = true;
+   932→        syncAll();
+   933→        refreshRoutes();
+   934→        /* initial camera: selected shipment → fly to it; otherwise Bahrain home */
+   935→        if (selectedRefRef.current) flyToSelected();
+   936→        else resetHome(0);
+   937→      });
+   938→
+   939→      /* flowing dash animation */
+   940→      const dashTimer = window.setInterval(() => {
+   941→        if (!readyRef.current || reducedRef.current) return;
+   942→        dashPhaseRef.current = (dashPhaseRef.current + 1) % DASH_SEQ.length;
+   943→        mapRef.current?.setPaintProperty("arc-flow", "line-dasharray", DASH_SEQ[dashPhaseRef.current]);
+   944→      }, 90);
+   945→      /* route split follows progress */
+   946→      const routeTimer = window.setInterval(() => {
+   947→        if (readyRef.current && !reducedRef.current) refreshRoutes();
+   948→      }, 700);
+   949→      timersRef.current.push(dashTimer, routeTimer);
+   950→    };
+   951→
+   952→    boot();
+   953→    return () => {
+   954→      disposed = true;
+   955→      disposedRef.current = true;
+   956→      reducedMq.removeEventListener("change", onMq);
+   957→      timersRef.current.forEach((t) => {
+   958→        clearInterval(t);
+   959→        clearTimeout(t);
+   960→      });
+   961→      timersRef.current = [];
+   962→      readyRef.current = false;
+   963→      mapRef.current?.remove();
+   964→      mapRef.current = null;
+   965→    };
+   966→  }, []);
+   967→
+   968→
+   969→  useEffect(() => {
+   970→    syncAll();
+   971→    applySelectionClasses();
+   972→    if (readyRef.current) {
+   973→      refreshRoutes();
+   974→      if (selectedRefRef.current) flyToSelected();
+   975→    }
+   976→  }, [ships]);
+   977→
+   978→  useEffect(() => {
+   979→    if (!readyRef.current) return;
+   980→    applySelectionClasses();
+   981→    refreshRoutes();
+   982→    if (selectedRefRef.current) flyToSelected();
+   983→  }, [selectedRef]);
+   984→
+   985→  /* keyboard: arrows pan, +/- zoom (works even if canvas focus quirks) */
+   986→  const onWrapperKeyDown = (e: ReactKeyboardEvent) => {
+   987→    const map = mapRef.current;
+   988→    if (!map || e.defaultPrevented) return;
+   989→    const step = e.shiftKey ? 260 : 120;
+   990→    const pan: Record<string, [number, number]> = {
+   991→      ArrowLeft: [-step, 0],
+   992→      ArrowRight: [step, 0],
+   993→      ArrowUp: [0, -step],
+   994→      ArrowDown: [0, step],
+   995→    };
+   996→    if (pan[e.key]) {
+   997→      e.preventDefault();
+   998→      map.panBy(pan[e.key], { duration: reducedRef.current ? 0 : 180 });
+   999→    } else if (e.key === "+" || e.key === "=") {
+  1000→      e.preventDefault();
+  1001→      map.zoomIn();
+  1002→    } else if (e.key === "-" || e.key === "_") {
+  1003→      e.preventDefault();
+  1004→      map.zoomOut();
+  1005→    }
+  1006→  };
+  1007→
+  1008→  if (noWebGL) {
+  1009→    return (
+  1010→      <div className={styles.fallback} role="alert">
+  1011→        The interactive operation map needs WebGL, which this browser/device does not expose.
+  1012→        Fleet status and dossiers remain available from the fleet rail below.
+  1013→      </div>
+  1014→    );
+  1015→  }
+  1016→
+  1017→  return (
+  1018→    <div
+  1019→      ref={containerRef}
+  1020→      className={cn(styles.mapWrap, "h-full w-full")}
+  1021→      onKeyDown={onWrapperKeyDown}
+  1022→      role="group"
+  1023→      aria-label="Interactive live operations map — drag to pan, scroll or pinch to zoom, click a vessel for its dossier"
+  1024→      data-testid="operation-map"
+  1025→    >
+  1026→      {/* DOM label collision layer */}
+  1027→      <div ref={labelLayerRef} className={styles.labelLayer} aria-hidden />
+  1028→
+  1029→      {/* hover tooltip */}
+  1030→      <div ref={tooltipRef} className={styles.tooltip} role="tooltip" />
+  1031→
+  1032→      {/* hint */}
+  1033→      <div className={styles.hint} aria-hidden>
+  1034→        drag · scroll · pinch · dbl-click
+  1035→      </div>
+  1036→
+  1037→      {/* control stack — bottom-right, above fleet rail */}
+  1038→      <TooltipProvider delayDuration={250}>
+  1039→        <div className={styles.controls} role="group" aria-label="Map camera controls">
+  1040→          <Tooltip>
+  1041→            <TooltipTrigger asChild>
+  1042→              <button
+  1043→                type="button"
+  1044→                className={styles.ctrlBtn}
+  1045→                aria-label="Zoom in"
+  1046→                onClick={(e) => {
+  1047→                  e.stopPropagation();
+  1048→                  mapRef.current?.zoomIn({ duration: reducedRef.current ? 0 : 260 });
+  1049→                }}
+  1050→              >
+  1051→                <Plus className="h-4 w-4" />
+  1052→              </button>
+  1053→            </TooltipTrigger>
+  1054→            <TooltipContent side="left">Zoom in</TooltipContent>
+  1055→          </Tooltip>
+  1056→          <Tooltip>
+  1057→            <TooltipTrigger asChild>
+  1058→              <button
+  1059→                type="button"
+  1060→                className={styles.ctrlBtn}
+  1061→                aria-label="Zoom out"
+  1062→                onClick={(e) => {
+  1063→                  e.stopPropagation();
+  1064→                  mapRef.current?.zoomOut({ duration: reducedRef.current ? 0 : 260 });
+  1065→                }}
+  1066→              >
+  1067→                <Minus className="h-4 w-4" />
+  1068→              </button>
+  1069→            </TooltipTrigger>
+  1070→            <TooltipContent side="left">Zoom out</TooltipContent>
+  1071→          </Tooltip>
+  1072→          <Tooltip>
+  1073→            <TooltipTrigger asChild>
+  1074→              <button
+  1075→                type="button"
+  1076→                className={styles.ctrlBtn}
+  1077→                aria-label="Fit fleet — frame every active shipment"
+  1078→                data-testid="fit-fleet"
+  1079→                onClick={(e) => {
+  1080→                  e.stopPropagation();
+  1081→                  fitFleet();
+  1082→                }}
+  1083→              >
+  1084→                <Crosshair className="h-4 w-4" />
+  1085→              </button>
+  1086→            </TooltipTrigger>
+  1087→            <TooltipContent side="left">Fit fleet</TooltipContent>
+  1088→          </Tooltip>
+  1089→          <Tooltip>
+  1090→            <TooltipTrigger asChild>
+  1091→              <button
+  1092→                type="button"
+  1093→                className={styles.ctrlBtn}
+  1094→                aria-label="Reset view — back to the Bahrain operations view"
+  1095→                onClick={(e) => {
+  1096→                  e.stopPropagation();
+  1097→                  resetHome();
+  1098→                }}
+  1099→              >
+  1100→                <Home className="h-4 w-4" />
+  1101→              </button>
+  1102→            </TooltipTrigger>
+  1103→            <TooltipContent side="left">Reset — Bahrain view</TooltipContent>
+  1104→          </Tooltip>
+  1105→        </div>
+  1106→      </TooltipProvider>
+  1107→    </div>
+  1108→  );
+  1109→}
+  1110→

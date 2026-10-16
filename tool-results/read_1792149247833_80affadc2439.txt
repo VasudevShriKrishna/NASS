@@ -1,0 +1,572 @@
+     1→"use client";
+     2→
+     3→import { useEffect, useMemo, useRef, useState } from "react";
+     4→import { AnimatePresence, motion } from "framer-motion";
+     5→import dynamic from "next/dynamic";
+     6→import {  Anchor,
+     7→  Building2,
+     8→  Container,
+     9→  ExternalLink,
+    10→  Factory,
+    11→  FileDown,
+    12→  FileText,
+    13→  Gauge,
+    14→  MapPin,
+    15→  Package,
+    16→  RadioTower,
+    17→  RefreshCw,
+    18→  ShieldCheck,
+    19→  Ship,
+    20→  Siren,
+    21→  Timer,
+    22→  Warehouse,
+    23→  X,
+    24→} from "lucide-react";
+    25→import { Button } from "@/components/ui/button";
+    26→import { Input } from "@/components/ui/input";
+    27→import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+    28→import { useApi } from "@/lib/client";
+    29→import { useAppStore } from "@/lib/app-state";
+    30→import { liveProgressAt } from "@/lib/maritime-routes";
+    31→import { fmtBahrainDateTime, fmtBahrainTime } from "@/lib/bahrain-time";
+    32→import type { TraceShip, TraceSnapshot } from "@/lib/trace-types";
+    33→import {
+    34→  CaseStateBadge,
+    35→  EmptyState,
+    36→  ErrorState,
+    37→  EvidenceBadge,
+    38→  FreshnessBadge,
+    39→  LoadingState,
+    40→  ReconciliationBadge,
+    41→  SeverityBadge,
+    42→  StatusPill,
+    43→  ScrollTable,
+    44→  fmtDate,
+    45→  fmtDateTime,
+    46→} from "@/components/app/shared";
+    47→import { LiveClock, fmtCountdown, useNow } from "@/components/app/live-clock";
+    48→import { PulsingDot } from "@/components/app/motion";
+    49→import { MapLegend, STATUS_COLOR, STATUS_LABEL } from "@/components/app/world-map";
+    50→import { cn } from "@/lib/utils";
+    51→
+    52→const OperationMap = dynamic(() => import("@/components/app/map/operation-map").then((m) => m.OperationMap), {
+    53→  ssr: false,
+    54→  loading: () => <LoadingState label="Rendering interactive operation map…" />,
+    55→});
+    56→
+    57→type SitePick = { type: "supplier" | "warehouse"; code: string };
+    58→
+    59→const SIM_PRESETS = [1, 60, 600] as const;
+    60→
+    61→/* Phase 10: fleet-rail status filters (same authoritative status set) */
+    62→const STATUS_FILTERS: { key: string; label: string }[] = [
+    63→  { key: "all", label: "all" },
+    64→  { key: "IN_TRANSIT", label: "in transit" },
+    65→  { key: "AT_PORT", label: "at port" },
+    66→  { key: "CUSTOMS_HOLD", label: "hold" },
+    67→  { key: "DELAYED", label: "delayed" },
+    68→  { key: "ARRIVED", label: "arrived" },
+    69→  { key: "BOOKED", label: "booked" },
+    70→];
+    71→
+    72→const fmtMoney = (v: number, ccy: string) => `${ccy} ${v.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+    73→const fmtPct = (p: number) => `${(p * 100).toFixed(1)}%`;
+    74→
+    75→/* ── small dossier building blocks ─────────────────────────────────────── */
+    76→function MiniTitle({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
+    77→  return (
+    78→    <p className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+    79→      <span className="inline-block h-3.5 w-0.5 rounded-full bg-primary/70" aria-hidden />
+    80→      <span className="text-primary/70">{icon}</span>
+    81→      {children}
+    82→    </p>
+    83→  );
+    84→}
+    85→
+    86→function KV({ k, v }: { k: string; v: React.ReactNode }) {
+    87→  return (
+    88→    <div className="flex items-baseline justify-between gap-3 border-b border-border/40 py-1.5 last:border-0">
+    89→      <span className="shrink-0 text-[11px] text-muted-foreground">{k}</span>
+    90→      <span className="min-w-0 text-right text-[12px] font-medium">{v}</span>
+    91→    </div>
+    92→  );
+    93→}
+    94→
+    95→function LiveStatusChip({ ship }: { ship: TraceShip }) {
+    96→  const c = STATUS_COLOR[ship.liveStatus];
+    97→  return (
+    98→    <span
+    99→      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[10px] font-bold tracking-wide"
+   100→      style={{ borderColor: `${c}55`, background: `${c}14`, color: c }}
+   101→    >
+   102→      <span className="h-1.5 w-1.5 rounded-full" style={{ background: c, boxShadow: `0 0 6px ${c}` }} />
+   103→      {STATUS_LABEL[ship.liveStatus].toUpperCase()}
+   104→    </span>
+   105→  );
+   106→}
+   107→
+   108→/* ── journey progress bar (drawer) ─────────────────────────────────────── */
+   109→function RouteBar({ ship, p }: { ship: TraceShip; p: number }) {
+   110→  const c = STATUS_COLOR[ship.liveStatus];
+   111→  return (
+   112→    <div className="pt-1">
+   113→      <div className="mb-1 flex items-baseline justify-between gap-2 text-[11px]">
+   114→        <span className="min-w-0 truncate font-semibold">
+   115→          {ship.from?.label ?? ship.originPort}
+   116→          <span className="ml-1 font-normal text-muted-foreground">{ship.originCountry}</span>
+   117→        </span>
+   118→        <span className="font-display text-sm font-bold tabular-nums text-gold-grad">{fmtPct(p)}</span>
+   119→        <span className="min-w-0 truncate text-right font-semibold">
+   120→          <span className="mr-1 font-normal text-muted-foreground">{ship.destCountry}</span>
+   121→          {ship.to?.label ?? ship.destPort}
+   122→        </span>
+   123→      </div>
+   124→      <div className="relative h-2.5">
+   125→        <div className="absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full border-b border-dashed border-zinc-500/40 dark:border-zinc-400/20" />
+   126→        <div
+   127→          className="absolute left-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full shadow-[0_0_12px_oklch(0.79_0.135_88/45%)]"
+   128→          style={{ width: `${p * 100}%`, background: `linear-gradient(90deg, #8a6a1f, ${c}, #f3dc8e)` }}
+   129→        />
+   130→        <div
+   131→          className="absolute top-1/2 z-10 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-background"
+   132→          style={{ left: `${p * 100}%`, background: `linear-gradient(135deg, #f3dc8e, #b8860b)`, boxShadow: `0 0 14px ${c}aa` }}
+   133→        />
+   134→      </div>
+   135→    </div>
+   136→  );
+   137→}
+   138→
+   139→/* ── per-ship PDF + new-tab actions ────────────────────────────────────── */
+   140→function DossierActions({ ship }: { ship: TraceShip }) {
+   141→  return (
+   142→    <div className="flex flex-wrap items-center gap-2">
+   143→      <Button
+   144→        variant="outline"
+   145→        size="sm"
+   146→        className="h-8 gap-1.5 border-primary/30 text-primary hover:bg-primary/10 hover:text-primary"
+   147→        onClick={() => window.open(`/?view=trace&ship=${ship.ref}`, "_blank", "noopener")}
+   148→      >
+   149→        <ExternalLink className="h-3.5 w-3.5" /> Open in new tab
+   150→      </Button>
+   151→      <a href={`/api/live-trace/report?ref=${ship.ref}`} download aria-label={`Download PDF report for ${ship.ref}`}>
+   152→        <Button variant="outline" size="sm" className="h-8 gap-1.5 border-primary/30 text-primary hover:bg-primary/10 hover:text-primary">
+   153→          <FileDown className="h-3.5 w-3.5" /> Ship PDF report
+   154→        </Button>
+   155→      </a>
+   156→    </div>
+   157→  );
+   158→}
+   159→
+   160→/* ── event timeline (Phase 5): observed time vs platform ingestion time ── */
+   161→function EventTimeline({ ship }: { ship: TraceShip }) {
+   162→  const ms = ship.milestones;
+   163→  if (ms.length === 0) {
+   164→    return <EmptyState message="No milestone events recorded — no history is invented" />;
+   165→  }
+   166→  return (
+   167→    <ol className="relative space-y-2 border-l border-primary/25 pl-3.5">
+   168→      {ms.map((m, i) => {
+   169→        const corrected = Boolean(m.correctedByEventId);
+   170→        const fresh = m.freshness === "stale" || m.freshness === "aging";
+   171→        return (
+   172→          <li key={`${m.code}-${i}`} className="relative">
+   173→            <span
+   174→              className="absolute -left-[19px] top-1.5 h-2 w-2 rounded-full ring-2 ring-background"
+   175→              style={{ background: corrected ? "#34d399" : fresh ? "#fbbf24" : "#d4af37" }}
+   176→              aria-hidden
+   177→            />
+   178→            <div className="rounded-md border border-border/60 bg-background/40 px-2.5 py-1.5">
+   179→              <div className="flex flex-wrap items-center gap-1.5">
+   180→                <span className="text-[11px] font-semibold">{m.label}</span>
+   181→                {m.location ? <span className="text-[10px] text-muted-foreground">· {m.location}</span> : null}
+   182→                {m.isEstimated ? <span className="rounded border border-border/70 bg-muted/50 px-1 py-px text-[8px] font-bold uppercase text-muted-foreground">estimated</span> : null}
+   183→                {corrected ? <span className="rounded border border-emerald-400/30 bg-emerald-400/10 px-1 py-px text-[8px] font-bold uppercase text-emerald-300">corrected</span> : null}
+   184→                {m.freshness === "stale" || m.freshness === "aging" ? (
+   185→                  <span className="rounded border border-amber-400/30 bg-amber-400/10 px-1 py-px text-[8px] font-bold uppercase text-amber-300">{m.freshness}</span>
+   186→                ) : null}
+   187→              </div>
+   188→              <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+   189→                <span className="font-semibold text-foreground">observed</span> {fmtBahrainDateTime(m.eventTime)}
+   190→                <span className="mx-1">·</span>
+   191→                <span className="font-semibold text-foreground">received</span> {fmtBahrainDateTime(m.receivedAt)}
+   192→                <span className="mx-1">·</span>
+   193→                <span className="font-mono">src: {m.source}</span>
+   194→              </p>
+   195→              {m.quantity !== null ? (
+   196→                <p className="text-[10px] text-muted-foreground">
+   197→                  cargo at event: <span className="font-semibold tabular-nums text-foreground">{m.quantity.toLocaleString()} {m.uom}</span>
+   198→                </p>
+   199→              ) : null}
+   200→              {m.note ? <p className="mt-0.5 text-[10px] italic text-muted-foreground/80">{m.note}</p> : null}
+   201→            </div>
+   202→          </li>
+   203→        );
+   204→      })}
+   205→    </ol>
+   206→  );
+   207→}
+   208→
+   209→/* ── quantities (Phase 5/6/9): dispatched / in-transit / received / outstanding ── */
+   210→function QuantityBlock({ ship }: { ship: TraceShip }) {
+   211→  const q = ship.quantities;
+   212→  const has = q.dispatched.length || q.inTransit.length || q.received.length || q.outstanding.length;
+   213→  if (!has) return <EmptyState message="No allocated cargo lines — quantity not derivable from records" />;
+   214→  const row = (label: string, rows: { material: string; uom: string; quantity: number }[], tone: string) => (
+   215→    <div className="flex items-start justify-between gap-3 border-b border-border/40 py-1.5 last:border-0">
+   216→      <span className="shrink-0 text-[11px] text-muted-foreground">{label}</span>
+   217→      <span className="min-w-0 text-right text-[11px] font-medium tabular-nums">
+   218→        {rows.length === 0
+   219→          ? "—"
+   220→          : rows.map((r, i) => (
+   221→              <span key={`${r.material}-${i}`} className={tone}>
+   222→                {r.quantity.toLocaleString()} {r.uom} <span className="font-normal text-muted-foreground">{r.material}</span>
+   223→                {i < rows.length - 1 ? " · " : ""}
+   224→              </span>
+   225→            ))}
+   226→      </span>
+   227→    </div>
+   228→  );
+   229→  return (
+   230→    <div>
+   231→      {row("Dispatched (PO-allocated)", q.dispatched, "")}
+   232→      {row("Recorded in transit", q.inTransit, "")}
+   233→      {row("Received (GRN)", q.received.map((r) => ({ material: `${r.material}${r.ref ? ` (${r.ref})` : ""}`, uom: r.uom, quantity: r.quantity })), "")}
+   234→      {row("Outstanding", q.outstanding, "text-amber-300")}
+   235→      <p className="mt-1.5 text-[10px] leading-relaxed text-muted-foreground">
+   236→        Quantities stay in their recorded unit of measure — no conversion without a documented basis.
+   237→      </p>
+   238→    </div>
+   239→  );
+   240→}
+   241→
+   242→/* ── THE DOSSIER — full ship picture on click ──────────────────────────── */
+   243→function Dossier({ ship, p, now, onClose }: { ship: TraceShip; p: number; now: number | null; onClose: () => void }) {
+   244→  const comp = ship.compliance;
+   245→  const slipped = !!(ship.carrierEta && ship.supplierPromisedEta && +new Date(ship.carrierEta) > +new Date(ship.supplierPromisedEta));
+   246→  return (
+   247→    <div className="flex h-full flex-col">
+   248→      {/* header */}
+   249→      <div className="border-b border-primary/15 bg-gradient-to-br from-primary/10 via-transparent to-transparent px-4 py-3">
+   250→        <div className="flex items-start justify-between gap-2">
+   251→          <div className="min-w-0">
+   252→            <div className="flex flex-wrap items-center gap-2">
+   253→              <Ship className="h-4 w-4 shrink-0 text-primary" />
+   254→              <span className="font-mono text-sm font-bold">{ship.ref}</span>
+   255→              <LiveStatusChip ship={ship} />
+   256→              <StatusPill value={ship.status} />
+   257→              <FreshnessBadge value={ship.freshness} />
+   258→            </div>
+   259→            <p className="mt-1 truncate font-display text-lg font-semibold leading-tight">
+   260→              {ship.vesselName ?? ship.carrier ?? "Vessel unlinked"}
+   261→              {ship.vesselVoyage ? <span className="ml-1.5 text-xs font-normal text-muted-foreground">Voyage {ship.vesselVoyage}</span> : null}
+   262→            </p>
+   263→          </div>
+   264→          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground" onClick={onClose} aria-label="Close dossier">
+   265→            <X className="h-4 w-4" />
+   266→          </Button>
+   267→        </div>
+   268→        <div className="mt-2.5">
+   269→          <DossierActions ship={ship} />
+   270→        </div>
+   271→      </div>
+   272→
+   273→      {/* scrollable body */}
+   274→      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+   275→        {/* vessel & route */}
+   276→        <section className="mb-4">
+   277→          <MiniTitle icon={<Anchor className="h-3 w-3" />}>Vessel &amp; route</MiniTitle>
+   278→          <RouteBar ship={ship} p={p} />
+   279→          <div className="mt-2 grid grid-cols-2 gap-x-4">
+   280→            <KV
+   281→              k="Mode"
+   282→              v={
+   283→                <span>
+   284→                  {ship.mode}
+   285→                  {ship.mode === "ROAD" ? <span className="ml-1 text-[9px] text-muted-foreground">(bulk — containers n/a)</span> : null}
+   286→                </span>
+   287→              }
+   288→            />
+   289→            <KV k="Carrier" v={ship.carrier ?? "—"} />
+   290→            <KV k="Forwarder" v={ship.forwarder ?? "—"} />
+   291→            <KV k="Speed" v={ship.speedKn ? <span className="tabular-nums">≈ {ship.speedKn} kn</span> : "—"} />
+   292→            <KV k="Departed" v={<span className="tabular-nums">{fmtBahrainDateTime(ship.departure)}</span>} />
+   293→            <KV
+   294→              k="Live position"
+   295→              v={
+   296→                ship.vesselName ? (
+   297→                  <span className="tabular-nums">{Math.round(p * 100)}% of voyage</span>
+   298→                ) : (
+   299→                  "position unlinked"
+   300→                )
+   301→              }
+   302→            />
+   303→          </div>
+   304→          {/* destination validation + route provenance (Phase 1.3 / 2.4) */}
+   305→          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+   306→            {ship.destVerified ? (
+   307→              <span className="inline-flex items-center gap-1 rounded-md border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-300">
+   308→                <ShieldCheck className="h-3 w-3" /> destination verified · {ship.destPort}
+   309→              </span>
+   310→            ) : (
+   311→              <span className="inline-flex items-center gap-1 rounded-md border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-300" title={ship.destNote ?? undefined}>
+   312→                ⚠ {ship.destNote ?? "Destination not verified"}
+   313→              </span>
+   314→            )}
+   315→            <span className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-muted-foreground">
+   316→              {ship.routeProvenance === "estimated-corridor" ? "estimated corridor (waypoint geometry)" : ship.routeProvenance === "land-leg" ? "land leg" : "no validated route"}
+   317→              {ship.routeDistanceNm ? ` · ${ship.routeDistanceNm.toLocaleString("en-US")} nm` : ""}
+   318→            </span>
+   319→            {ship.routeVia.length > 0 ? (
+   320→              <span className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">
+   321→                via {ship.routeVia.join(" · ")}
+   322→              </span>
+   323→            ) : null}
+   324→          </div>
+   325→          {ship.legs.length > 0 ? (
+   326→            <div className="mt-2 flex flex-wrap gap-1.5">
+   327→              {ship.legs.map((l) => (
+   328→                <span key={l.seq} className="inline-flex max-w-full items-center gap-1 rounded-md border border-border/60 bg-muted/30 px-1.5 py-0.5 text-[9px] font-medium" title={`${l.carrier ?? ""} · ${l.status}`}>
+   329→                  <span className="font-mono font-bold text-primary/80">L{l.seq}</span>
+   330→                  <span className="uppercase text-muted-foreground">{l.mode}</span>
+   331→                  <span className="min-w-0 truncate">{l.fromPoint} → {l.toPoint}</span>
+   332→                </span>
+   333→              ))}
+   334→            </div>
+   335→          ) : null}
+   336→          <div className="mt-2 rounded-lg border border-primary/20 bg-primary/5 p-2.5">
+   337→            <div className="flex items-baseline justify-between gap-2">
+   338→              <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Arrival countdown</span>
+   339→              <span className="font-display text-xl font-bold tabular-nums text-gold-grad">
+   340→                {ship.eta && now ? fmtCountdown(+new Date(ship.eta) - now) : "no carrier ETA"}
+   341→              </span>
+   342→            </div>
+   343→            <p className="mt-1 text-[11px] text-muted-foreground">
+   344→              ETA {fmtDateTime(ship.eta)}
+   345→              {ship.etaType ? <span className="ml-1.5 rounded border border-primary/30 bg-primary/10 px-1 py-px text-[9px] font-semibold uppercase text-primary">{ship.etaType}</span> : null}
+   346→              {ship.etaSource ? <span className="ml-1">· {ship.etaSource}</span> : null}
+   347→            </p>
+   348→            <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
+   349→              <span className="text-muted-foreground">
+   350→                supplier promise <span className="tabular-nums text-foreground">{fmtDate(ship.supplierPromisedEta)}</span>
+   351→              </span>
+   352→              <span className="text-muted-foreground">
+   353→                carrier <span className="tabular-nums text-foreground">{fmtDate(ship.carrierEta)}</span>
+   354→              </span>
+   355→              {slipped ? <span className="rounded border border-rose-400/25 bg-rose-400/10 px-1.5 py-0.5 text-[9px] font-bold text-rose-300">ETA SLIPPED vs PROMISE</span> : null}
+   356→            </div>
+   357→          </div>
+   358→        </section>
+   359→
+   360→        {/* materials & import value */}
+   361→        <section className="mb-4">
+   362→          <MiniTitle icon={<Package className="h-3 w-3" />}>Material · country · cost</MiniTitle>
+   363→          {ship.materials.length === 0 ? (
+   364→            <EmptyState message="No PO lines linked to this shipment" />
+   365→          ) : (
+   366→            <>
+   367→              <ScrollTable maxHeight="max-h-[240px]">
+   368→                <Table>
+   369→                  <TableHeader>
+   370→                    <TableRow className="hover:bg-transparent">
+   371→                      <TableHead className="h-8 text-[10px]">SKU / Material</TableHead>
+   372→                      <TableHead className="h-8 text-[10px]">Origin</TableHead>
+   373→                      <TableHead className="h-8 text-right text-[10px]">Qty</TableHead>
+   374→                      <TableHead className="h-8 text-right text-[10px]">Unit</TableHead>
+   375→                      <TableHead className="h-8 text-right text-[10px]">Line value</TableHead>
+   376→                    </TableRow>
+   377→                  </TableHeader>
+   378→                  <TableBody>
+   379→                    {ship.materials.map((m) => (
+   380→                      <TableRow key={m.sku}>
+   381→                        <TableCell className="py-1.5">
+   382→                          <p className="font-mono text-[11px] font-semibold">{m.sku}</p>
+   383→                          <p className="max-w-[180px] truncate text-[11px] text-muted-foreground" title={`${m.name}${m.workPackage ? ` — ${m.workPackage}` : ""}`}>
+   384→                            {m.name}
+   385→                            {m.criticality === "CRITICAL" ? <span className="ml-1 text-[9px] font-bold text-rose-400">CRITICAL</span> : null}
+   386→                          </p>
+   387→                        </TableCell>
+   388→                        <TableCell className="py-1.5 text-[11px]">{m.countryOfOrigin}</TableCell>
+   389→                        <TableCell className="py-1.5 text-right text-[11px] tabular-nums">
+   390→                          {m.quantity.toLocaleString()} {m.uom}
+   391→                        </TableCell>
+   392→                        <TableCell className="py-1.5 text-right text-[11px] tabular-nums">{fmtMoney(m.unitPrice, ship.currency)}</TableCell>
+   393→                        <TableCell className="py-1.5 text-right text-[11px] font-semibold tabular-nums">{fmtMoney(m.extended, ship.currency)}</TableCell>
+   394→                      </TableRow>
+   395→                    ))}
+   396→                  </TableBody>
+   397→                </Table>
+   398→              </ScrollTable>
+   399→              <div className="mt-2 flex items-baseline justify-between rounded-lg border border-primary/25 bg-primary/5 px-3 py-2">
+   400→                <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Total import value</span>
+   401→                <span className="text-right">
+   402→                  <span className="block font-display text-2xl font-bold tabular-nums text-gold-grad">{fmtMoney(ship.importValue, ship.currency)}</span>
+   403→                  {ship.currency !== "USD" ? <span className="block text-[9px] text-muted-foreground">≈ USD {ship.importValueUsd.toLocaleString("en-US", { maximumFractionDigits: 0 })} · FX documented</span> : null}
+   404→                </span>
+   405→              </div>
+   406→            </>
+   407→          )}
+   408→        </section>
+   409→
+   410→        {/* quantities (Phase 5/6/9) */}
+   411→        <section className="mb-4">
+   412→          <MiniTitle icon={<Package className="h-3 w-3" />}>Cargo quantities — dispatched · in transit · received</MiniTitle>
+   413→          <QuantityBlock ship={ship} />
+   414→        </section>
+   415→
+   416→        {/* where to use */}
+   417→        <section className="mb-4">
+   418→          <MiniTitle icon={<Factory className="h-3 w-3" />}>Where to use</MiniTitle>
+   419→          <div className="grid grid-cols-2 gap-x-4">
+   420→            <KV
+   421→              k="Project"
+   422→              v={ship.project ? (
+   423→                <span>
+   424→                  <span className="font-mono text-[11px] font-semibold">{ship.project.code}</span> · {ship.project.name}
+   425→                  <span className="block text-[10px] text-muted-foreground">site: {ship.project.site}</span>
+   426→                </span>
+   427→              ) : "—"}
+   428→            />
+   429→            <KV
+   430→              k="Warehouse"
+   431→              v={ship.destinationWarehouse ? (
+   432→                <span>
+   433→                  <span className="font-mono text-[11px] font-semibold">{ship.destinationWarehouse.code}</span> · {ship.destinationWarehouse.name}
+   434→                  <span className="block text-[10px] text-muted-foreground">{ship.destinationWarehouse.site}</span>
+   435→                </span>
+   436→              ) : "not yet assigned"}
+   437→            />
+   438→            <KV k="Delivery location" v={ship.po?.deliveryLocation ?? "—"} />
+   439→            <KV k="Incoterms" v={ship.po?.deliveryTerms ?? ship.supplier?.incoterms ?? "—"} />
+   440→          </div>
+   441→          {ship.materials.some((m) => m.workPackage) ? (
+   442→            <div className="mt-2 flex flex-wrap gap-1.5">
+   443→              {ship.materials
+   444→                .filter((m) => m.workPackage)
+   445→                .map((m) => (
+   446→                  <span key={m.sku} className="inline-flex max-w-full items-center gap-1 rounded-md border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[10px]" title={`${m.name} → ${m.workPackage}`}>
+   447→                    <MapPin className="h-3 w-3 shrink-0 text-primary/70" />
+   448→                    <span className="truncate">{m.workPackage}</span>
+   449→                  </span>
+   450→                ))}
+   451→            </div>
+   452→          ) : null}
+   453→        </section>
+   454→
+   455→        {/* procurement */}
+   456→        <section className="mb-4">
+   457→          <MiniTitle icon={<Building2 className="h-3 w-3" />}>Procurement chain</MiniTitle>
+   458→          <div className="grid grid-cols-2 gap-x-4">
+   459→            <KV
+   460→              k="Supplier"
+   461→              v={ship.supplier ? (
+   462→                <span>
+   463→                  {ship.supplier.name} <StatusPill value={ship.supplier.status} className="ml-1" />
+   464→                  <span className="block font-mono text-[10px] text-muted-foreground">
+   465→                    {ship.supplier.code} · {ship.supplier.city ? `${ship.supplier.city}, ` : ""}
+   466→                    {ship.supplier.country}
+   467→                  </span>
+   468→                </span>
+   469→              ) : "—"}
+   470→            />
+   471→            <KV
+   472→              k="Purchase order"
+   473→              v={ship.po ? (
+   474→                <span>
+   475→                  <span className="font-mono text-[11px] font-semibold">{ship.po.ref}</span> <StatusPill value={ship.po.status} className="ml-1" />
+   476→                  <span className="block text-[10px] tabular-nums text-muted-foreground">
+   477→                    {fmtMoney(ship.po.totalAmount, ship.po.currency)} · promised {fmtDate(ship.po.promisedDate)}
+   478→                  </span>
+   479→                </span>
+   480→              ) : "—"}
+   481→            />
+   482→          </div>
+   483→          {ship.po?.contracts.length ? (
+   484→            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+   485→              <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Contracts:</span>
+   486→              {ship.po.contracts.map((c) => (
+   487→                <span key={c} className="rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-primary">
+   488→                  {c}
+   489→                </span>
+   490→              ))}
+   491→            </div>
+   492→          ) : null}
+   493→        </section>
+   494→
+   495→        {/* event timeline (Phase 5) */}
+   496→        <section className="mb-4">
+   497→          <MiniTitle icon={<Timer className="h-3 w-3" />}>Event timeline — Asia/Bahrain time (AST, UTC+3)</MiniTitle>
+   498→          <EventTimeline ship={ship} />
+   499→        </section>
+   500→
+   501→        {/* compliance */}
+   502→        <section>
+   503→          <MiniTitle icon={<ShieldCheck className="h-3 w-3" />}>Compliance &amp; risk</MiniTitle>
+   504→          <div className="grid grid-cols-2 gap-x-4">
+   505→            <KV
+   506→              k="Customs"
+   507→              v={comp.customsHold ? (
+   508→                <span className="font-semibold text-rose-400">HOLD — {comp.customsStatus}</span>
+   509→              ) : (
+   510→                <span className="capitalize">{comp.customsStatus ?? "not reported"}</span>
+   511→              )}
+   512→            />
+   513→            <KV k="Import dossier" v={comp.importFileRef ? <span className="font-mono text-[11px] font-semibold">{comp.importFileRef}</span> : "—"} />
+   514→            <KV k="Reconciliation" v={<span className="inline-flex items-center gap-1.5"><ReconciliationBadge result={comp.overallReconciliation} /><span className="text-[10px] tabular-nums text-muted-foreground">{comp.reconciliation.PASS}✓ {comp.reconciliation.WARN}! {comp.reconciliation.FAIL}✗</span></span>} />
+   515→            <KV k="Evidence" v={comp.evidence.length ? <span className="text-[10px]">{comp.evidence.length} source record{comp.evidence.length > 1 ? "s" : ""}</span> : "—"} />
+   516→          </div>
+   517→
+   518→          {comp.bol.length > 0 ? (
+   519→            <div className="mt-2 flex flex-wrap gap-1.5">
+   520→              {comp.bol.map((b) => (
+   521→                <span key={`${b.bolNo}-${b.version}`} className="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[10px]">
+   522→                  <FileText className="h-3 w-3 text-primary/70" />
+   523→                  <span className="font-mono font-semibold">{b.bolNo}</span>
+   524→                  <span className="text-muted-foreground">v{b.version}</span>
+   525→                  <StatusPill value={b.status} />
+   526→                </span>
+   527→              ))}
+   528→            </div>
+   529→          ) : null}
+   530→
+   531→          {comp.exceptions.length > 0 ? (
+   532→            <div className="mt-2.5 space-y-1.5">
+   533→              {comp.exceptions.map((x) => (
+   534→                <div key={x.ref} className="flex flex-wrap items-center gap-1.5 rounded-md border border-rose-400/20 bg-rose-400/5 px-2 py-1.5 text-[11px]">
+   535→                  <SeverityBadge value={x.severity} />
+   536→                  <Siren className="h-3 w-3 shrink-0 text-rose-400" />
+   537→                  <span className="font-mono font-semibold">{x.ref}</span>
+   538→                  <span className="min-w-0 flex-1 truncate">{x.title}</span>
+   539→                  <CaseStateBadge state={x.state} />
+   540→                </div>
+   541→              ))}
+   542→            </div>
+   543→          ) : null}
+   544→
+   545→          {comp.risks.length > 0 ? (
+   546→            <div className="mt-2.5 space-y-1.5">
+   547→              {comp.risks.map((r, i) => (
+   548→                <div key={`${r.signalCode}-${i}`} className="rounded-md border border-border/70 bg-muted/30 px-2 py-1.5 text-[11px]">
+   549→                  <div className="flex items-center gap-1.5">
+   550→                    <SeverityBadge value={r.severity} />
+   551→                    <span className="font-mono text-[10px] font-bold">{r.signalCode}</span>
+   552→                  </div>
+   553→                  <p className="mt-1 text-muted-foreground">{r.fact}</p>
+   554→                </div>
+   555→              ))}
+   556→            </div>
+   557→          ) : null}
+   558→
+   559→          {comp.evidence.length > 0 ? (
+   560→            <div className="mt-2.5 flex flex-wrap gap-1.5">
+   561→              {comp.evidence.map((e, i) => (
+   562→                <EvidenceBadge key={`${e.entityRef}-${i}`} label={`${e.sourceSystem} · ${e.label}`} />
+   563→              ))}
+   564→            </div>
+   565→          ) : null}
+   566→        </section>
+   567→      </div>
+   568→    </div>
+   569→  );
+   570→}
+
+[showing lines 1-570 of 1137; use offset=571 with limit to continue reading]

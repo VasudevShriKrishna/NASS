@@ -112,15 +112,70 @@ export async function buildTraceSnapshot(): Promise<TraceSnapshot> {
     const ms = s.milestones;
     const start = ms.length ? +new Date(ms[0].eventTime) : +s.created;
     const end = s.actualArrival ? +s.actualArrival : s.displayEta ? +s.displayEta : null;
-    let progress = 0;
-    if (liveStatus === "ARRIVED") progress = 1;
-    else if (liveStatus === "BOOKED" || !end) progress = 0;
-    else progress = Math.min(1, Math.max(0, (+now - start) / Math.max(1, end - start)));
 
-    // distance-based speed along the validated corridor (not a chord guess)
+    /* ── Position truth (spec §1.2/§2/§3): progress is anchored to what the
+     * records actually say, never a blind endpoint interpolation. ──
+     *  1. ARRIVED → 1 · BOOKED → 0
+     *  2. CUSTOMS_HOLD → pinned at the destination customs (KBSP) — the hold
+     *     event records the cargo at port; a calendar extrapolation would
+     *     fabricate a mid-sea position (the SHP-8805 "ship at Suez" defect).
+     *  3. A recorded vessel position fix (AIS) is projected onto the corridor
+     *     and progress advances from THAT fix — never from the departure point.
+     *  4. Otherwise: calendar interpolation, clearly labeled estimated. */
+    const vesselPosition =
+      s.vesselPositionLat != null && s.vesselPositionLng != null
+        ? {
+            lat: s.vesselPositionLat,
+            lng: s.vesselPositionLng,
+            at: (s.vesselPositionAt ?? s.lastEventAt ?? s.created).toISOString(),
+            source: s.vesselSource,
+          }
+        : null;
+    let progress = 0;
+    let progressAnchor: number | null = null;
+    let progressSource: TraceShip["progressSource"];
+    if (liveStatus === "ARRIVED") {
+      progress = 1;
+      progressSource = "arrived";
+    } else if (liveStatus === "BOOKED" || !end) {
+      progress = 0;
+      progressSource = "booked";
+    } else if (liveStatus === "CUSTOMS_HOLD") {
+      progress = 1;
+      progressSource = "hold";
+    } else if (vesselPosition && resolved.route) {
+      const proj = resolved.route.projectPoint(vesselPosition.lng, vesselPosition.lat);
+      const fixAt = +new Date(vesselPosition.at);
+      if (proj.offRouteKm <= 300 && +end > fixAt) {
+        // verified fix lies on this corridor — anchor here and advance to now
+        const anchorAt = Math.min(Math.max(fixAt, start), +end);
+        const t = Math.min(1, Math.max(0, (+now - anchorAt) / Math.max(1, +end - anchorAt)));
+        progress = proj.progress + t * (1 - proj.progress);
+        progressAnchor = proj.progress;
+        progressSource = "ais-anchored";
+      } else {
+        // fix off-corridor or not after departure: keep calendar estimate,
+        // the raw fix is still surfaced verbatim in the UI
+        progress = Math.min(1, Math.max(0, (+now - start) / Math.max(1, +end - start)));
+        progressSource = "calendar";
+      }
+    } else if (liveStatus === "AT_PORT") {
+      const anchorAt = s.lastEventAt ? +s.lastEventAt : +now;
+      progress = Math.min(1, Math.max(0, (Math.min(+now, anchorAt) - start) / Math.max(1, +end - start)));
+      progressSource = "transit-point";
+    } else {
+      progress = Math.min(1, Math.max(0, (+now - start) / Math.max(1, +end - start)));
+      progressSource = "calendar";
+    }
+    progress = Math.min(1, Math.max(0, progress));
+
+    // distance-based speed along the validated corridor (not a chord guess).
+    // Stationary states have NO underway speed — never show a schedule-window
+    // artifact as knots (the SHP-8805 "73.5 kn" defect).
     const voyageHours = end ? Math.max(1, (end - start) / HOUR) : 0;
+    const stationary = liveStatus === "ARRIVED" || liveStatus === "BOOKED" || liveStatus === "CUSTOMS_HOLD" || liveStatus === "AT_PORT";
     let speedKn: number | null = null;
-    if (resolved.route && voyageHours > 0 && liveStatus !== "ARRIVED" && liveStatus !== "BOOKED") {
+    if (!stationary && resolved.route && voyageHours > 0) {
       speedKn = Math.round((resolved.route.distanceNm / voyageHours) * 10) / 10;
     }
 
@@ -229,6 +284,9 @@ export async function buildTraceSnapshot(): Promise<TraceSnapshot> {
       carrierEta: s.carrierEta ? s.carrierEta.toISOString() : null,
       actualArrival: s.actualArrival ? s.actualArrival.toISOString() : null,
       progress: Math.round(progress * 1000) / 1000,
+      progressSource,
+      progressAnchor: progressAnchor != null ? Math.round(progressAnchor * 1000) / 1000 : null,
+      vesselPosition,
       voyageHours: Math.round(voyageHours),
       speedKn,
       freshness: s.freshness,

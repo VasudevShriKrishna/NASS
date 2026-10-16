@@ -1,0 +1,777 @@
+     1→"use client";
+     2→
+     3→import { Fragment, useState } from "react";
+     4→import {
+     5→  ChevronDown,
+     6→  ChevronRight,
+     7→  CircleCheck,
+     8→  CircleAlert,
+     9→  FileText,
+    10→  Gavel,
+    11→  ScrollText,
+    12→  ShoppingCart,
+    13→} from "lucide-react";
+    14→import { Badge } from "@/components/ui/badge";
+    15→import { Button } from "@/components/ui/button";
+    16→import { Card } from "@/components/ui/card";
+    17→import { Progress } from "@/components/ui/progress";
+    18→import { Separator } from "@/components/ui/separator";
+    19→import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+    20→import {
+    21→  Table,
+    22→  TableBody,
+    23→  TableCell,
+    24→  TableHead,
+    25→  TableHeader,
+    26→  TableRow,
+    27→} from "@/components/ui/table";
+    28→import { useApi } from "@/lib/client";
+    29→import {
+    30→  EmptyState,
+    31→  ErrorState,
+    32→  FreshnessBadge,
+    33→  LoadingState,
+    34→  ScrollTable,
+    35→  SectionCard,
+    36→  StatusPill,
+    37→  daysUntil,
+    38→  fmtDate,
+    39→  fmtRelative,
+    40→  parseArr,
+    41→  parseObj,
+    42→} from "@/components/app/shared";
+    43→
+    44→/* ── shared helpers ───────────────────────────────────────────────────────── */
+    45→const qty = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
+    46→const money = (v: number) => v.toLocaleString("en-US", { maximumFractionDigits: 2 });
+    47→
+    48→function PriorityChip({ value }: { value: string }) {
+    49→  const map: Record<string, string> = {
+    50→    CRITICAL: "border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300",
+    51→    HIGH: "border-orange-300 bg-orange-100 text-orange-800 dark:border-orange-400/25 dark:bg-orange-400/10 dark:text-orange-300",
+    52→  };
+    53→  return (
+    54→    <span
+    55→      className={`inline-flex items-center whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${
+    56→        map[value] ?? "border-zinc-300 bg-zinc-100 text-zinc-700 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-300"
+    57→      }`}
+    58→    >
+    59→      {value}
+    60→    </span>
+    61→  );
+    62→}
+    63→
+    64→function DeviationChip({ text }: { text: string }) {
+    65→  return (
+    66→    <span className="inline-flex items-center gap-1 rounded-md border border-rose-300 bg-rose-100 px-1.5 py-0.5 text-[10px] font-medium text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300">
+    67→      <CircleAlert className="h-3 w-3" /> {text}
+    68→    </span>
+    69→  );
+    70→}
+    71→
+    72→/* ── Payload types (mirror /api/purchase-requests | /sourcing | /purchase-orders | /contracts) ── */
+    73→interface PrRecord {
+    74→  id: string;
+    75→  ref: string;
+    76→  requester: string;
+    77→  status: string;
+    78→  priority: string;
+    79→  channel: string;
+    80→  requiredOnSite: string | null;
+    81→  justification: string | null;
+    82→  duplicateOfId: string | null;
+    83→  sourceRef: string | null;
+    84→  project: { code: string; name: string } | null;
+    85→  lines: { quantity: number; uom: string; material: { sku: string; name: string; uom: string; criticality: string } }[];
+    86→  rfqs: { ref: string; status: string }[];
+    87→}
+    88→interface QuoteRecord {
+    89→  id: string;
+    90→  currency: string;
+    91→  unitPrice: number;
+    92→  leadTimeDays: number;
+    93→  incoterms: string | null;
+    94→  validity: string | null;
+    95→  deviations: string | null;
+    96→  landedCost: number | null;
+    97→  rank: number | null;
+    98→  recommendation: string | null;
+    99→  extractionConfidence: number | null;
+   100→  status: string;
+   101→  supplier: { code: string; name: string; status: string; country: string };
+   102→}
+   103→interface RfqRecord {
+   104→  id: string;
+   105→  ref: string;
+   106→  status: string;
+   107→  dueDate: string | null;
+   108→  criteria: string | null;
+   109→  pr: { ref: string; status: string; requester: string };
+   110→  quotes: QuoteRecord[];
+   111→}
+   112→interface PoLineRecord {
+   113→  id: string;
+   114→  quantity: number;
+   115→  uom: string;
+   116→  unitPrice: number;
+   117→  promisedDate: string | null;
+   118→  receivedQty: number;
+   119→  lineStatus: string;
+   120→  material: { sku: string; name: string; uom: string };
+   121→  receipts: { ref: string; receivedQty: number; status: string; receivedAt: string }[];
+   122→}
+   123→interface PoRecord {
+   124→  id: string;
+   125→  ref: string;
+   126→  status: string;
+   127→  currency: string;
+   128→  totalAmount: number;
+   129→  deliveryTerms: string | null;
+   130→  deliveryLocation: string | null;
+   131→  promisedDate: string | null;
+   132→  amendmentNo: number;
+   133→  baselineRef: string | null;
+   134→  supplier: { code: string; name: string; status: string };
+   135→  project?: { code: string; name: string } | null;
+   136→  legalEntity?: { code: string; name: string } | null;
+   137→  lines: PoLineRecord[];
+   138→  contracts: { ref: string; title: string; status: string }[];
+   139→  shipments: { ref: string; status: string; freshness: string }[];
+   140→}
+   141→interface ContractRecord {
+   142→  id: string;
+   143→  ref: string;
+   144→  title: string;
+   145→  version: number;
+   146→  status: string;
+   147→  validFrom: string | null;
+   148→  validTo: string | null;
+   149→  obligations: string | null;
+   150→  summary: string | null;
+   151→  approvedBy: string | null;
+   152→  supplier: { code: string; name: string; status: string };
+   153→  po?: { ref: string } | null;
+   154→}
+   155→
+   156→/* ════════════════════════════ Purchase Requests ═══════════════════════════ */
+   157→function PurchaseRequestsTab() {
+   158→  const { data, loading, error } = useApi<PrRecord[]>("/api/purchase-requests");
+   159→
+   160→  return (
+   161→    <SectionCard
+   162→      title="Purchase requests"
+   163→      subtitle="M05 — intake from FORM / ERP / EMAIL / SPREADSHEET with duplicate detection and completeness gate"
+   164→    >
+   165→      {loading && !data ? <LoadingState /> : null}
+   166→      {error ? <ErrorState message={error} /> : null}
+   167→      {data && data.length === 0 ? <EmptyState message="No purchase requests" /> : null}
+   168→      {data && data.length > 0 ? (
+   169→        <ScrollTable maxHeight="max-h-[520px]">
+   170→          <Table>
+   171→            <TableHeader>
+   172→              <TableRow>
+   173→                <TableHead>Ref</TableHead>
+   174→                <TableHead>Status</TableHead>
+   175→                <TableHead>Priority</TableHead>
+   176→                <TableHead className="hidden md:table-cell">Channel</TableHead>
+   177→                <TableHead className="hidden md:table-cell">Project</TableHead>
+   178→                <TableHead className="hidden sm:table-cell">Required on site</TableHead>
+   179→                <TableHead>Lines</TableHead>
+   180→                <TableHead className="hidden lg:table-cell">Justification</TableHead>
+   181→              </TableRow>
+   182→            </TableHeader>
+   183→            <TableBody>
+   184→              {data.map((p) => (
+   185→                <Fragment key={p.id}>
+   186→                  <TableRow>
+   187→                    <TableCell>
+   188→                      <div className="flex flex-col gap-1">
+   189→                        <span className="font-mono text-xs font-semibold">{p.ref}</span>
+   190→                        {p.duplicateOfId ? (
+   191→                          <span className="inline-flex w-fit items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300">
+   192→                            DUPLICATE of {p.duplicateOfId}
+   193→                          </span>
+   194→                        ) : null}
+   195→                        {p.sourceRef ? (
+   196→                          <span className="max-w-40 truncate font-mono text-[10px] text-muted-foreground" title={p.sourceRef}>
+   197→                            src: {p.sourceRef}
+   198→                          </span>
+   199→                        ) : null}
+   200→                      </div>
+   201→                    </TableCell>
+   202→                    <TableCell>
+   203→                      <div className="flex flex-col items-start gap-1">
+   204→                        <StatusPill value={p.status} />
+   205→                        {p.rfqs.length > 0 ? (
+   206→                          <span className="text-[10px] text-muted-foreground">
+   207→                            {p.rfqs.map((r) => `${r.ref} (${r.status})`).join(", ")}
+   208→                          </span>
+   209→                        ) : null}
+   210→                      </div>
+   211→                    </TableCell>
+   212→                    <TableCell>
+   213→                      <PriorityChip value={p.priority} />
+   214→                    </TableCell>
+   215→                    <TableCell className="hidden md:table-cell">
+   216→                      <Badge variant="outline" className="text-[10px] font-medium">
+   217→                        {p.channel}
+   218→                      </Badge>
+   219→                    </TableCell>
+   220→                    <TableCell className="hidden md:table-cell">
+   221→                      {p.project ? (
+   222→                        <span className="text-xs" title={p.project.name}>
+   223→                          <span className="font-mono font-medium">{p.project.code}</span>
+   224→                          <span className="block text-[10px] text-muted-foreground">{p.project.name}</span>
+   225→                        </span>
+   226→                      ) : (
+   227→                        <span className="text-xs text-muted-foreground">—</span>
+   228→                      )}
+   229→                    </TableCell>
+   230→                    <TableCell className="hidden sm:table-cell text-xs tabular-nums">
+   231→                      {fmtRelative(p.requiredOnSite)}
+   232→                      <span className="block text-[10px] text-muted-foreground">{fmtDate(p.requiredOnSite)}</span>
+   233→                    </TableCell>
+   234→                    <TableCell>
+   235→                      <div className="flex flex-col gap-1">
+   236→                        {p.lines.map((l, i) => (
+   237→                          <span key={i} className="text-xs tabular-nums">
+   238→                            {qty(l.quantity)} {l.uom} {l.material.name}
+   239→                            {l.material.criticality === "CRITICAL" || l.material.criticality === "HIGH" ? (
+   240→                              <span
+   241→                                className={`ml-1 rounded border px-1 text-[9px] font-bold uppercase ${
+   242→                                  l.material.criticality === "CRITICAL"
+   243→                                    ? "border-rose-300 text-rose-700 dark:border-rose-400/25 dark:text-rose-300"
+   244→                                    : "border-orange-300 text-orange-700 dark:border-orange-400/25 dark:text-orange-300"
+   245→                                }`}
+   246→                              >
+   247→                                {l.material.criticality}
+   248→                              </span>
+   249→                            ) : null}
+   250→                          </span>
+   251→                        ))}
+   252→                      </div>
+   253→                    </TableCell>
+   254→                    <TableCell className="hidden lg:table-cell max-w-56">
+   255→                      <span className="block truncate text-xs text-muted-foreground" title={p.justification ?? undefined}>
+   256→                        {p.justification ?? "—"}
+   257→                      </span>
+   258→                    </TableCell>
+   259→                  </TableRow>
+   260→                  {p.status === "NEEDS_INFO" ? (
+   261→                    <TableRow key={`${p.id}-note`} className="hover:bg-transparent">
+   262→                      <TableCell colSpan={8} className="bg-amber-50 py-2 dark:bg-amber-400/10">
+   263→                        <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-amber-800 dark:text-amber-300">
+   264→                          <CircleAlert className="h-3.5 w-3.5" />
+   265→                          Returned for missing fields — incomplete request must not silently create a PO (M05)
+   266→                        </span>
+   267→                      </TableCell>
+   268→                    </TableRow>
+   269→                  ) : null}
+   270→                </Fragment>
+   271→              ))}
+   272→            </TableBody>
+   273→          </Table>
+   274→        </ScrollTable>
+   275→      ) : null}
+   276→    </SectionCard>
+   277→  );
+   278→}
+   279→
+   280→/* ════════════════════════════ Sourcing (RFQ) ══════════════════════════════ */
+   281→function RankBadge({ rank }: { rank: number | null }) {
+   282→  if (rank == null)
+   283→    return (
+   284→      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-zinc-300 text-xs font-bold text-zinc-500 dark:border-zinc-400/25">
+   285→        ?
+   286→      </span>
+   287→    );
+   288→  return (
+   289→    <span
+   290→      className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+   291→        rank === 1
+   292→          ? "bg-emerald-600 text-white"
+   293→          : "border border-zinc-300 bg-zinc-100 text-zinc-700 dark:border-zinc-400/25 dark:bg-zinc-900 dark:text-zinc-300"
+   294→      }`}
+   295→      aria-label={`Rank ${rank}`}
+   296→    >
+   297→      {rank}
+   298→    </span>
+   299→  );
+   300→}
+   301→
+   302→function SourcingTab() {
+   303→  const { data, loading, error } = useApi<RfqRecord[]>("/api/sourcing");
+   304→
+   305→  return (
+   306→    <div className="space-y-4">
+   307→      <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300">
+   308→        <Gavel className="mt-0.5 h-4 w-4 shrink-0" />
+   309→        <span>
+   310→          <span className="font-semibold">No autonomous supplier award</span> — every rank and criterion is explained (M06).
+   311→          Award decisions pass the human approval gateway.
+   312→        </span>
+   313→      </div>
+   314→
+   315→      {loading && !data ? <LoadingState /> : null}
+   316→      {error ? <ErrorState message={error} /> : null}
+   317→      {data && data.length === 0 ? <EmptyState message="No RFQs issued" /> : null}
+   318→
+   319→      {data
+   320→        ? data.map((rfq) => {
+   321→            const criteria = parseArr(rfq.criteria);
+   322→            return (
+   323→              <SectionCard
+   324→                key={rfq.id}
+   325→                title={
+   326→                  <span className="flex flex-wrap items-center gap-2">
+   327→                    <span className="font-mono">{rfq.ref}</span>
+   328→                    <StatusPill value={rfq.status} />
+   329→                    <span className="text-xs font-normal text-muted-foreground">
+   330→                      from <span className="font-mono font-medium text-foreground">{rfq.pr.ref}</span> · {rfq.pr.requester}
+   331→                    </span>
+   332→                  </span>
+   333→                }
+   334→                subtitle={`Quote deadline ${fmtRelative(rfq.dueDate)} (${fmtDate(rfq.dueDate)})`}
+   335→                right={<Badge variant="outline" className="text-[10px]">{rfq.quotes.length} quotes</Badge>}
+   336→                bodyClass="space-y-3"
+   337→              >
+   338→                {criteria.length > 0 ? (
+   339→                  <div className="flex flex-wrap items-center gap-1.5">
+   340→                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+   341→                      Approved criteria:
+   342→                    </span>
+   343→                    {criteria.map((c, i) => (
+   344→                      <span
+   345→                        key={i}
+   346→                        className="rounded-md border border-teal-300 bg-teal-50 px-1.5 py-0.5 text-[10px] font-medium text-teal-800 dark:border-teal-400/25 dark:bg-teal-400/10 dark:text-teal-300"
+   347→                      >
+   348→                        {c}
+   349→                      </span>
+   350→                    ))}
+   351→                  </div>
+   352→                ) : null}
+   353→
+   354→                {rfq.quotes.length === 0 ? (
+   355→                  <EmptyState message="No quotes received yet" />
+   356→                ) : (
+   357→                  <div className="flex flex-col gap-2">
+   358→                    {rfq.quotes.map((q) => {
+   359→                      const devs = parseArr(q.deviations);
+   360→                      return (
+   361→                        <div key={q.id} className="rounded-lg border p-3">
+   362→                          <div className="flex flex-wrap items-center gap-2">
+   363→                            <RankBadge rank={q.rank} />
+   364→                            <div className="min-w-0">
+   365→                              <p className="text-sm font-semibold leading-tight">
+   366→                                <span className="font-mono text-xs">{q.supplier.code}</span> {q.supplier.name}
+   367→                              </p>
+   368→                              <p className="text-[10px] text-muted-foreground">
+   369→                                {q.supplier.country} · supplier status: {q.supplier.status.replaceAll("_", " ")}
+   370→                              </p>
+   371→                            </div>
+   372→                            <StatusPill value={q.status} className="ml-auto" />
+   373→                          </div>
+   374→
+   375→                          <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-5">
+   376→                            <div>
+   377→                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Unit price</p>
+   378→                              <p className="font-semibold tabular-nums">
+   379→                                {q.currency} {money(q.unitPrice)}
+   380→                              </p>
+   381→                            </div>
+   382→                            <div>
+   383→                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Lead time</p>
+   384→                              <p className="font-semibold tabular-nums">{q.leadTimeDays} days</p>
+   385→                            </div>
+   386→                            <div>
+   387→                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Landed cost</p>
+   388→                              <p className="font-semibold tabular-nums">
+   389→                                {q.landedCost != null ? `${q.currency} ${money(q.landedCost)}` : "—"}
+   390→                              </p>
+   391→                            </div>
+   392→                            <div>
+   393→                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Incoterms</p>
+   394→                              <p className="font-medium">{q.incoterms ?? "—"}</p>
+   395→                            </div>
+   396→                            <div>
+   397→                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Valid until</p>
+   398→                              <p className="font-medium tabular-nums">{fmtDate(q.validity)}</p>
+   399→                            </div>
+   400→                          </div>
+   401→
+   402→                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+   403→                            {devs.length > 0 ? (
+   404→                              devs.map((d, i) => <DeviationChip key={i} text={d} />)
+   405→                            ) : (
+   406→                              <span className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-300">
+   407→                                <CircleCheck className="h-3 w-3" /> no deviations
+   408→                              </span>
+   409→                            )}
+   410→                          </div>
+   411→
+   412→                          {q.recommendation ? (
+   413→                            <p className="mt-2 border-l-2 border-muted-foreground/30 pl-2 text-xs leading-relaxed text-muted-foreground">
+   414→                              {q.recommendation}
+   415→                            </p>
+   416→                          ) : null}
+   417→                          <p className="mt-1 text-[10px] tabular-nums text-muted-foreground">
+   418→                            extraction confidence {q.extractionConfidence != null ? q.extractionConfidence.toFixed(2) : "—"}
+   419→                            {q.extractionConfidence != null && q.extractionConfidence < 0.9
+   420→                              ? " — low confidence: verify against source document"
+   421→                              : ""}
+   422→                          </p>
+   423→                        </div>
+   424→                      );
+   425→                    })}
+   426→                  </div>
+   427→                )}
+   428→              </SectionCard>
+   429→            );
+   430→          })
+   431→        : null}
+   432→    </div>
+   433→  );
+   434→}
+   435→
+   436→/* ════════════════════════════ Purchase Orders ═════════════════════════════ */
+   437→function PurchaseOrdersTab() {
+   438→  const { data, loading, error } = useApi<PoRecord[]>("/api/purchase-orders");
+   439→  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+   440→
+   441→  const toggle = (id: string) =>
+   442→    setExpanded((prev) => {
+   443→      const next = new Set(prev);
+   444→      if (next.has(id)) next.delete(id);
+   445→      else next.add(id);
+   446→      return next;
+   447→    });
+   448→
+   449→  return (
+   450→    <SectionCard
+   451→      title="Purchase orders"
+   452→      subtitle="M07 — register with amendment lineage, receipt progress and linked shipments"
+   453→    >
+   454→      {loading && !data ? <LoadingState /> : null}
+   455→      {error ? <ErrorState message={error} /> : null}
+   456→      {data && data.length === 0 ? <EmptyState message="No purchase orders" /> : null}
+   457→      {data && data.length > 0 ? (
+   458→        <ScrollTable maxHeight="max-h-[560px]">
+   459→          <Table>
+   460→            <TableHeader>
+   461→              <TableRow>
+   462→                <TableHead className="w-10" aria-label="Expand" />
+   463→                <TableHead>Ref</TableHead>
+   464→                <TableHead>Status</TableHead>
+   465→                <TableHead>Supplier</TableHead>
+   466→                <TableHead className="hidden md:table-cell">Project / Entity</TableHead>
+   467→                <TableHead>Amount</TableHead>
+   468→                <TableHead className="hidden sm:table-cell">Promised</TableHead>
+   469→                <TableHead>Lines</TableHead>
+   470→              </TableRow>
+   471→            </TableHeader>
+   472→            <TableBody>
+   473→              {data.map((po) => (
+   474→                <Fragment key={po.id}>
+   475→                  <TableRow>
+   476→                    <TableCell>
+   477→                      <Button
+   478→                        variant="ghost"
+   479→                        size="icon"
+   480→                        className="h-7 w-7"
+   481→                        onClick={() => toggle(po.id)}
+   482→                        aria-expanded={expanded.has(po.id)}
+   483→                        aria-label={`${expanded.has(po.id) ? "Collapse" : "Expand"} ${po.ref}`}
+   484→                      >
+   485→                        {expanded.has(po.id) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+   486→                      </Button>
+   487→                    </TableCell>
+   488→                    <TableCell>
+   489→                      <span className="font-mono text-xs font-semibold">{po.ref}</span>
+   490→                      {po.amendmentNo > 0 ? (
+   491→                        <span className="ml-1.5 rounded border border-orange-300 px-1 text-[9px] font-bold text-orange-700 dark:border-orange-400/25 dark:text-orange-300">
+   492→                          AMENDMENT {po.amendmentNo}
+   493→                        </span>
+   494→                      ) : null}
+   495→                      {po.baselineRef ? (
+   496→                        <span className="block text-[10px] text-muted-foreground">baseline {po.baselineRef}</span>
+   497→                      ) : null}
+   498→                    </TableCell>
+   499→                    <TableCell>
+   500→                      <StatusPill value={po.status} />
+   501→                    </TableCell>
+   502→                    <TableCell>
+   503→                      <p className="text-xs font-medium leading-tight">
+   504→                        <span className="font-mono">{po.supplier.code}</span> {po.supplier.name}
+   505→                      </p>
+   506→                    </TableCell>
+   507→                    <TableCell className="hidden md:table-cell">
+   508→                      <span className="text-xs">{po.project?.code ?? "—"}</span>
+   509→                      {po.legalEntity ? (
+   510→                        <span className="block text-[10px] text-muted-foreground">{po.legalEntity.code}</span>
+   511→                      ) : null}
+   512→                    </TableCell>
+   513→                    <TableCell className="text-xs font-semibold tabular-nums">
+   514→                      {po.currency} {money(po.totalAmount)}
+   515→                    </TableCell>
+   516→                    <TableCell className="hidden sm:table-cell text-xs tabular-nums">
+   517→                      {fmtRelative(po.promisedDate)}
+   518→                      <span className="block text-[10px] text-muted-foreground">{fmtDate(po.promisedDate)}</span>
+   519→                    </TableCell>
+   520→                    <TableCell className="text-xs tabular-nums">
+   521→                      {po.lines.length} lines · {po.shipments.length} shipments
+   522→                    </TableCell>
+   523→                  </TableRow>
+   524→                  {expanded.has(po.id) ? (
+   525→                    <TableRow key={`${po.id}-detail`} className="hover:bg-transparent">
+   526→                      <TableCell colSpan={8} className="bg-muted/30 p-0">
+   527→                        <div className="space-y-3 p-4">
+   528→                          <div className="flex flex-wrap gap-x-6 gap-y-1 text-[11px] text-muted-foreground">
+   529→                            {po.deliveryTerms ? (
+   530→                              <span>
+   531→                                Delivery terms: <span className="font-medium text-foreground">{po.deliveryTerms}</span>
+   532→                              </span>
+   533→                            ) : null}
+   534→                            {po.deliveryLocation ? (
+   535→                              <span>
+   536→                                Location: <span className="font-medium text-foreground">{po.deliveryLocation}</span>
+   537→                              </span>
+   538→                            ) : null}
+   539→                            {po.contracts.length > 0 ? (
+   540→                              <span>
+   541→                                Contracts:{" "}
+   542→                                {po.contracts.map((c) => (
+   543→                                  <StatusPill key={c.ref} value={c.ref} className="mr-1" />
+   544→                                ))}
+   545→                              </span>
+   546→                            ) : null}
+   547→                          </div>
+   548→
+   549→                          {/* Lines with receipt progress — M12 partial receipt rule */}
+   550→                          <div className="flex flex-col gap-2">
+   551→                            {po.lines.map((l) => {
+   552→                              const pct = l.quantity > 0 ? Math.min(100, (l.receivedQty / l.quantity) * 100) : 0;
+   553→                              return (
+   554→                                <div key={l.id} className="rounded-lg border bg-background p-3">
+   555→                                  <div className="flex flex-wrap items-center gap-2">
+   556→                                    <span className="text-xs font-semibold">
+   557→                                      <span className="font-mono text-muted-foreground">{l.material.sku}</span>{" "}
+   558→                                      {l.material.name}
+   559→                                    </span>
+   560→                                    <StatusPill value={l.lineStatus} className="ml-auto" />
+   561→                                  </div>
+   562→                                  <div className="mt-2 flex items-center gap-3">
+   563→                                    <Progress value={pct} className="h-2 max-w-60 flex-1" aria-label="Received progress" />
+   564→                                    <span className="text-xs font-medium tabular-nums">
+   565→                                      {qty(l.receivedQty)}/{qty(l.quantity)} {l.uom}
+   566→                                    </span>
+   567→                                  </div>
+   568→                                  {l.lineStatus === "PARTIAL" ? (
+   569→                                    <p className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+   570→                                      <CircleAlert className="h-3.5 w-3.5" />
+   571→                                      Partial receipt — remaining quantity stays open (M12)
+   572→                                    </p>
+   573→                                  ) : null}
+   574→                                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-muted-foreground">
+   575→                                    <span className="tabular-nums">
+   576→                                      unit price {po.currency} {money(l.unitPrice)}
+   577→                                    </span>
+   578→                                    <span className="tabular-nums">line promised {fmtDate(l.promisedDate)}</span>
+   579→                                  </div>
+   580→                                  {l.receipts.length > 0 ? (
+   581→                                    <div className="mt-2 flex flex-wrap gap-1.5">
+   582→                                      {l.receipts.map((r) => (
+   583→                                        <span
+   584→                                          key={r.ref}
+   585→                                          className="inline-flex items-center gap-1 rounded-md border bg-muted/50 px-1.5 py-0.5 text-[10px] tabular-nums text-muted-foreground"
+   586→                                        >
+   587→                                          <span className="font-mono font-semibold text-foreground">{r.ref}</span>
+   588→                                          {qty(r.receivedQty)} {l.uom} · <StatusPill value={r.status} /> ·{" "}
+   589→                                          {fmtRelative(r.receivedAt)}
+   590→                                        </span>
+   591→                                      ))}
+   592→                                    </div>
+   593→                                  ) : null}
+   594→                                </div>
+   595→                              );
+   596→                            })}
+   597→                          </div>
+   598→
+   599→                          {/* Linked shipments */}
+   600→                          {po.shipments.length > 0 ? (
+   601→                            <div>
+   602→                              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+   603→                                Linked shipments
+   604→                              </p>
+   605→                              <div className="mt-1 flex flex-wrap gap-1.5">
+   606→                                {po.shipments.map((s) => (
+   607→                                  <span
+   608→                                    key={s.ref}
+   609→                                    className="inline-flex items-center gap-1.5 rounded-md border bg-muted/50 px-2 py-1 text-xs"
+   610→                                  >
+   611→                                    <span className="font-mono font-semibold">{s.ref}</span>
+   612→                                    <StatusPill value={s.status} />
+   613→                                    <FreshnessBadge value={s.freshness} />
+   614→                                  </span>
+   615→                                ))}
+   616→                              </div>
+   617→                            </div>
+   618→                          ) : null}
+   619→                        </div>
+   620→                      </TableCell>
+   621→                    </TableRow>
+   622→                  ) : null}
+   623→                </Fragment>
+   624→              ))}
+   625→            </TableBody>
+   626→          </Table>
+   627→        </ScrollTable>
+   628→      ) : null}
+   629→    </SectionCard>
+   630→  );
+   631→}
+   632→
+   633→/* ════════════════════════════ Contracts ═══════════════════════════════════ */
+   634→const OBLIGATION_STYLE: Record<string, string> = {
+   635→  delivery: "border-teal-300 bg-teal-50 text-teal-800 dark:border-teal-400/25 dark:bg-teal-400/10 dark:text-teal-300",
+   636→  penalty: "border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-300",
+   637→  insurance: "border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300",
+   638→  certification:
+   639→    "border-violet-300 bg-violet-100 text-violet-800 dark:border-violet-400/25 dark:bg-violet-400/10 dark:text-violet-300",
+   640→};
+   641→
+   642→function ContractsTab() {
+   643→  const { data, loading, error } = useApi<ContractRecord[]>("/api/contracts");
+   644→
+   645→  return (
+   646→    <div className="space-y-4">
+   647→      {loading && !data ? <LoadingState /> : null}
+   648→      {error ? <ErrorState message={error} /> : null}
+   649→      {data && data.length === 0 ? <EmptyState message="No contracts registered" /> : null}
+   650→
+   651→      {data ? (
+   652→        <>
+   653→          <div className="grid gap-4 xl:grid-cols-2">
+   654→            {data.map((c) => {
+   655→              /* obligations JSON: [{type, text}] — parse via parseArr then re-parse each entry */
+   656→              const obligations = parseArr(c.obligations)
+   657→                .map((s) => parseObj<{ type: string; text: string }>(s))
+   658→                .filter((o): o is { type: string; text: string } => !!o && !!o.type && !!o.text);
+   659→              return (
+   660→                <Card key={c.id} className="p-0">
+   661→                  <div className="space-y-3 p-4">
+   662→                    <div className="flex flex-wrap items-center gap-2">
+   663→                      <span className="font-mono text-xs font-semibold">{c.ref}</span>
+   664→                      <Badge variant="outline" className="text-[10px]">v{c.version}</Badge>
+   665→                      <StatusPill value={c.status} />
+   666→                      {c.po ? (
+   667→                        <span className="rounded-md border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+   668→                          PO {c.po.ref}
+   669→                        </span>
+   670→                      ) : null}
+   671→                      {c.status === "EXPIRING" ? (
+   672→                        <span className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300">
+   673→                          <CircleAlert className="h-3 w-3" /> expires {fmtDate(c.validTo)} — renewal decision required
+   674→                        </span>
+   675→                      ) : null}
+   676→                    </div>
+   677→
+   678→                    <div>
+   679→                      <p className="text-sm font-semibold leading-snug">{c.title}</p>
+   680→                      <p className="text-xs text-muted-foreground">
+   681→                        <span className="font-mono font-medium text-foreground">{c.supplier.code}</span> {c.supplier.name}
+   682→                      </p>
+   683→                    </div>
+   684→
+   685→                    <div className="flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-muted-foreground">
+   686→                      <span className="tabular-nums">
+   687→                        valid {fmtDate(c.validFrom)} → {fmtDate(c.validTo)}
+   688→                      </span>
+   689→                      {c.approvedBy ? <span>approved by {c.approvedBy}</span> : null}
+   690→                    </div>
+   691→
+   692→                    {c.summary ? (
+   693→                      <p className="text-xs italic leading-relaxed text-muted-foreground">{c.summary}</p>
+   694→                    ) : null}
+   695→
+   696→                    {obligations.length > 0 ? (
+   697→                      <div>
+   698→                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+   699→                          Parsed obligations
+   700→                        </p>
+   701→                        <ul className="mt-1 space-y-1.5">
+   702→                          {obligations.map((o, i) => (
+   703→                            <li key={i} className="flex items-start gap-2">
+   704→                              <span
+   705→                                className={`mt-0.5 inline-flex shrink-0 items-center rounded border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
+   706→                                  OBLIGATION_STYLE[o.type] ?? OBLIGATION_STYLE.delivery
+   707→                                }`}
+   708→                              >
+   709→                                {o.type}
+   710→                              </span>
+   711→                              <span className="text-xs leading-snug">{o.text}</span>
+   712→                            </li>
+   713→                          ))}
+   714→                        </ul>
+   715→                      </div>
+   716→                    ) : null}
+   717→
+   718→                    <Separator />
+   719→                    <p className="text-[10px] leading-relaxed text-muted-foreground">
+   720→                      Summaries are navigational aids, not legal advice — signed documents are authoritative (M07).
+   721→                    </p>
+   722→                  </div>
+   723→                </Card>
+   724→              );
+   725→            })}
+   726→          </div>
+   727→          <p className="text-[11px] text-muted-foreground">
+   728→            Every contract version is retained; superseded versions remain auditable in the contract register.
+   729→          </p>
+   730→        </>
+   731→      ) : null}
+   732→    </div>
+   733→  );
+   734→}
+   735→
+   736→/* ════════════════════════════ View root ═══════════════════════════════════ */
+   737→export function ProcurementView() {
+   738→  return (
+   739→    <div className="space-y-4">
+   740→      <div>
+   741→        <h2 className="text-lg font-semibold tracking-tight">Procurement &amp; Sourcing</h2>
+   742→        <p className="text-xs text-muted-foreground">
+   743→          PR → RFQ → PO → contract chain with human-approved awards and receipt-based progress
+   744→        </p>
+   745→      </div>
+   746→      <Tabs defaultValue="requests">
+   747→        <TabsList className="h-auto flex-wrap">
+   748→          <TabsTrigger value="requests" className="gap-1.5">
+   749→            <FileText className="h-3.5 w-3.5" /> Purchase Requests
+   750→          </TabsTrigger>
+   751→          <TabsTrigger value="sourcing" className="gap-1.5">
+   752→            <Gavel className="h-3.5 w-3.5" /> Sourcing (RFQ)
+   753→          </TabsTrigger>
+   754→          <TabsTrigger value="orders" className="gap-1.5">
+   755→            <ShoppingCart className="h-3.5 w-3.5" /> Purchase Orders
+   756→          </TabsTrigger>
+   757→          <TabsTrigger value="contracts" className="gap-1.5">
+   758→            <ScrollText className="h-3.5 w-3.5" /> Contracts
+   759→          </TabsTrigger>
+   760→        </TabsList>
+   761→        <TabsContent value="requests" className="mt-4">
+   762→          <PurchaseRequestsTab />
+   763→        </TabsContent>
+   764→        <TabsContent value="sourcing" className="mt-4">
+   765→          <SourcingTab />
+   766→        </TabsContent>
+   767→        <TabsContent value="orders" className="mt-4">
+   768→          <PurchaseOrdersTab />
+   769→        </TabsContent>
+   770→        <TabsContent value="contracts" className="mt-4">
+   771→          <ContractsTab />
+   772→        </TabsContent>
+   773→      </Tabs>
+   774→    </div>
+   775→  );
+   776→}
+   777→
