@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Anchor, Container as ContainerIcon, FileText, MapPin, Plane, Ship, Siren, Truck } from "lucide-react";
+import { Anchor, Container as ContainerIcon, FileText, MapPin, Plane, RadioTower, Ship, Siren, Truck } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useApi } from "@/lib/client";
 import { useAppStore } from "@/lib/app-state";
@@ -174,6 +175,7 @@ const DOT: Record<string, string> = {
 export function ImportTrackingView({ drillRef }: { drillRef?: string | null }) {
   const { data, loading, error } = useApi<ShipmentRow[]>("/api/shipments");
   const drillTo = useAppStore((s) => s.drillTo);
+  const openTrace = useAppStore((s) => s.openTrace);
   const shipments = useMemo(() => data ?? [], [data]);
   /** user pick tagged with the drill context it was made in — a NEW drillRef supersedes it */
   const [pick, setPick] = useState<{ id: string; atDrill: string | null } | null>(null);
@@ -197,7 +199,18 @@ export function ImportTrackingView({ drillRef }: { drillRef?: string | null }) {
       <section aria-label="Shipment list" className="rounded-xl border bg-card">
         <div className="flex items-center justify-between border-b px-4 py-3">
           <h2 className="text-sm font-semibold">Import shipments</h2>
-          <span className="text-xs tabular-nums text-muted-foreground">{shipments.length} records</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs tabular-nums text-muted-foreground">{shipments.length} records</span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1 border-primary/30 px-2 text-[11px] text-primary hover:bg-primary/10 hover:text-primary"
+              onClick={() => openTrace()}
+              title="Open the Live Traceability Command View (animated world map)"
+            >
+              <RadioTower className="h-3 w-3" /> Live Map
+            </Button>
+          </div>
         </div>
         <div className={`max-h-[460px] overflow-y-auto p-2 xl:max-h-[calc(100vh-140px)] ${SCROLL}`}>
           {shipments.length === 0 ? (
@@ -272,6 +285,7 @@ export function ImportTrackingView({ drillRef }: { drillRef?: string | null }) {
 type ViewName = Parameters<ReturnType<typeof useAppStore.getState>["drillTo"]>[0];
 
 function ShipmentDetail({ s, onDrill }: { s: ShipmentRow; onDrill: (v: ViewName, ref?: string) => void }) {
+  const openTrace = useAppStore((st) => st.openTrace);
   const slip = slipDays(s.displayEta, s.supplierPromisedEta);
   const hasModelEta = s.etaObservations.some((o) => o.estimateType.toLowerCase() === "model");
   const documents = s.documents ?? [];
@@ -288,6 +302,15 @@ function ShipmentDetail({ s, onDrill }: { s: ShipmentRow; onDrill: (v: ViewName,
           <span className="flex flex-wrap items-center justify-end gap-1.5">
             <StatusPill value={s.status} />
             <FreshnessBadge value={s.freshness} />
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1 border-primary/30 px-2 text-[11px] text-primary hover:bg-primary/10 hover:text-primary"
+              onClick={() => openTrace(s.ref)}
+              title="Show this shipment on the animated live world map"
+            >
+              <RadioTower className="h-3 w-3" /> Live Map
+            </Button>
           </span>
         }
       >
