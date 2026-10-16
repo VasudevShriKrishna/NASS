@@ -1,0 +1,400 @@
+/* Operation map — vessel/port/supplier/warehouse markers, DOM labels,
+ * tooltip, controls. Black-gold luxury theme. All animation respects
+ * prefers-reduced-motion.                                            */
+
+/* ── root wrapper ───────────────────────────────────────────────────── */
+.mapWrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #080706;
+}
+
+/* ── vessel marker (hero layer) ─────────────────────────────────────── */
+.vessel {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  transition: opacity 400ms ease, filter 300ms ease;
+}
+.vessel:focus-visible {
+  outline: 2px solid oklch(0.79 0.135 88);
+  outline-offset: 2px;
+  border-radius: 50%;
+}
+.vesselDim {
+  opacity: 0.28;
+  filter: saturate(0.7);
+}
+.vesselRot {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  will-change: transform;
+  pointer-events: none;
+}
+.vesselGlyph {
+  display: block;
+  filter: drop-shadow(0 0 4px oklch(0 0 0 / 60%));
+}
+.vesselHalo {
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  opacity: 0.22;
+  pointer-events: none;
+}
+.vesselSelected .vesselHalo {
+  opacity: 0.4;
+  animation: haloPulse 1.9s ease-in-out infinite;
+}
+.vesselWake {
+  position: absolute;
+  right: 55%;
+  top: 50%;
+  height: 2.5px;
+  width: 17px;
+  border-radius: 2px;
+  transform: translateY(-50%);
+  background: linear-gradient(90deg, transparent, currentColor);
+  opacity: 0.55;
+  pointer-events: none;
+}
+.clusterChip {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid oklch(0.79 0.135 88 / 55%);
+  background: oklch(0.16 0.02 80 / 92%);
+  color: oklch(0.79 0.135 88);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  pointer-events: none;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+}
+.clustered .clusterChip {
+  display: inline-flex;
+}
+
+/* ── port marker ────────────────────────────────────────────────────── */
+.port {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+}
+.portDot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  background: #d4af37;
+  box-shadow: 0 0 0 1.5px oklch(0.1 0.01 80 / 85%), 0 0 8px oklch(0.79 0.135 88 / 45%);
+}
+.portRing {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  border: 1.2px solid #d4af37;
+  animation: portBreathe 2.8s ease-in-out infinite;
+}
+.portHold .portDot {
+  background: #fbbf24;
+  box-shadow: 0 0 0 1.5px oklch(0.1 0.01 80 / 85%), 0 0 10px oklch(0.84 0.16 83 / 60%);
+}
+.portHold .portRing {
+  border-color: #fbbf24;
+  animation: portBreathe 1.6s ease-in-out infinite;
+}
+
+/* ── supplier / warehouse markers (real buttons) ────────────────────── */
+.site {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid;
+  cursor: pointer;
+  backdrop-filter: blur(3px);
+  transition: transform 200ms ease, box-shadow 200ms ease, opacity 400ms ease;
+}
+.site:hover {
+  transform: scale(1.12);
+}
+.site:focus-visible {
+  outline: 2px solid oklch(0.79 0.135 88);
+  outline-offset: 2px;
+}
+.siteDim {
+  opacity: 0.3;
+}
+.supplier {
+  border-color: oklch(0.79 0.135 88 / 55%);
+  background: oklch(0.14 0.02 80 / 85%);
+  color: #e9c765;
+  box-shadow: 0 0 10px oklch(0.79 0.135 88 / 22%);
+}
+.supplier:hover {
+  box-shadow: 0 0 16px oklch(0.79 0.135 88 / 45%);
+}
+.warehouse {
+  border-color: oklch(0.75 0.14 165 / 55%);
+  background: oklch(0.13 0.03 165 / 85%);
+  color: #34d399;
+  box-shadow: 0 0 10px oklch(0.75 0.14 165 / 22%);
+}
+.warehouse:hover {
+  box-shadow: 0 0 16px oklch(0.75 0.14 165 / 45%);
+}
+.siteSvg {
+  display: block;
+}
+
+/* ── DOM labels with collision (positioned by the engine) ───────────── */
+.labelLayer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 3;
+}
+.label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: nowrap;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: oklch(0.87 0.03 90);
+  text-shadow: 0 1px 2px oklch(0 0 0 / 90%), 0 0 6px oklch(0 0 0 / 80%);
+  opacity: 0;
+  transition: opacity 190ms ease;
+  will-change: transform, opacity;
+  pointer-events: none;
+}
+.labelVisible {
+  opacity: 1;
+}
+.labelLeader {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(90deg, oklch(0.79 0.135 88 / 55%), oklch(0.79 0.135 88 / 12%));
+  transform-origin: 0 50%;
+  pointer-events: none;
+}
+.labelPort {
+  font-weight: 600;
+  color: oklch(0.85 0.06 90);
+}
+.labelPortMinor {
+  font-weight: 500;
+  color: oklch(0.75 0.04 90 / 92%);
+}
+.labelVessel {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-weight: 700;
+  font-size: 9.5px;
+}
+.labelSite {
+  font-weight: 600;
+}
+
+/* ── hover tooltip (real /api/live-trace data) ──────────────────────── */
+.tooltip {
+  position: absolute;
+  z-index: 5;
+  width: 228px;
+  padding: 10px 11px;
+  border-radius: 12px;
+  border: 1px solid oklch(0.79 0.135 88 / 35%);
+  background: oklch(0.11 0.015 80 / 94%);
+  box-shadow: 0 14px 40px oklch(0 0 0 / 55%), 0 0 24px oklch(0.79 0.135 88 / 12%);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+.tooltipVisible {
+  opacity: 1;
+}
+.tipRef {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 800;
+}
+.tipRoute {
+  margin-top: 3px;
+  font-size: 11px;
+  color: oklch(0.8 0.02 90 / 92%);
+}
+.tipGrid {
+  margin-top: 6px;
+  border-top: 1px solid oklch(1 0 0 / 8%);
+  padding-top: 6px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px 10px;
+  font-size: 10px;
+}
+.tipK {
+  color: oklch(0.6 0.02 90);
+}
+.tipV {
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: oklch(0.9 0.02 90);
+}
+.tipBar {
+  margin-top: 7px;
+  height: 3px;
+  border-radius: 999px;
+  background: oklch(1 0 0 / 10%);
+  overflow: hidden;
+}
+.tipBarFill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #8a6a1f, currentColor, #f3dc8e);
+}
+
+/* ── controls (bottom-right, above fleet rail) ──────────────────────── */
+.controls {
+  position: absolute;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  bottom: 118px;
+  right: 12px;
+}
+.ctrlBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid oklch(0.79 0.135 88 / 30%);
+  background: oklch(0.12 0.015 80 / 88%);
+  color: oklch(0.87 0.05 90);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 4px 18px oklch(0 0 0 / 40%);
+  transition: border-color 160ms ease, color 160ms ease, transform 120ms ease;
+}
+.ctrlBtn:hover {
+  border-color: oklch(0.79 0.135 88 / 65%);
+  color: oklch(0.83 0.12 88);
+}
+.ctrlBtn:active {
+  transform: scale(0.94);
+}
+.ctrlBtn:focus-visible {
+  outline: 2px solid oklch(0.79 0.135 88);
+  outline-offset: 2px;
+}
+
+/* ── hint chip ──────────────────────────────────────────────────────── */
+.hint {
+  position: absolute;
+  z-index: 5;
+  left: 12px;
+  bottom: 118px;
+  border-radius: 10px;
+  border: 1px solid oklch(0.79 0.135 88 / 22%);
+  background: oklch(0.12 0.015 80 / 80%);
+  padding: 5px 9px;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  color: oklch(0.7 0.03 90 / 85%);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+  text-transform: uppercase;
+}
+
+/* ── fallback (no WebGL) ────────────────────────────────────────────── */
+.fallback {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  color: oklch(0.7 0.02 90);
+  font-size: 13px;
+}
+
+/* map canvas fills overlay; maplibre css already gives grab/grabbing */
+.mapWrap :global(.maplibregl-canvas):focus-visible {
+  outline: 2px solid oklch(0.79 0.135 88 / 80%);
+  outline-offset: -2px;
+}
+
+@keyframes portBreathe {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.7;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(2.6);
+    opacity: 0;
+  }
+}
+@keyframes haloPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 currentColor;
+    opacity: 0.4;
+  }
+  50% {
+    box-shadow: 0 0 14px 2px currentColor;
+    opacity: 0.7;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portRing,
+  .vesselSelected .vesselHalo {
+    animation: none;
+  }
+  .label,
+  .vessel,
+  .site,
+  .tooltip {
+    transition: none;
+  }
+}

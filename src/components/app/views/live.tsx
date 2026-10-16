@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import {
-  Anchor,
+import dynamic from "next/dynamic";
+import {  Anchor,
   Building2,
   Container,
   ExternalLink,
@@ -19,13 +19,14 @@ import {
   Ship,
   Siren,
   Timer,
+  Warehouse,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useApi } from "@/lib/client";
 import { useAppStore } from "@/lib/app-state";
-import { clamp01 } from "@/lib/geo";
+import { liveProgressAt } from "@/lib/gc-route";
 import type { TraceShip, TraceSnapshot } from "@/lib/trace-types";
 import {
   CaseStateBadge,
@@ -43,8 +44,15 @@ import {
 } from "@/components/app/shared";
 import { LiveClock, fmtCountdown, useNow } from "@/components/app/live-clock";
 import { PulsingDot } from "@/components/app/motion";
-import { MapLegend, STATUS_COLOR, STATUS_LABEL, WorldMap } from "@/components/app/world-map";
+import { MapLegend, STATUS_COLOR, STATUS_LABEL } from "@/components/app/world-map";
 import { cn } from "@/lib/utils";
+
+const OperationMap = dynamic(() => import("@/components/app/map/operation-map").then((m) => m.OperationMap), {
+  ssr: false,
+  loading: () => <LoadingState label="Rendering interactive operation map…" />,
+});
+
+type SitePick = { type: "supplier" | "warehouse"; code: string };
 
 const SIM_PRESETS = [1, 60, 600] as const;
 
@@ -452,6 +460,145 @@ function FleetChip({ ship, p, active, onClick }: { ship: TraceShip; p: number; a
   );
 }
 
+/* ── supplier / warehouse panel (freight-chain context) ────────────────── */
+function SitePanel({
+  pick,
+  snap,
+  progress,
+  onPickShip,
+  onClose,
+}: {
+  pick: SitePick;
+  snap: TraceSnapshot;
+  progress: Map<string, number>;
+  onPickShip: (ref: string) => void;
+  onClose: () => void;
+}) {
+  const isSupplier = pick.type === "supplier";
+  const ships = snap.ships.filter((s) =>
+    isSupplier
+      ? s.supplier?.code === pick.code
+      : s.destinationWarehouse?.code === pick.code || (s.to?.label ?? "").toUpperCase().includes(pick.code),
+  );
+  if (ships.length === 0) return null;
+  const name = isSupplier
+    ? (ships.find((s) => s.supplier)?.supplier?.name ?? pick.code)
+    : (ships.find((s) => s.destinationWarehouse)?.destinationWarehouse?.name ?? pick.code);
+  const meta = isSupplier
+    ? `${ships.find((s) => s.supplier)?.supplier?.city ?? ""}${ships.find((s) => s.supplier)?.supplier?.city ? ", " : ""}${ships.find((s) => s.supplier)?.supplier?.country ?? ""}`
+    : (ships.find((s) => s.destinationWarehouse)?.destinationWarehouse?.site ?? "");
+  const status = isSupplier ? (ships.find((s) => s.supplier)?.supplier?.status ?? null) : null;
+  const risks: { signalCode: string; severity: string; fact: string }[] = [];
+  const seen = new Set<string>();
+  let exceptions = 0;
+  for (const s of ships) {
+    exceptions += s.compliance.exceptions.length;
+    for (const r of s.compliance.risks) {
+      if (!seen.has(r.signalCode)) {
+        seen.add(r.signalCode);
+        risks.push(r);
+      }
+    }
+  }
+  const Icon = isSupplier ? Factory : Warehouse;
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 14 }}
+      transition={{ duration: 0.22, ease: "easeOut" }}
+      className="absolute bottom-[118px] left-3 z-20 w-[302px] max-w-[calc(100%-24px)] overflow-hidden rounded-xl border border-primary/25 bg-card/95 shadow-[0_18px_50px_oklch(0_0_0/50%)] backdrop-blur-xl"
+      data-testid={isSupplier ? "supplier-panel" : "warehouse-panel"}
+    >
+      <div className="flex items-start gap-2.5 border-b border-primary/15 bg-gradient-to-br from-primary/10 via-transparent to-transparent px-3 py-2.5">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-primary/30 bg-primary/10 text-primary">
+          <Icon className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-display text-[13px] font-bold leading-tight">{name}</p>
+          <p className="mt-0.5 flex flex-wrap items-center gap-1.5 font-mono text-[10px] text-muted-foreground">
+            {pick.code}
+            {meta ? <span>· {meta}</span> : null}
+            {status ? <StatusPill value={status} /> : null}
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+          onClick={onClose}
+          aria-label={`Close ${isSupplier ? "supplier" : "warehouse"} panel`}
+        >
+          <X className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+
+      <div className="max-h-[46vh] overflow-y-auto px-3 py-2.5">
+        {risks.length > 0 || exceptions > 0 ? (
+          <div className="mb-2.5 space-y-1.5">
+            <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Active risk signals</p>
+            {risks.slice(0, 3).map((r) => (
+              <div key={r.signalCode} className="rounded-md border border-border/70 bg-muted/30 px-2 py-1.5 text-[11px]">
+                <div className="flex items-center gap-1.5">
+                  <SeverityBadge value={r.severity} />
+                  <span className="font-mono text-[10px] font-bold">{r.signalCode}</span>
+                </div>
+                <p className="mt-0.5 line-clamp-2 text-muted-foreground">{r.fact}</p>
+              </div>
+            ))}
+            {exceptions > 0 ? (
+              <p className="text-[10px] text-rose-300/90">
+                {exceptions} linked exception{exceptions > 1 ? "s" : ""} across its shipments
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <p className="mb-2.5 text-[10px] text-muted-foreground">No active risk signals on its shipments.</p>
+        )}
+
+        <p className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+          {isSupplier ? "Outbound shipments" : "Inbound shipments"} — {ships.length}
+        </p>
+        <div className="space-y-1.5">
+          {ships.map((s) => {
+            const p = progress.get(s.ref) ?? s.progress;
+            const c = STATUS_COLOR[s.liveStatus];
+            return (
+              <button
+                key={s.ref}
+                type="button"
+                onClick={() => onPickShip(s.ref)}
+                className="w-full rounded-lg border border-border/70 bg-background/40 p-2 text-left transition-colors hover:border-primary/40 hover:bg-primary/5"
+                aria-label={`Open dossier for ${s.ref}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: c, boxShadow: `0 0 5px ${c}` }} />
+                    <span className="truncate font-mono text-[11px] font-bold">{s.ref}</span>
+                  </span>
+                  <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide" style={{ color: c }}>
+                    {STATUS_LABEL[s.liveStatus]}
+                  </span>
+                </div>
+                <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+                  {s.from?.label ?? s.originPort} → {s.to?.label ?? s.destPort}
+                </p>
+                <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-muted">
+                  <div className="h-full rounded-full" style={{ width: `${p * 100}%`, background: `linear-gradient(90deg, #8a6a1f, ${c}, #f3dc8e)` }} />
+                </div>
+                <div className="mt-1 flex items-center justify-between text-[10px]">
+                  <span className="tabular-nums text-primary">{fmtPct(p)}</span>
+                  <span className="tabular-nums text-muted-foreground">{fmtMoney(s.importValue, s.currency)}</span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 /* ══ LIVE TRACEABILITY COMMAND VIEW (full-screen overlay) ════════════════ */
 export function LiveTraceabilityView({ drillRef }: { drillRef?: string | null }) {
   const setView = useAppStore((s) => s.setView);
@@ -460,7 +607,9 @@ export function LiveTraceabilityView({ drillRef }: { drillRef?: string | null })
   const clearTraceShip = useAppStore((s) => s.clearTraceShip);
   const { data: snap, loading, error, refresh, syncedAt } = useApi<TraceSnapshot>("/api/live-trace", [], 0);
   const [picked, setPicked] = useState<string | null>(null);
+  const [pickedSite, setPickedSite] = useState<SitePick | null>(null);
   const [factor, setFactor] = useState<number>(600);
+  const [simBase, setSimBase] = useState<{ server: number; wall: number } | null>(null);
   const now = useNow(1000);
 
   const activeRef = picked ?? traceShip ?? drillRef ?? null;
@@ -468,7 +617,10 @@ export function LiveTraceabilityView({ drillRef }: { drillRef?: string | null })
   /* sim clock: server snapshot + real elapsed × time-lapse factor */
   const baseRef = useRef<{ server: number; wall: number } | null>(null);
   useEffect(() => {
-    if (snap) baseRef.current = { server: +new Date(snap.serverTime), wall: Date.now() };
+    if (snap) {
+      baseRef.current = { server: +new Date(snap.serverTime), wall: Date.now() };
+      setSimBase(baseRef.current);
+    }
   }, [snap]);
   const [simNow, setSimNow] = useState<number | null>(null);
   useEffect(() => {
@@ -496,19 +648,7 @@ export function LiveTraceabilityView({ drillRef }: { drillRef?: string | null })
   const progress = useMemo(() => {
     const m = new Map<string, number>();
     if (!snap || simNow === null) return m;
-    for (const s of snap.ships) {
-      if (s.liveStatus === "ARRIVED") {
-        m.set(s.ref, 1);
-        continue;
-      }
-      if (s.liveStatus === "BOOKED") {
-        m.set(s.ref, 0);
-        continue;
-      }
-      const end = s.actualArrival ? +new Date(s.actualArrival) : s.eta ? +new Date(s.eta) : null;
-      const start = s.departure ? +new Date(s.departure) : 0;
-      m.set(s.ref, !end ? 0 : clamp01((simNow - start) / Math.max(1, end - start)));
-    }
+    for (const s of snap.ships) m.set(s.ref, liveProgressAt(s, simNow));
     return m;
   }, [snap, simNow]);
 
@@ -686,12 +826,42 @@ export function LiveTraceabilityView({ drillRef }: { drillRef?: string | null })
           </div>
         ) : (
           <>
-            <WorldMap ships={snap.ships} progress={progress} selectedRef={activeRef} onPick={(ref) => setPicked(ref)} onBackgroundClick={closeDrawer} />
+            <OperationMap
+              ships={snap.ships}
+              simBase={simBase}
+              factor={factor}
+              selectedRef={activeRef}
+              onPick={(ref) => setPicked(ref)}
+              onBackgroundClick={closeDrawer}
+              onSitePick={setPickedSite}
+            />
 
-            {/* legend */}
-            <div className="pointer-events-none absolute left-3 top-3 rounded-lg border border-border/70 bg-card/80 px-3 py-2 backdrop-blur">
+            {/* legend — statuses + freight-chain symbols */}
+            <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-lg border border-border/70 bg-card/80 px-3 py-2 backdrop-blur">
               <p className="mb-1 text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Fleet status</p>
               <MapLegend className="max-w-[240px]" />
+              <div className="mt-2 space-y-1.5 border-t border-border/60 pt-2">
+                <p className="flex items-center gap-2 text-[10px] font-medium text-muted-foreground">
+                  <svg width="16" height="10" viewBox="-11 -6 22 12" aria-hidden className="shrink-0">
+                    <path d="M 8 0 L 2.2 2.9 L -6.5 2.9 L -6.5 -2.9 L 2.2 -2.9 Z" fill="#d4af37" stroke="oklch(0.1 0.01 80)" strokeWidth="1" strokeLinejoin="round" />
+                  </svg>
+                  Vessel — freight movement (hero layer)
+                </p>
+                <p className="flex items-center gap-2 text-[10px] font-medium text-muted-foreground">
+                  <Factory className="h-3 w-3 shrink-0 text-[#e9c765]" />
+                  Supplier site <span className="text-[9px]">· dotted feeder → port</span>
+                </p>
+                <p className="flex items-center gap-2 text-[10px] font-medium text-muted-foreground">
+                  <Warehouse className="h-3 w-3 shrink-0 text-[#34d399]" />
+                  NASS warehouse <span className="text-[9px]">· feeder ← port</span>
+                </p>
+                <p className="flex items-center gap-2 text-[10px] font-medium text-muted-foreground">
+                  <svg width="16" height="8" viewBox="0 0 16 8" aria-hidden className="shrink-0">
+                    <line x1="0" y1="4" x2="16" y2="4" stroke="#d4af37" strokeWidth="2" />
+                  </svg>
+                  Solid = traveled · dashed = remaining
+                </p>
+              </div>
             </div>
 
             {/* sim note */}
@@ -699,6 +869,20 @@ export function LiveTraceabilityView({ drillRef }: { drillRef?: string | null })
               <span className="font-semibold text-primary">sim ×{factor}</span> · markers glide continuously, data recomputed hourly
               {snap.ships.length === 0 ? <span className="mt-1 block"><EmptyState message="No shipments to trace" /></span> : null}
             </div>
+
+            {/* supplier / warehouse panel */}
+            <AnimatePresence>
+              {pickedSite && snap ? (
+                <SitePanel
+                  key={`${pickedSite.type}:${pickedSite.code}`}
+                  pick={pickedSite}
+                  snap={snap}
+                  progress={progress}
+                  onPickShip={(ref) => setPicked(ref)}
+                  onClose={() => setPickedSite(null)}
+                />
+              ) : null}
+            </AnimatePresence>
 
             {/* fleet rail */}
             {snap.ships.length > 0 ? (
