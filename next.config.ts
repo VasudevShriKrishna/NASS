@@ -1,9 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
-  /* config options here */
   serverExternalPackages: ["pdfkit"],
+  outputFileTracingIncludes: {
+    "/**": ["./db/**/*", "./prisma/**/*"],
+  },
   typescript: {
     ignoreBuildErrors: true,
   },
