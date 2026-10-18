@@ -21,6 +21,39 @@ export interface AssistantStructured {
   asOfEvents?: { label: string; eventTime: string }[];
 }
 
+export interface AssistantNavigationAction {
+  view:
+    | "live"
+    | "control-tower"
+    | "procurement"
+    | "suppliers"
+    | "import-tracking"
+    | "bol-intelligence"
+    | "inventory"
+    | "receiving"
+    | "projects"
+    | "assets"
+    | "exceptions"
+    | "actions"
+    | "assistant"
+    | "governance"
+    | "architecture";
+  label: string;
+  targetRef?: string;
+  tab?: string;
+  filter?: string;
+  description: string;
+  autoExecute?: boolean;
+}
+
+export interface AssistantReportAction {
+  type: "shipment" | "project" | "ceo-summary" | "procurement" | "inventory" | "suppliers" | "qc" | "delayed";
+  targetRef?: string;
+  title: string;
+  downloadUrl: string;
+  format: "pdf" | "csv";
+}
+
 export interface AssistantResponse {
   answer: string;
   as_of: string;
@@ -28,4 +61,9 @@ export interface AssistantResponse {
   degraded?: boolean;
   structured?: AssistantStructured;
   dataQuality?: string;
+  provider?: string;
+  model?: string;
+  navigation?: AssistantNavigationAction;
+  report?: AssistantReportAction;
 }
+

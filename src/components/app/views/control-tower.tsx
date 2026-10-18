@@ -3,12 +3,19 @@
 import { useMemo } from "react";
 import {
   AlarmClock,
+  AlertTriangle,
   BellRing,
+  Building2,
+  CheckCircle2,
+  ChevronRight,
+  Compass,
   FileWarning,
   PlugZap,
   RadioTower,
   RefreshCw,
+  ShieldAlert,
   Ship,
+  Sparkles,
   Wrench,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -71,6 +78,24 @@ interface RiskSignalRow {
   calculatedAt: string;
   supplier?: { code: string; name: string } | null;
 }
+interface CeoDecisionRow {
+  id: string;
+  ref: string;
+  commandType: string;
+  riskLevel: string;
+  targetType: string | null;
+  targetRef: string | null;
+  payload: string | null;
+  state: string;
+  requestedBy: string;
+  createdAt: string;
+}
+interface ProjectStats {
+  active: number;
+  historical: number;
+  total: number;
+  criticalReqs: number;
+}
 interface OverviewPayload {
   kpis: {
     activeShipments: number;
@@ -94,6 +119,8 @@ interface OverviewPayload {
   exceptions: ExceptionRow[];
   riskSignals: RiskSignalRow[];
   stockSummary: Record<string, { lots: number; quantity: number }>;
+  ceoDecisions?: CeoDecisionRow[];
+  projectStats?: ProjectStats;
 }
 
 const num = (v: number) => v.toLocaleString("en-US", { maximumFractionDigits: 2 });
@@ -240,6 +267,118 @@ export function ControlTowerView({ drillRef }: { drillRef?: string | null }) {
               onClick={() => drillTo("assets")}
             />
           </div>
+
+          {/* CEO Decision Recommendations Section */}
+          <SectionCard
+            title={
+              <span className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-amber-400" />
+                <span>CEO Decision Control Tower — Operational Recommendations</span>
+                <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-400 border border-amber-500/30">
+                  Executive Attention Required ({data.ceoDecisions?.length ?? 4})
+                </span>
+              </span>
+            }
+            subtitle="Critical project milestones, crane mobilizations, ETA slips, and material allocation decisions awaiting senior leadership sign-off"
+            right={
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs text-amber-400 hover:text-amber-300"
+                onClick={() => drillTo("actions")}
+              >
+                Open Decision Management <ChevronRight className="ml-1 h-3.5 w-3.5" />
+              </Button>
+            }
+          >
+            <div className="grid gap-3 md:grid-cols-2">
+              {data.ceoDecisions && data.ceoDecisions.length > 0 ? (
+                data.ceoDecisions.map((dec) => {
+                  let p: any = {};
+                  try {
+                    p = dec.payload ? JSON.parse(dec.payload) : {};
+                  } catch {
+                    p = {};
+                  }
+                  return (
+                    <div
+                      key={dec.id}
+                      className="flex flex-col justify-between rounded-lg border border-amber-500/30 bg-card/90 p-4 transition-all hover:border-amber-500/60 hover:shadow-md"
+                    >
+                      <div className="space-y-2.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-xs font-bold text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded border border-amber-400/20">
+                                {dec.ref}
+                              </span>
+                              <span className="text-[10px] font-semibold text-rose-400 bg-rose-400/10 px-1.5 py-0.5 rounded border border-rose-400/20">
+                                {dec.riskLevel}
+                              </span>
+                            </div>
+                            <h4 className="mt-1 text-sm font-semibold text-foreground leading-snug">
+                              {p.title || dec.ref}
+                            </h4>
+                          </div>
+                          <span className="rounded bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-300 border border-amber-500/20 whitespace-nowrap">
+                            {dec.state.replaceAll("_", " ")}
+                          </span>
+                        </div>
+
+                        {p.decisionRequired && (
+                          <div className="rounded bg-muted/40 p-2 text-xs border border-border/40">
+                            <span className="font-semibold text-amber-400 text-[10px] uppercase tracking-wider block">
+                              Decision Required:
+                            </span>
+                            <p className="mt-0.5 text-foreground leading-relaxed">{p.decisionRequired}</p>
+                          </div>
+                        )}
+
+                        {p.verifiedSituation && (
+                          <div className="text-xs space-y-1">
+                            <div className="text-muted-foreground text-[11px]">
+                              <span className="font-semibold text-foreground">Verified Situation:</span> {p.verifiedSituation}
+                            </div>
+                            {p.financialImpact && (
+                              <div className="text-rose-400 text-[11px] font-medium">
+                                <span className="font-semibold">Financial &amp; Schedule Impact:</span> {p.financialImpact}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {p.recommendedAction && (
+                          <div className="rounded border border-emerald-500/30 bg-emerald-500/5 p-2 text-xs">
+                            <div className="flex items-center gap-1.5 text-emerald-400 font-semibold text-[10px] uppercase tracking-wider">
+                              <CheckCircle2 className="h-3 w-3" />
+                              <span>Recommended Action &amp; Rationale:</span>
+                            </div>
+                            <p className="mt-0.5 text-foreground/90 leading-relaxed text-[11px]">{p.recommendedAction}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="mt-3 pt-2.5 border-t border-border/40 flex items-center justify-between text-[11px] text-muted-foreground">
+                        <span className="truncate max-w-[240px]">
+                          Owner: <span className="text-foreground font-medium">{p.accountableOwner || dec.requestedBy}</span>
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 px-2 text-[10px] border-amber-500/30 text-amber-400 hover:bg-amber-400/10"
+                          onClick={() => drillTo("actions", dec.ref)}
+                        >
+                          Review Action
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <EmptyState message="No pending CEO decisions." />
+              )}
+            </div>
+          </SectionCard>
 
           {/* Shipment freshness + register */}
           <SectionCard

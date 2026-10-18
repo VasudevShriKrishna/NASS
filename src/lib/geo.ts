@@ -27,9 +27,11 @@ export const PORTS: Record<string, PortInfo> = {
   // NASS destination (Bahrain) — the only configured POD country
   KBSP: { lat: 26.177, lng: 50.535, country: "Bahrain", label: "Khalifa Bin Salman Port" },
   ASKAR: { lat: 26.085, lng: 50.56, country: "Bahrain", label: "Askar" },
+  HIDD: { lat: 26.22, lng: 50.68, country: "Bahrain", label: "NASS Hidd Aggregate Jetty" },
   // Export / origin ports
   SHANGHAI: { lat: 31.23, lng: 121.49, country: "China", label: "Shanghai" },
   NINGBO: { lat: 29.87, lng: 121.85, country: "China", label: "Ningbo" },
+  BUSAN: { lat: 35.10, lng: 129.04, country: "South Korea", label: "Busan" },
   IZMIR: { lat: 38.42, lng: 27.14, country: "Türkiye", label: "Izmir" },
   GENOA: { lat: 44.4, lng: 8.92, country: "Italy", label: "Genoa" },
   ANTWERP: { lat: 51.28, lng: 4.37, country: "Belgium", label: "Antwerp" },
@@ -39,6 +41,7 @@ export const PORTS: Record<string, PortInfo> = {
   // they are NEVER the NASS destination (destination country is Bahrain).
   FUJAIRAH: { lat: 25.12, lng: 56.34, country: "UAE", label: "Fujairah" },
   JEBEL_ALI: { lat: 25.01, lng: 55.06, country: "UAE", label: "Jebel Ali" },
+  RAK: { lat: 25.86, lng: 56.03, country: "UAE", label: "Ras Al Khaimah / Stevin Rock" },
 };
 
 /** Fuzzy-match a free-text port string ("Shanghai, CN", "Fujairah Quarry",
@@ -49,9 +52,11 @@ export function lookupPort(raw: string | null | undefined): PortInfo | null {
   const s = raw.toLowerCase();
   const has = (...keys: string[]) => keys.some((k) => s.includes(k));
   if (has("khalifa bin salman", "kbsp")) return PORTS.KBSP;
+  if (has("hidd", "hidd jetty")) return PORTS.HIDD;
   if (has("askar")) return PORTS.ASKAR;
   if (has("shanghai")) return PORTS.SHANGHAI;
   if (has("ningbo")) return PORTS.NINGBO;
+  if (has("busan", "pusan")) return PORTS.BUSAN;
   if (has("izmir")) return PORTS.IZMIR;
   if (has("genoa", "genova")) return PORTS.GENOA;
   if (has("antwerp", "anvers")) return PORTS.ANTWERP;
@@ -59,6 +64,7 @@ export function lookupPort(raw: string | null | undefined): PortInfo | null {
   if (has("colombo")) return PORTS.COLOMBO;
   if (has("fujairah")) return PORTS.FUJAIRAH;
   if (has("jebel ali", "jebel ali, ae", "jebelali")) return PORTS.JEBEL_ALI;
+  if (has("ras al khaimah", "rak", "stevin rock")) return PORTS.RAK;
   return null;
 }
 

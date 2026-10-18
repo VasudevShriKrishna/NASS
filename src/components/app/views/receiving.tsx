@@ -251,7 +251,17 @@ export function ReceivingView() {
                                 />
                               )}
                             </TableCell>
-                            <TableCell>{r.qcResult ? <StatusPill value={r.qcResult} /> : <span className="text-xs text-muted-foreground">—</span>}</TableCell>
+                            <TableCell>
+                              {r.qcResult === "NOT_APPLICABLE" || (r.expectedQty === 0 && r.receivedQty === 0) ? (
+                                <span className="inline-flex items-center whitespace-nowrap rounded-md border border-zinc-400/30 bg-zinc-400/10 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-zinc-400" title="Deduplicated webhook event: No physical QC inspection performed.">
+                                  NOT APPLICABLE (DEDUPE)
+                                </span>
+                              ) : r.qcResult ? (
+                                <StatusPill value={r.qcResult} />
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
                             <TableCell>
                               <StatusPill value={r.discrepancyType ?? "NONE"} />
                             </TableCell>

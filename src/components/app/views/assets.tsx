@@ -305,9 +305,15 @@ export function AssetsView() {
                     </div>
 
                     {/* status row */}
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <SeverityBadge value={a.criticality} />
-                      <ConditionPill value={a.condition} />
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Criticality:</span>
+                        <SeverityBadge value={a.criticality} />
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Condition:</span>
+                        <ConditionPill value={a.condition} />
+                      </div>
                       {a.meterReading != null && (
                         <span className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] tabular-nums">
                           <Gauge className="h-3 w-3 text-muted-foreground" /> {a.meterReading.toLocaleString()} {a.meterUnit}

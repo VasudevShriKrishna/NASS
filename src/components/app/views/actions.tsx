@@ -607,7 +607,7 @@ export function ActionsView({ drillRef }: { drillRef?: string | null }) {
 
   /* drillRef preselection is derived (no effect needed) — manual selection wins once the user clicks */
   const drillId = useMemo(() => (drillRef ? actions.find((a) => a.ref === drillRef)?.id ?? null : null), [drillRef, actions]);
-  const selectedId = manualId ?? drillId;
+  const selectedId = manualId ?? drillId ?? (filteredActions.length > 0 ? filteredActions[0].id : null);
 
   const selected = actions.find((a) => a.id === selectedId) ?? null;
   const mainIdx = selected ? ACTION_MAIN.indexOf(selected.state) : -1;

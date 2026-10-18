@@ -637,9 +637,9 @@ export async function renderLiveReport(snap: TraceSnapshot, ref?: string | null)
   };
 
   const shipBlock = (s: TraceShip) => {
-    const headH = 15.5;
-    const padT = 6;
-    const gap = 3.5;
+    const headH = 13.5;
+    const padT = 3.5;
+    const gap = 2;
     const wInner = CONTENT_W - 12;
 
     const vesselLine = [
@@ -680,15 +680,15 @@ export async function renderLiveReport(snap: TraceSnapshot, ref?: string | null)
       ` · Evidence ${s.compliance.evidence.length}`;
 
     const lines = [vesselLine, matLine, procLine, compLine];
-    doc.font("Helvetica").fontSize(8);
+    doc.font("Helvetica").fontSize(7.2);
     const hs = lines.map((l) => doc.heightOfString(l, { width: wInner }));
-    const bodyH = padT + hs.reduce((a, b) => a + b, 0) + gap * (lines.length - 1) + 8;
+    const bodyH = padT + hs.reduce((a, b) => a + b, 0) + gap * (lines.length - 1) + 4;
     ensureSpace(headH + bodyH);
 
     doc.rect(M, y, CONTENT_W, headH).fill(GOLD);
     doc
       .font("Helvetica-Bold")
-      .fontSize(7.8)
+      .fontSize(7.4)
       .fillColor(INK)
       .text(
         fit(
@@ -697,18 +697,18 @@ export async function renderLiveReport(snap: TraceSnapshot, ref?: string | null)
           CONTENT_W - 16,
         ),
         M + 8,
-        y + 4.2,
-        { characterSpacing: 0.6, lineBreak: false },
+        y + 3.2,
+        { characterSpacing: 0.5, lineBreak: false },
       );
     y += headH;
-    doc.rect(M, y, CONTENT_W, bodyH).lineWidth(0.6).strokeColor(HAIRLINE).stroke();
+    doc.rect(M, y, CONTENT_W, bodyH).lineWidth(0.5).strokeColor(HAIRLINE).stroke();
     y += padT;
     lines.forEach((l, i) => {
-      doc.font(i === 0 ? "Helvetica-Bold" : "Helvetica").fontSize(8).fillColor(i === 0 ? BODY : BODY);
+      doc.font(i === 0 ? "Helvetica-Bold" : "Helvetica").fontSize(7.2).fillColor(BODY);
       doc.text(l, M + 6, y, { width: wInner });
       y += hs[i] + gap;
     });
-    y += 10;
+    y += 5;
   };
 
   /* ==================== ASSEMBLY ==================== */

@@ -29,6 +29,10 @@ export function FreshnessBadge({ value, className }: { value: string | null | un
       cls: "bg-zinc-100 text-zinc-600 border-zinc-300 dark:bg-zinc-400/10 dark:text-zinc-400 dark:border-zinc-400/25",
       icon: <CloudOff className="h-3 w-3" />, label: "UNAVAILABLE",
     },
+    never: {
+      cls: "bg-zinc-100 text-zinc-600 border-zinc-300 dark:bg-zinc-400/10 dark:text-zinc-400 dark:border-zinc-400/25",
+      icon: <CloudOff className="h-3 w-3" />, label: "NEVER SYNCHRONIZED",
+    },
   };
   const m = map[v] ?? map.unavailable;
   return (

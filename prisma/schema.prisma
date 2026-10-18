@@ -14,76 +14,104 @@ datasource db {
 
 // ─── 8.1 #1 LegalEntity / BusinessUnit ───────────────────────────────────────
 model LegalEntity {
-  id       String @id @default(cuid())
-  code     String @unique
-  name     String
-  country  String
-  role     String // owner operating unit
+  id             String  @id @default(cuid())
+  code           String  @unique
+  name           String
+  country        String
+  role           String // owner operating unit
+  division       String? // Civil & Infrastructure | Commercial & Trading | Industrial & Manufacturing | Marine & Bulk Materials
+  parentCompany  String? // NASS The Group | Nass Corporation B.S.C.
+  status         String  @default("ACTIVE")
+  capabilities   String? // JSON array of business capabilities
 
   purchaseOrders PurchaseOrder[]
 }
 
 // ─── 8.1 #2 Project / Site ───────────────────────────────────────────────────
 model Project {
-  id           String  @id @default(cuid())
-  code         String  @unique
-  name         String
-  site         String
-  legalEntityId String?
-  workPackage  String?
-  costCode     String?
-  status       String  @default("ACTIVE")
+  id                   String  @id @default(cuid())
+  code                 String  @unique
+  name                 String
+  site                 String
+  legalEntityId        String?
+  workPackage          String?
+  costCode             String?
+  status               String  @default("ACTIVE")
+  client               String? // Project Owner / Client
+  contractValue        Float?  // Value in BHD
+  currency             String? @default("BHD")
+  scopeDescription     String? // Technical & contractual scope
+  statusClassification String? @default("CONFIRMED_ACTIVE") // CONFIRMED_ACTIVE | STATUS_AWAITING_CONFIRMATION | HISTORICAL_COMPLETED
+  startDate            DateTime?
+  completionDate       DateTime?
+  plannedProgressPct   Float?
+  actualProgressPct    Float?
+  phases               String? // JSON structure of project phases
+
   purchaseRequests     PurchaseRequest[]
   inventoryLots        InventoryLot[]
   purchaseOrders       PurchaseOrder[]
   materialRequirements MaterialRequirement[]
   shipments            Shipment[]
+  workPackages         ProjectWorkPackage[]
 }
 
 // ─── 8.1 #3 Supplier / Vendor ────────────────────────────────────────────────
 model Supplier {
-  id             String   @id @default(cuid())
-  code           String   @unique
-  name           String
-  aliases        String? // JSON array of alias names
-  country        String
-  city           String?
-  status         String   @default("APPROVED") // APPROVED | PENDING | INACTIVE | BLACKLISTED
-  categories     String? // JSON array
-  incoterms      String?
-  leadTimeDays   Int?
-  paymentTerms   String?
-  certifications String? // JSON array {name, expiresAt}
-  contacts       String? // JSON array
-  evidenceLabel  String   @default("PROPOSED TARGET CAPABILITY")
-  createdAt      DateTime @default(now())
+  id               String   @id @default(cuid())
+  code             String   @unique
+  name             String
+  aliases          String? // JSON array of alias names
+  country          String
+  city             String?
+  status           String   @default("APPROVED") // APPROVED | PENDING | INACTIVE | BLACKLISTED
+  categories       String? // JSON array
+  incoterms        String?
+  leadTimeDays     Int?
+  paymentTerms     String?
+  certifications   String? // JSON array {name, expiresAt}
+  contacts         String? // JSON array
+  relationshipType String?  @default("VERIFIED_COMMERCIAL") // VERIFIED_COMMERCIAL | HISTORICAL | PREFERRED_SUPPLIER | JOINT_VENTURE | BRAND_REPRESENTATION | PENDING_CONFIRMATION
+  brandRepresented String?  // e.g. "Master Builders Solutions / BASF", "Hyundai Elevators", "CASE", "SCHWING", "Sarens"
+  tradeRoute       String?  // e.g. "UAE Aggregate Marine Route", "Hamburg-KBSP Ocean Route"
+  evidenceLabel    String   @default("PROPOSED TARGET CAPABILITY")
+  createdAt        DateTime @default(now())
 
-  quotes    Quote[]
-  contracts Contract[]
-  pos       PurchaseOrder[]
-  shipments Shipment[]
-  scoreSnapshots SupplierScoreSnapshot[]
-  riskSignals RiskSignal[]
-  exceptionCases ExceptionCase[]
+  quotes           Quote[]
+  contracts        Contract[]
+  pos              PurchaseOrder[]
+  shipments        Shipment[]
+  scoreSnapshots   SupplierScoreSnapshot[]
+  riskSignals      RiskSignal[]
+  exceptionCases   ExceptionCase[]
 }
 
 // ─── 8.1 #4 Material / SKU / Part ────────────────────────────────────────────
 model Material {
-  id          String @id @default(cuid())
-  sku         String @unique
-  name        String
-  description String?
-  uom         String
-  category    String?
-  criticality String  @default("STANDARD") // CRITICAL | HIGH | STANDARD
-  mpn         String? // manufacturer part number
-  storageConditions String?
-  aliases     String? // JSON array of controlled aliases
+  id                     String  @id @default(cuid())
+  sku                    String  @unique
+  name                   String
+  description            String?
+  uom                    String
+  category               String?
+  criticality            String  @default("STANDARD") // CRITICAL | HIGH | STANDARD
+  mpn                    String? // manufacturer part number
+  storageConditions      String?
+  aliases                String? // JSON array of controlled aliases
+  standard               String? // e.g. "BS 4449 Grade B500B", "EN 10025-2 S355JR", "ASTM C33", "IEC 62271"
+  densityKgM3            Float?  // e.g. 7850 for steel, 2650 for aggregate, 2400 for concrete
+  unitWeightKg           Float?  // per UOM
+  originCountry          String?
+  currentMarketBenchmark Float?  // Public benchmark price
+  benchmarkCurrency      String? @default("USD")
+  benchmarkSource        String? // e.g. "MEED / London Metal Exchange / GCC Regional Index"
+  benchmarkDate          DateTime?
+  benchmarkFreshness     String? @default("fresh") // fresh | aging | stale
 
-  prLines      PRLine[]
-  poLines      POLine[]
-  inventoryLots InventoryLot[]
-  receipts     GoodsReceipt[]
+  prLines              PRLine[]
+  poLines              POLine[]
+  inventoryLots        InventoryLot[]
+  receipts             GoodsReceipt[]
   materialRequirements MaterialRequirement[]
 }
 
@@ -274,6 +302,26 @@ model Shipment {
   supplierId       String?
   projectId        String?
   created          DateTime  @default(now())
+
+  // Material Weight & Cargo Logistics Hierarchy (Section 7)
+  netWeightKg           Float?
+  grossWeightKg         Float?
+  tareWeightKg          Float?
+  measuredWeightKg      Float?    // Actual weighbridge / scale measurement
+  calcWeightKg          Float?    // Density x dimensions calculated weight
+  weightDiscrepancyPct  Float?    // Abs % delta between declared gross vs measured
+  weightToleranceStatus String?   @default("WITHIN_TOLERANCE") // WITHIN_TOLERANCE | DISCREPANCY_FLAGGED | NOT_WEIGHED
+  weightTolerancePolicy String?   @default("±2.5% max allowable variance")
+  weightDataSource      String?   // WEIGHBRIDGE | PACKING_LIST | BOL | CALCULATION | ESTIMATE
+
+  // Landed Cost & Logistics Economics (Section 8)
+  oceanFreightCost      Float?
+  marineInsuranceCost   Float?
+  customsDutyCost       Float?    // 5% standard GCC unified customs tariff
+  portHandlingCost      Float?    // KBSP or Hidd Jetty port handling & transport
+  totalLandedCost       Float?    // FOB + Freight + Insurance + Duty + Handling
+  currency              String?   @default("USD")
+  tradeRouteName        String?   // e.g. "UAE Gabbro Aggregate Marine Route", "Hamburg-KBSP Ocean Route"
 
   legs         ShipmentLeg[]
   poLines      POLine[]
@@ -850,4 +898,87 @@ model Notification {
   note          String?
 
   case ExceptionCase? @relation(fields: [caseId], references: [id])
+}
+
+// ─── ADD-ON: ProjectWorkPackage ──────────────────────────────────────────────
+model ProjectWorkPackage {
+  id           String    @id @default(cuid())
+  projectId    String
+  code         String    // e.g. "WP-CIVIL-01", "WP-MEP-02"
+  name         String
+  scope        String
+  budgetBhd    Float?
+  plannedStart DateTime?
+  plannedEnd   DateTime?
+  status       String    @default("ACTIVE")
+  owner        String?
+
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@unique([projectId, code])
+}
+
+// ─── ADD-ON: PriceBenchmark ──────────────────────────────────────────────────
+model PriceBenchmark {
+  id             String   @id @default(cuid())
+  materialSku    String
+  materialName   String
+  category       String
+  marketRegion   String   // e.g. "Bahrain Local", "UAE/GCC Regional", "Global/LME"
+  benchmarkPrice Float
+  currency       String   @default("USD")
+  uom            String
+  priceBasis     String   // e.g. "FOB Port", "Ex-Works", "Delivered Site DAP"
+  effectiveDate  DateTime
+  sourceName     String   // e.g. "MEED GCC Materials Monitor", "LME Cash", "SteelOrbis"
+  sourceUrl      String?
+  freshnessDays  Int      @default(0)
+  isDemo         Boolean  @default(false)
+  notes          String?
+  createdAt      DateTime @default(now())
+}
+
+// ─── ADD-ON: EquipmentAsset ──────────────────────────────────────────────────
+model EquipmentAsset {
+  id                 String   @id @default(cuid())
+  tag                String   @unique // e.g. "EQP-CRN-01"
+  name               String   // e.g. "Liebherr LTM 1500-8.1 500t Mobile Crane"
+  category           String   // CRANE | EXCAVATOR | PUMP | PAVER | TRANSPORTER | GENERATOR
+  make               String   // Liebherr | Caterpillar | Schwing | Vogele | Sarens/Kamag
+  model              String
+  capacity           Float?
+  capacityUnit       String?  // "tonnes", "m3/hr", "kVA"
+  ownershipStatus    String   @default("OWNED") // OWNED | JOINT_VENTURE | LEASED | UNDER_QUOTATION
+  operatingCondition String   @default("OPERATIONAL") // OPERATIONAL | MAINTENANCE | MOBILIZING | STANDBY
+  currentProjectCode String?  // e.g. "PRJ-2201"
+  assignedOperator   String?
+  hourlyRateBhd      Float?
+  mobilizationRoute  String?
+  notes              String?
+  createdAt          DateTime @default(now())
+}
+
+// ─── ADD-ON: CeoDecisionRecommendation ────────────────────────────────────────
+model CeoDecisionRecommendation {
+  id                      String    @id @default(cuid())
+  ref                     String    @unique // e.g. "DEC-2026-001"
+  category                String    // MATERIAL_SHORTAGE | PRICE_EXPOSURE | SHIPMENT_DELAY | SUPPLIER_AWARD | SPEC_CHANGE
+  title                   String
+  projectCode             String?
+  entityRef               String?   // e.g. "SHP-8802", "PO-3001", "PRJ-2201"
+  priority                String    @default("HIGH") // CRITICAL | HIGH | MEDIUM
+  currentSituation        String    // 3. Current verified situation
+  financialImpact         String    // 4. Financial impact
+  scheduleImpact          String    // 4. Schedule impact
+  optionsEvaluated        String    // 5. Options evaluated (JSON text)
+  tradeoffsAndAssumptions String    // 6. Trade-offs and assumptions
+  recommendedAction       String    // 7. Recommended action
+  rationale               String    // 7. Rationale
+  accountableOwner        String    // 8. Accountable function/owner
+  nextOperationalStep     String    // 9. Next operational step
+  reviewConditions        String    // 10. Conditions to revisit
+  status                  String    @default("PENDING_CEO_REVIEW") // PENDING_CEO_REVIEW | APPROVED | REJECTED | EXECUTED
+  approvedBy              String?
+  approvedAt              DateTime?
+  createdAt               DateTime  @default(now())
 }
