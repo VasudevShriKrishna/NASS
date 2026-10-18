@@ -90,6 +90,11 @@ export const SEA_NODES: Record<string, { lng: number; lat: number; name: string 
   NINGBO_OUT: { lng: 122.35, lat: 29.6, name: "Zhoushan offshore" },
   SHANGHAI: { lng: 121.49, lat: 31.23, name: "Shanghai" },
   NINGBO: { lng: 121.85, lat: 29.87, name: "Ningbo" },
+  BUSAN: { lng: 129.04, lat: 35.10, name: "Busan" },
+  BUSAN_OUT: { lng: 129.3, lat: 34.8, name: "Korea Strait" },
+  RAK_QUARRY: { lng: 56.03, lat: 25.86, name: "Ras Al Khaimah Stevin Rock" },
+  RAK_OUT: { lng: 55.95, lat: 26.05, name: "RAK coastal approach" },
+  HIDD_JETTY: { lng: 50.68, lat: 26.22, name: "NASS Hidd Aggregate Jetty" },
   // Suez corridor
   PORT_SAID_APPROACH: { lng: 32.15, lat: 31.55, name: "Port Said approach" },
   PORT_SAID: { lng: 32.32, lat: 31.42, name: "Port Said (Suez Canal N)" },
@@ -168,6 +173,8 @@ export const LANES_TO_KBSP: Record<string, string[]> = {
   ANTWERP: ["ANTWERP", "SCHELDT_MID", "ANTWERP_OUT", "DUTCH_COAST", "DOVER", "CHANNEL_MID", "CHANNEL_W", "USHANT_W", "BISCAY_N", "BISCAY_W", "FINISTERRE_W", "GALICIA", "PORTUGAL", "ST_VINCENT_W", "GIBRALTAR_W", "GIBRALTAR", "ALBORAN", "ALBORAN_E", "BALEARIC_S", "W_SARDINIA_S", "S_OF_SARDINIA", "SICILY_STRAIT_W", "SICILY_STRAIT", "MALTA_S", "S_OF_MALTA", "MED_SEA_E", "S_OF_CRETE", "S_OF_CRETE_E", "MED_EAST", "PORT_SAID_APPROACH", "PORT_SAID", "SUEZ_CANAL", "GULF_OF_SUEZ", "GUBAL", "RED_SEA_N", "RED_SEA_MID", "RED_SEA_MID2", "RED_SEA_S", "RED_SEA_MOUTH", "BAB_EL_MANDEB", "ADEN_M", "ADEN_W", "ADEN_E", "ARABIAN_SEA_N", "OMAN_COAST", "RAS_AL_HADD_W", "OMAN_CAPE", ...KBS_APPROACH],
   GOTHENBURG: ["GOTHENBURG", "KATTEGAT", "SKAGEN", "NORTH_SEA_DK", "NORTH_SEA", "DOVER", "CHANNEL_MID", "CHANNEL_W", "USHANT_W", "BISCAY_N", "BISCAY_W", "FINISTERRE_W", "GALICIA", "PORTUGAL", "ST_VINCENT_W", "GIBRALTAR_W", "GIBRALTAR", "ALBORAN", "ALBORAN_E", "BALEARIC_S", "W_SARDINIA_S", "S_OF_SARDINIA", "SICILY_STRAIT_W", "SICILY_STRAIT", "MALTA_S", "S_OF_MALTA", "MED_SEA_E", "S_OF_CRETE", "S_OF_CRETE_E", "MED_EAST", "PORT_SAID_APPROACH", "PORT_SAID", "SUEZ_CANAL", "GULF_OF_SUEZ", "GUBAL", "RED_SEA_N", "RED_SEA_MID", "RED_SEA_MID2", "RED_SEA_S", "RED_SEA_MOUTH", "BAB_EL_MANDEB", "ADEN_M", "ADEN_W", "ADEN_E", "ARABIAN_SEA_N", "OMAN_COAST", "RAS_AL_HADD_W", "OMAN_CAPE", ...KBS_APPROACH],
   IZMIR: ["IZMIR", "IZMIR_OUT", "AEGEAN_M", "AEGEAN_S", "KASOS_E", "S_OF_CRETE_E", "MED_EAST", "PORT_SAID_APPROACH", "PORT_SAID", "SUEZ_CANAL", "GULF_OF_SUEZ", "GUBAL", "RED_SEA_N", "RED_SEA_MID", "RED_SEA_MID2", "RED_SEA_S", "RED_SEA_MOUTH", "BAB_EL_MANDEB", "ADEN_M", "ADEN_W", "ADEN_E", "ARABIAN_SEA_N", "OMAN_COAST", "RAS_AL_HADD_W", "OMAN_CAPE", ...KBS_APPROACH],
+  BUSAN: ["BUSAN", "BUSAN_OUT", "EAST_CHINA_SEA", "TAIWAN_STRAIT", "SCS_WEST", "SCS_CENTRAL", "VIETNAM_COAST", "BORNEO_W", "NATUNA_W", "NATUNA_S", "SINGAPORE_STRAIT", "PHILLIP_CHANNEL", "MALACCA_S", "MALACCA_MID", "MALACCA_N", "ANDAMAN_APPROACH", "ACEH_NW", "BAY_OF_BENGAL_S", "CEYLON_SE", "CEYLON_S", "COLOMBO_S", "LACCADIVE", "INDIA_TIP_W", "ARABIAN_SEA_SW", "ARABIAN_SEA_W", "ARABIAN_SEA_N", "OMAN_COAST", "RAS_AL_HADD_W", "OMAN_CAPE", ...KBS_APPROACH],
+  RAK: ["RAK_QUARRY", "RAK_OUT", "HORMUZ_W", "GULF_INNER", "GULF_MID", "GULF_MID_W", "BAHRAIN_CHANNEL", "KBSP_APPROACH", "KBSP"],
 };
 
 /** Transshipment insertions — only when a shipment's legs document the call. */
@@ -207,6 +214,13 @@ const PORT_KEY_ALIASES: Record<string, string> = {
   "askar quarry": "ASKAR_QUARRY",
   "nass askar yard": "ASKAR_YARD",
   "askar yard": "ASKAR_YARD",
+  busan: "BUSAN",
+  "ras al khaimah": "RAK",
+  "stevin rock": "RAK",
+  rak: "RAK",
+  "hidd jetty": "KBSP",
+  "nass hidd aggregate jetty": "KBSP",
+  hidd: "KBSP",
 };
 
 /** Map a free-text port string to a lane/node key. Bahrain-only destination. */
@@ -220,7 +234,7 @@ export function laneKeyFor(raw: string | null | undefined): string | null {
 export function isBahrainDestination(raw: string | null | undefined): boolean {
   if (!raw) return false;
   const s = raw.toLowerCase();
-  return s.includes("bahrain") || s.includes("khalifa bin salman") || s.includes("kbsp") || s.includes("askar") || s.includes(", bh");
+  return s.includes("bahrain") || s.includes("khalifa bin salman") || s.includes("kbsp") || s.includes("askar") || s.includes("hidd") || s.includes(", bh");
 }
 
 /* ── Distance-based polyline: vessels only ever exist ON the route ───────── */

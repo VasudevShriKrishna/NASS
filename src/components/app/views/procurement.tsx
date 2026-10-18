@@ -326,6 +326,11 @@ function SourcingTab() {
                   <span className="flex flex-wrap items-center gap-2">
                     <span className="font-mono">{rfq.ref}</span>
                     <StatusPill value={rfq.status} />
+                    {rfq.dueDate && new Date(rfq.dueDate).getTime() < Date.now() && rfq.status !== "AWARDED" && rfq.status !== "CLOSED" && (
+                      <span className="inline-flex items-center gap-1 rounded border border-rose-500/30 bg-rose-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-rose-400" title="RFQ submission deadline has expired. Historical quotations and rankings are locked and preserved.">
+                        DEADLINE EXPIRED · HISTORICAL RANKING
+                      </span>
+                    )}
                     <span className="text-xs font-normal text-muted-foreground">
                       from <span className="font-mono font-medium text-foreground">{rfq.pr.ref}</span> · {rfq.pr.requester}
                     </span>

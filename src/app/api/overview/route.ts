@@ -5,8 +5,8 @@ export const dynamic = "force-dynamic";
 
 /** Control-tower aggregates (M21). Every tile drills to row-level records. */
 export async function GET() {
-  const [shipments, exceptions, prs, lots, signals, connectors, bols, assets] = await Promise.all([
-    db.shipment.findMany({ select: { id: true, ref: true, status: true, freshness: true, displayEta: true, supplierPromisedEta: true, mode: true, lastEventAt: true, carrierEtaFreshness: true } }),
+  const [shipments, exceptions, prs, lots, signals, connectors, bols, assets, projects, ceoActions, reqs] = await Promise.all([
+    db.shipment.findMany({ select: { id: true, ref: true, status: true, freshness: true, displayEta: true, supplierPromisedEta: true, mode: true, lastEventAt: true, carrierEtaFreshness: true, vesselName: true, carrier: true } }),
     db.exceptionCase.findMany({ select: { id: true, ref: true, state: true, severity: true, category: true, title: true, dueDate: true, createdAt: true } }),
     db.purchaseRequest.findMany({ select: { id: true, ref: true, status: true, priority: true } }),
     db.inventoryLot.findMany({ select: { id: true, status: true, quantity: true, uom: true, materialId: true } }),
@@ -14,6 +14,9 @@ export async function GET() {
     db.connector.findMany(),
     db.billOfLading.findMany({ select: { id: true, status: true, matchStatus: true, isActive: true } }),
     db.asset.findMany({ select: { id: true, tag: true, condition: true, telemetryStale: true, assetClass: true } }),
+    db.project.findMany({ select: { id: true, code: true, name: true, site: true, status: true, workPackage: true } }),
+    db.actionCommand.findMany({ where: { state: "AWAITING_APPROVAL" }, orderBy: { createdAt: "desc" } }),
+    db.materialRequirement.findMany({ select: { id: true, status: true, quantity: true, criticality: true } }),
   ]);
 
   const now = Date.now();
@@ -73,6 +76,8 @@ export async function GET() {
       supplierPromisedEta: s.supplierPromisedEta,
       etaSlipped: !!(s.displayEta && s.supplierPromisedEta && s.displayEta > s.supplierPromisedEta),
       lastEventAt: s.lastEventAt,
+      vesselName: s.vesselName,
+      carrier: s.carrier,
     })),
     exceptions: exceptions
       .filter((e) => !["RESOLVED", "CANCELLED"].includes(e.state))
@@ -81,5 +86,23 @@ export async function GET() {
     stockSummary: Object.fromEntries(
       Object.entries(stock).map(([k, v]) => [k, { lots: v.length, quantity: v.reduce((a, l) => a + l.quantity, 0) }])
     ),
+    ceoDecisions: ceoActions.map((a) => ({
+      id: a.id,
+      ref: a.ref,
+      commandType: a.commandType,
+      riskLevel: a.riskLevel,
+      targetType: a.targetType,
+      targetRef: a.targetRef,
+      payload: a.payload,
+      state: a.state,
+      requestedBy: a.requestedBy,
+      createdAt: a.createdAt,
+    })),
+    projectStats: {
+      active: projects.filter((p) => p.status === "ACTIVE").length,
+      historical: projects.filter((p) => p.status === "HISTORICAL ARCHIVE").length,
+      total: projects.length,
+      criticalReqs: reqs.filter((r) => r.criticality === "CRITICAL" || r.status === "AT_RISK").length,
+    },
   });
 }

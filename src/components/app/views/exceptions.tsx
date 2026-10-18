@@ -327,7 +327,7 @@ export function ExceptionsView({ drillRef }: { drillRef?: string | null }) {
 
   /* drillRef preselection is derived (no effect needed) — manual selection wins once the user clicks */
   const drillId = useMemo(() => (drillRef ? cases.find((c) => c.ref === drillRef)?.id ?? null : null), [drillRef, cases]);
-  const selectedId = manualId ?? drillId;
+  const selectedId = manualId ?? drillId ?? (filtered.length > 0 ? filtered[0].id : null);
 
   const detail = useApi<{ case: CaseDetail; evidence: EvidenceRow[] }>(selectedId ? `/api/exceptions/${selectedId}` : null);
 

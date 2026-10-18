@@ -10,6 +10,7 @@
  *    ETA provenance, BOL versioning, idempotency/dedupe, audit trail.
  */
 import { PrismaClient } from "@prisma/client";
+import { seedAddon } from "./seed-addon";
 
 const db = new PrismaClient();
 
@@ -56,6 +57,10 @@ async function main() {
   await db.pOLine.deleteMany();
   await db.purchaseOrder.deleteMany();
   await db.contract.deleteMany();
+  await db.ceoDecisionRecommendation.deleteMany();
+  await db.equipmentAsset.deleteMany();
+  await db.priceBenchmark.deleteMany();
+  await db.projectWorkPackage.deleteMany();
   await db.connector.deleteMany();
   await db.material.deleteMany();
   await db.project.deleteMany();
@@ -245,7 +250,7 @@ async function main() {
   await bolField(bolC.id, "package_count", "2", 0.99, 2, "2");
 
   // BOL reconciliations (PASS/WARN/FAIL/NOT_CHECKED + rule version)
-  const bolRec = (bolId: string, ruleCode: string, result: string, compared: object, diff: object | null, next?: string, checkedDays?: number) => db.bOLReconciliation.create({ data: { bolId, ruleCode, ruleVersion: "v1.2", result, recordsCompared: J(compared), differences: diff ? J(diff) : null, nextAction: next ?? null, checkedAt: checkedDays === undefined ? null : day(checkedDays) } });
+  const bolRec = (bolId: string, ruleCode: string, result: string, compared: object, diff: object | null, next?: string | null, checkedDays?: number) => db.bOLReconciliation.create({ data: { bolId, ruleCode, ruleVersion: "v1.2", result, recordsCompared: J(compared), differences: diff ? J(diff) : null, nextAction: next ?? null, checkedAt: checkedDays === undefined ? null : day(checkedDays) } });
   await bolRec(bolA.id, "REQ_CONTAINER_NUMBER", "FAIL", { bol: "MSC-4471", rule: "container number required for ocean master BOL" }, { container_number: "MISSING" }, "Discrepancy case EX-9006 — request clarification from supplier/forwarder (human-approved).", 11);
   await bolRec(bolA.id, "BOL_PO_QUANTITY", "WARN", { bolPackages: 12, packingList: 12, poLines: 3 }, { note: "Package count matches packing list; unit-level quantities cannot reconcile until container ID known." }, "Proceed after container number resolved.", 11);
   await bolRec(bolA.id, "BOL_PKGLIST_CONTAINER", "NOT_CHECKED", { packingList: "PL-7741" }, null, "Cannot compare — packing list has no container number either.", 11);
@@ -345,7 +350,7 @@ async function main() {
   await db.goodsReceipt.create({ data: { ref: "GRN-5001", poLineId: po5l1.id, shipmentId: shp7.id, warehouseId: whAskar.id, materialId: mCement.id, expectedQty: 1200, receivedQty: 1200, uom: "bag", status: "CLOSED", qcResult: "PASS", discrepancyType: "NONE", receivedBy: "M. Okafor (Storekeeper)", receivedAt: day(6), grnNo: "GRN-5001", note: "Full receipt; ledger reconciled." } });
   await db.goodsReceipt.create({ data: { ref: "GRN-5002", poLineId: po1l1.id, warehouseId: whMarina.id, materialId: mRebar.id, expectedQty: 120, receivedQty: 72, uom: "tonne", status: "PARTIALLY_RECEIVED", qcResult: "PASS", discrepancyType: "NONE", receivedBy: "A. Haddad (Storekeeper)", receivedAt: day(2), grnNo: "GRN-5002", note: "Partial 72/120 t — remaining 48 t stays open against PO-3001 (M12 acceptance)." } });
   const grn3 = await db.goodsReceipt.create({ data: { ref: "GRN-5003", poLineId: po4l1.id, shipmentId: shp6.id, warehouseId: whSitra.id, materialId: mPump.id, expectedQty: 20, receivedQty: 18, uom: "unit", status: "QUARANTINED", qcResult: "FAIL", discrepancyType: "SHORT", discrepancyQty: 2, photos: J(["evidence://grn5003/photo-01.jpg", "evidence://grn5003/photo-02.jpg"]), receivedBy: "R. Bello (Storekeeper)", receivedAt: day(2), grnNo: "GRN-5003", note: "Short 2 units vs packing list; 2 of 18 with damaged seals — quarantined. Workflow C case EX-9007." } });
-  await db.goodsReceipt.create({ data: { ref: "GRN-5004", poLineId: po5l1.id, warehouseId: whAskar.id, materialId: mCement.id, expectedQty: 0, receivedQty: 0, uom: "bag", status: "CLOSED", qcResult: "PASS", discrepancyType: "NONE", receivedBy: "system (webhook)", receivedAt: day(6), grnNo: null, note: "Duplicate WMS webhook with same provider event id WMS-GR-9912 — deduplicated by idempotency key; no double stock (M12 acceptance)." } });
+  await db.goodsReceipt.create({ data: { ref: "GRN-5004", poLineId: po5l1.id, warehouseId: whAskar.id, materialId: mCement.id, expectedQty: 0, receivedQty: 0, uom: "bag", status: "CLOSED", qcResult: "NOT_APPLICABLE", discrepancyType: "NONE", receivedBy: "system (webhook)", receivedAt: day(6), grnNo: null, note: "Duplicate WMS webhook with same provider event id WMS-GR-9912 — deduplicated by idempotency key; no double stock (M12 acceptance). QC not applicable to deduplicated zero-quantity event." } });
   void grn3;
 
   // ── Assets (8.1 #18, M15) — class exposed clearly ────────────────────────
@@ -495,16 +500,16 @@ async function main() {
   void act1; void act7;
 
   // ── Connectors (M23) ─────────────────────────────────────────────────────
-  const conn = (name: string, category: string, mode: string, status: string, freshness: string, lastSync: Date | null, latency: number, failed: number, retry: number, dlq: number, quota: number | null, coverage: string, label: string) => db.connector.create({ data: { name, category, mode, status, freshnessClass: freshness, lastSyncAt: lastSync, latencyMs: latency, failedRecords: failed, retryQueue: retry, deadLetter: dlq, apiQuotaPct: quota, coverageNote: coverage, evidenceLabel: label } });
+  const conn = (name: string, category: string, mode: string, status: string, freshness: string, lastSync: Date | null, latency: number | null, failed: number, retry: number, dlq: number, quota: number | null, coverage: string, label: string) => db.connector.create({ data: { name, category, mode, status, freshnessClass: freshness, lastSyncAt: lastSync, latencyMs: latency, failedRecords: failed, retryQueue: retry, deadLetter: dlq, apiQuotaPct: quota, coverageNote: coverage, evidenceLabel: label } });
   await conn("NASS ERP adapter (PR/PO/GRN)", "ERP", "POLL", "HEALTHY", "fresh", min(12), 420, 0, 0, 0, 62, "Incremental poll every 15 min; cursor checkpointed after durable persistence.", "REQUIRES CUSTOMER DATA/INTEGRATION");
   await conn("Ocean carrier tracking API", "CARRIER", "WEBHOOK", "OUTAGE", "stale", day(6), null, 3, 3, 1, null, "MSC + CMA CGM covered; Hapag-Lloyd outage since 6 d ago — bounded retries, DLQ holding 1.", "REQUIRES CUSTOMER DATA/INTEGRATION");
   await conn("Forwarder portal (Coastal Logistics)", "FORWARDER", "POLL", "HEALTHY", "fresh", min(47), 890, 0, 0, 0, 41, "Booking + milestone feed, 30 min poll.", "REQUIRES CUSTOMER DATA/INTEGRATION");
   await conn("AIS vessel position feed", "AIS", "POLL", "DEGRADED", "aging", hr(5), 1400, 1, 1, 0, 88, "Vessel positions only — never container positions (Rule 4).", "PUBLICLY EVIDENCED");
-  await conn("Port community system (Khalifa Bin Salman)", "PORT", "BATCH", "HEALTHY", "fresh", hr(7), 2100, 0, 0, 0, null, "Berth windows + discharge events, hourly batch.", "REQUIRES CUSTOMER DATA/INTEGRATION");
+  await conn("Port community system (Khalifa Bin Salman)", "PORT", "BATCH", "HEALTHY", "stale", hr(7), 2100, 0, 0, 0, null, "Berth windows + discharge events, hourly batch (stale: 7h elapsed since last batch sync).", "REQUIRES CUSTOMER DATA/INTEGRATION");
   await conn("Procurement mailbox intake", "EMAIL", "WEBHOOK", "HEALTHY", "fresh", min(4), 120, 0, 0, 0, null, "Controlled mailbox with rules; inbound treated as untrusted data (prompt-injection defense).", "REQUIRES CUSTOMER DATA/INTEGRATION");
   await conn("WMS stock ledger", "WMS", "POLL", "HEALTHY", "fresh", min(9), 210, 0, 0, 0, 55, "On-hand + reservations, 15 min poll.", "REQUIRES CUSTOMER DATA/INTEGRATION");
   await conn("IoT/SCADA gateway", "IOT", "POLL", "DEGRADED", "stale", day(5), null, 14, 4, 2, null, "AST-CH-02 telemetry stale — data-health issue opened.", "REQUIRES CUSTOMER DATA/INTEGRATION");
-  await conn("Customs broker portal", "CUSTOMS", "MANUAL", "HEALTHY", "unavailable", null, null, 0, 0, 0, null, "Manual broker updates only — status labeled manually_reported; never implied clearance.", "REQUIRES CUSTOMER DATA/INTEGRATION");
+  await conn("Customs broker portal", "CUSTOMS", "MANUAL", "STANDBY", "never", null, null, 0, 0, 0, null, "Manual broker updates only — status labeled manually_reported; not an automated sync.", "REQUIRES CUSTOMER DATA/INTEGRATION");
   await conn("CMMS / maintenance system", "CMMS", "BATCH", "HEALTHY", "fresh", hr(3), 640, 0, 0, 0, null, "Work orders + inspections, 4 h batch.", "REQUIRES CUSTOMER DATA/INTEGRATION");
 
   // ── Notifications (M19) ──────────────────────────────────────────────────
@@ -542,6 +547,9 @@ async function main() {
   await aud("system", "SYSTEM", "DEDUPE_REJECTED", "grn", "GRN-5004", "WMS-GR-9912", null, null, "Duplicate webhook ignored via idempotency key", "corr-5004", "intake v2.0", day(6));
   await aud("webhook-wms", "SERVICE", "STOCK_DELTA_APPLIED", "inventory_lot", "LOT-CEM-1180", "WH-SITRA", "1200", "830", "1200 bags received less 370 issued (valid movement doc)", "corr-5001", "ledger v1.4", hr(20));
   await aud("Policy engine v1.0", "SERVICE", "POLICY_DECISION", "action", act1.id, "ACT-0001", null, "ALLOW", "External comms need approval — routed to approval", "corr-4471", "EXT_COMMS v1.0", hr(28));
+
+  // ── Add-on Master Scope: Projects, Weight Hierarchy, Price Benchmarks, CEO Decisions ──
+  await seedAddon(db);
 
   console.log("Seed complete ✔");
 }

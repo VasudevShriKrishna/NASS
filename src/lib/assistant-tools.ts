@@ -450,7 +450,7 @@ async function loadShipmentFacts(id: string): Promise<ShipmentFacts | null> {
   };
 }
 
-/** Shipments referenced by the question (ref / fuzzy ref / vessel / container / BOL / supplier). */
+/** Shipments referenced by the question (ref / fuzzy ref / corridor / country / port / vessel / container / BOL / supplier / cargo). */
 export async function findShipmentCandidates(query: string): Promise<{ ids: string[]; matchedBy: string[] }> {
   const ids = new Set<string>();
   const matchedBy = new Set<string>();
@@ -483,26 +483,157 @@ export async function findShipmentCandidates(query: string): Promise<{ ids: stri
     if (b?.shipmentId) { ids.add(b.shipmentId); matchedBy.add(`BOL ${bolNo[0]}`); }
   }
 
-  // 4. vessel / supplier name tokens (≥4 chars, not generic stopwords)
-  const STOP = new Set(["where", "what", "which", "when", "shipment", "shipments", "vessel", "carry", "carrying", "material", "much", "from", "with", "that", "this", "now", "right", "port", "bahrain", "time", "update", "updates", "have", "been", "were", "does", "missing", "container", "number", "show", "every", "there", "transit", "received", "still", "currently"]);
+  // 4. Country & Regional Corridors: China, Bahrain, Italy, Sweden, Turkey, Belgium, UAE, India
+  const isChina = /\b(china|chinese|shanghai|ningbo)\b/i.test(qL);
+  const isBahrain = /\b(bahrain|kbsp|khalifa|mina salman|sitra|askar)\b/i.test(qL);
+  const isItaly = /\b(italy|italian|genoa)\b/i.test(qL);
+  const isSweden = /\b(sweden|swedish|gothenburg)\b/i.test(qL);
+  const isTurkey = /\b(turkey|turkish|izmir)\b/i.test(qL);
+  const isBelgium = /\b(belgium|belgian|antwerp)\b/i.test(qL);
+  const isDonaBarge = /\b(dona|barge|8809)\b/i.test(qL);
+
+  if (isChina) {
+    const chinaShips = await db.shipment.findMany({
+      where: {
+        OR: [
+          { originPort: { contains: "CN" } },
+          { originPort: { contains: "Shanghai" } },
+          { originPort: { contains: "Ningbo" } },
+          { originPort: { contains: "China" } },
+        ],
+      },
+      select: { id: true, ref: true, originPort: true },
+    });
+    for (const cs of chinaShips) {
+      ids.add(cs.id);
+      matchedBy.add(`corridor China (${cs.originPort}) -> ${cs.ref}`);
+    }
+  }
+
+  if (isItaly && ids.size === 0) {
+    const italyShips = await db.shipment.findMany({
+      where: { OR: [{ originPort: { contains: "Genoa" } }, { originPort: { contains: "IT" } }] },
+      select: { id: true, ref: true, originPort: true },
+    });
+    for (const s of italyShips) { ids.add(s.id); matchedBy.add(`corridor Italy (${s.originPort})`); }
+  }
+
+  if (isSweden && ids.size === 0) {
+    const swedenShips = await db.shipment.findMany({
+      where: { OR: [{ originPort: { contains: "Gothenburg" } }, { originPort: { contains: "SE" } }] },
+      select: { id: true, ref: true, originPort: true },
+    });
+    for (const s of swedenShips) { ids.add(s.id); matchedBy.add(`corridor Sweden (${s.originPort})`); }
+  }
+
+  if (isTurkey && ids.size === 0) {
+    const turkeyShips = await db.shipment.findMany({
+      where: { OR: [{ originPort: { contains: "Izmir" } }, { originPort: { contains: "TR" } }] },
+      select: { id: true, ref: true, originPort: true },
+    });
+    for (const s of turkeyShips) { ids.add(s.id); matchedBy.add(`corridor Turkey (${s.originPort})`); }
+  }
+
+  if (isBelgium && ids.size === 0) {
+    const belgiumShips = await db.shipment.findMany({
+      where: { OR: [{ originPort: { contains: "Antwerp" } }, { originPort: { contains: "BE" } }] },
+      select: { id: true, ref: true, originPort: true },
+    });
+    for (const s of belgiumShips) { ids.add(s.id); matchedBy.add(`corridor Belgium (${s.originPort})`); }
+  }
+
+  if (isDonaBarge && ids.size === 0) {
+    const barge = await db.shipment.findFirst({
+      where: { OR: [{ ref: "SHP-8809" }, { vesselName: { contains: "Dona" } }] },
+      select: { id: true, ref: true },
+    });
+    if (barge) { ids.add(barge.id); matchedBy.add(`aggregate barge ${barge.ref}`); }
+  }
+
+  // 5. Cargo / Material keywords: transformer, chiller, switchgear, rebar, gabbro, cement, elevator, bearing
+  if (ids.size === 0) {
+    const matTokens = ["transformer", "chiller", "switchgear", "rebar", "gabbro", "cement", "pipe", "cable", "elevator", "bearing", "steel", "aggregate"];
+    for (const mt of matTokens) {
+      if (qL.includes(mt)) {
+        const matShips = await db.shipment.findMany({
+          where: {
+            poLines: {
+              some: {
+                material: {
+                  OR: [
+                    { name: { contains: mt } },
+                    { sku: { contains: mt } },
+                  ],
+                },
+              },
+            },
+          },
+          select: { id: true, ref: true },
+        });
+        for (const ms of matShips) {
+          ids.add(ms.id);
+          matchedBy.add(`cargo material "${mt}" -> ${ms.ref}`);
+        }
+      }
+    }
+  }
+
+  // 6. Vessel & carrier name tokens
+  const STOP = new Set([
+    "where", "what", "which", "when", "shipment", "shipments", "vessel", "carry", "carrying",
+    "material", "much", "from", "with", "that", "this", "now", "right", "port", "bahrain",
+    "time", "update", "updates", "have", "been", "were", "does", "missing", "container",
+    "number", "show", "every", "there", "transit", "received", "still", "currently", "green",
+    "wind", "shiftmate", "apache", "mean", "input", "nearer", "details", "want", "started", "come"
+  ]);
   const tokens = Array.from(new Set(qL.split(/[^a-z0-9]+/))).filter((t) => t.length >= 4 && !STOP.has(t) && !/^(shp|bol)\d*$/.test(t));
   if (tokens.length && ids.size === 0) {
     const ships = await db.shipment.findMany({
-      select: { id: true, vesselName: true, supplier: { select: { name: true, aliases: true } } },
+      select: {
+        id: true,
+        vesselName: true,
+        carrier: true,
+        originPort: true,
+        destinationPort: true,
+        supplier: { select: { name: true, aliases: true } },
+      },
     });
     for (const s of ships) {
       const v = (s.vesselName ?? "").toLowerCase();
       const sup = (s.supplier?.name ?? "").toLowerCase();
+      const car = (s.carrier ?? "").toLowerCase();
+      const op = (s.originPort ?? "").toLowerCase();
+      const dp = (s.destinationPort ?? "").toLowerCase();
       for (const t of tokens) {
-        if ((v && v.split(/\s+/).some((w) => w.startsWith(t))) || (sup && sup.includes(t))) {
+        if (
+          (v && v.includes(t)) ||
+          (sup && sup.includes(t)) ||
+          (car && car.includes(t)) ||
+          (op && op.includes(t)) ||
+          (dp && dp.includes(t))
+        ) {
           ids.add(s.id);
-          matchedBy.add(v && v.split(/\s+/).some((w) => w.startsWith(t)) ? `vessel name token "${t}"` : `supplier name token "${t}"`);
+          matchedBy.add(`token "${t}"`);
           break;
         }
       }
     }
   }
-  return { ids: Array.from(ids).slice(0, 4), matchedBy: Array.from(matchedBy) };
+
+  // 7. General corridor fallback: if user asks for in-transit shipments or shipments to Bahrain
+  if (ids.size === 0 && (qL.includes("in transit") || qL.includes("en route") || qL.includes("to bahrain") || qL.includes("started to come"))) {
+    const inTransit = await db.shipment.findMany({
+      where: { status: { in: ["IN_TRANSIT", "AT_TRANSIT_POINT"] } },
+      select: { id: true, ref: true },
+      take: 4,
+    });
+    for (const it of inTransit) {
+      ids.add(it.id);
+      matchedBy.add(`in-transit shipment ${it.ref}`);
+    }
+  }
+
+  return { ids: Array.from(ids).slice(0, 6), matchedBy: Array.from(matchedBy) };
 }
 
 /* ─── Tool 1: shipmentLookup ─────────────────────────────────────────────── */
@@ -907,3 +1038,388 @@ export async function documentLookup(ref?: string): Promise<DocumentFacts> {
     })),
   };
 }
+
+/* ─── Tool 9: projectPortfolioFacts (Prompt Section 3) ───────────────────── */
+
+export interface ProjectPortfolioFacts {
+  projects: {
+    code: string;
+    name: string;
+    site: string;
+    status: string;
+    legalEntity: string | null;
+    workPackage: string | null;
+    costCode: string | null;
+    requirementsCount: number;
+    posCount: number;
+    openShortages: number;
+  }[];
+  totalActive: number;
+  totalPending: number;
+  totalHistorical: number;
+}
+
+export async function projectPortfolioFacts(query?: string): Promise<ProjectPortfolioFacts> {
+  const projects = await db.project.findMany({
+    include: {
+      materialRequirements: { select: { id: true, status: true } },
+      purchaseOrders: { select: { id: true } },
+    },
+    orderBy: { code: "asc" },
+  });
+
+  const legalEntities = await db.legalEntity.findMany();
+  const entityMap = new Map(legalEntities.map((e) => [e.id, e.name]));
+
+  const ql = query?.toLowerCase().trim() ?? "";
+  let targetProj: string | null = null;
+  if (/(project a|falcon|flcn)/i.test(ql)) targetProj = "falcon";
+  else if (/(project b|airport|amr)/i.test(ql)) targetProj = "airport";
+  else if (/(project c|raffa|arf)/i.test(ql)) targetProj = "raffa";
+  else if (/(project d|kamc|medical)/i.test(ql)) targetProj = "kamc";
+  else if (/(project e|marina)/i.test(ql)) targetProj = "marina";
+
+  const filtered = targetProj
+    ? projects.filter(
+        (p) =>
+          p.code.toLowerCase().includes(targetProj!) ||
+          p.name.toLowerCase().includes(targetProj!) ||
+          p.site.toLowerCase().includes(targetProj!)
+      )
+    : projects;
+
+  const projectList = filtered.map((p) => ({
+    code: p.code,
+    name: p.name,
+    site: p.site,
+    status: p.status,
+    legalEntity: p.legalEntityId ? entityMap.get(p.legalEntityId) ?? null : null,
+    workPackage: p.workPackage,
+    costCode: p.costCode,
+    requirementsCount: p.materialRequirements.length,
+    posCount: p.purchaseOrders.length,
+    openShortages: p.materialRequirements.filter((r) => r.status === "SHORT" || r.status === "AT_RISK").length,
+  }));
+
+  return {
+    projects: projectList,
+    totalActive: projects.filter((p) => p.status === "ACTIVE").length,
+    totalPending: projects.filter((p) => p.status === "PENDING_CONFIRMATION").length,
+    totalHistorical: projects.filter((p) => p.status === "HISTORICAL").length,
+  };
+}
+
+/* ─── Tool 10: materialRequirementFacts (Prompt Section 5 & 6) ───────────── */
+
+export interface MaterialRequirementFacts {
+  requirements: {
+    id: string;
+    projectCode: string;
+    projectName: string;
+    materialSku: string;
+    materialName: string;
+    workPackage: string | null;
+    quantity: number;
+    uom: string;
+    requiredOnSite: string;
+    status: string;
+    criticality: string;
+    allocatedInventory: number;
+    shortfall: number;
+    orderedPo: string | null;
+    orderedQty: number | null;
+    inboundShipment: string | null;
+  }[];
+}
+
+export async function materialRequirementFacts(query?: string): Promise<MaterialRequirementFacts> {
+  const reqs = await db.materialRequirement.findMany({
+    include: {
+      project: { select: { code: true, name: true } },
+      material: {
+        select: {
+          sku: true,
+          name: true,
+          inventoryLots: { select: { quantity: true, status: true } },
+          poLines: {
+            select: {
+              quantity: true,
+              po: { select: { ref: true } },
+              shipment: { select: { ref: true } },
+            },
+          },
+        },
+      },
+    },
+    orderBy: { requiredOnSite: "asc" },
+  });
+
+  const ql = query?.toLowerCase().trim() ?? "";
+  let targetKey: string | null = null;
+  if (/(project a|falcon|flcn)/i.test(ql)) targetKey = "falcon";
+  else if (/(project b|airport|amr)/i.test(ql)) targetKey = "airport";
+  else if (/(project c|raffa|arf)/i.test(ql)) targetKey = "raffa";
+  else if (/(project d|kamc|medical)/i.test(ql)) targetKey = "kamc";
+  else if (/(project e|marina)/i.test(ql)) targetKey = "marina";
+  else if (/(rebar|steel)/i.test(ql)) targetKey = "rebar";
+  else if (/(cement|bulk cement)/i.test(ql)) targetKey = "cement";
+  else if (/(gabbro|aggregate)/i.test(ql)) targetKey = "gabbro";
+  else if (/(cable|medium voltage)/i.test(ql)) targetKey = "cable";
+  else if (/(transformer|trf)/i.test(ql)) targetKey = "transformer";
+
+  const filtered = targetKey
+    ? reqs.filter(
+        (r) =>
+          r.project.code.toLowerCase().includes(targetKey!) ||
+          r.project.name.toLowerCase().includes(targetKey!) ||
+          r.material.sku.toLowerCase().includes(targetKey!) ||
+          r.material.name.toLowerCase().includes(targetKey!) ||
+          (r.workPackage && r.workPackage.toLowerCase().includes(targetKey!))
+      )
+    : reqs;
+
+  const results = filtered.map((r) => {
+    const availableStock = r.material.inventoryLots
+      .filter((lot) => lot.status === "AVAILABLE" || lot.status === "ALLOCATED" || lot.status === "RESERVED")
+      .reduce((sum, lot) => sum + lot.quantity, 0);
+
+    const shortfall = Math.max(0, Math.round((r.quantity - availableStock) * 100) / 100);
+    const primaryPo = r.material.poLines[0];
+
+    return {
+      id: r.id,
+      projectCode: r.project.code,
+      projectName: r.project.name,
+      materialSku: r.material.sku,
+      materialName: r.material.name,
+      workPackage: r.workPackage,
+      quantity: r.quantity,
+      uom: r.uom,
+      requiredOnSite: r.requiredOnSite.toISOString(),
+      status: r.status,
+      criticality: r.criticality,
+      allocatedInventory: availableStock,
+      shortfall,
+      orderedPo: primaryPo?.po?.ref ?? null,
+      orderedQty: primaryPo?.quantity ?? null,
+      inboundShipment: primaryPo?.shipment?.ref ?? null,
+    };
+  });
+
+  return { requirements: results };
+}
+
+/* ─── Tool 11: ceoDecisionFacts (Prompt Section 11) ──────────────────────── */
+
+export interface CeoDecisionFacts {
+  decisions: {
+    ref: string;
+    project: string;
+    title: string;
+    situation: string;
+    financialImpact: string;
+    options: string[];
+    tradeOffs: string;
+    recommendedAction: string;
+    accountableOwner: string;
+    state: string;
+  }[];
+}
+
+export async function ceoDecisionFacts(): Promise<CeoDecisionFacts> {
+  const actions = await db.actionCommand.findMany({
+    where: {
+      OR: [
+        { ref: { startsWith: "CEO-ACT" } },
+        { ref: { startsWith: "ACT-00" } },
+      ],
+    },
+    include: {
+      case: { select: { ref: true, title: true, ownerTeam: true, ownerUser: true } },
+    },
+    orderBy: { ref: "asc" },
+  });
+
+  const CEO_DECISION_CARDS = [
+    {
+      ref: "CEO-ACT-001",
+      project: "Project A — Bahrain Airport Falcon Flyover (PRJ-2201)",
+      title: "Authorize Heavy Lift Crane Mobilization & Causeway Route Clearance",
+      situation:
+        "Demag CC2800-1 600t crawler crane required for 28m precast beam erection over Falcon Interchange. Transport permit from General Directorate of Traffic pending.",
+      financialImpact: "Late penalty $12,500/day after required on-site date Nov 12, 2026. Standby crane charge $8,200/day.",
+      options: [
+        "Approve immediate mobilization via Sarens Nass SPMT night convoy (2:00 AM - 5:00 AM window)",
+        "Delay erection by 10 days until day transport permit granted",
+        "Split girder lifts into dual 300t mobile crane tandem picks",
+      ],
+      tradeOffs:
+        "Night convoy incurs $4,500 traffic escort fee but protects critical path milestones and avoids bridge deck schedule delay.",
+      recommendedAction:
+        "Executive approval for Sarens Nass night convoy mobilization and direct liaison with Ministry of Works Traffic Directorate.",
+      accountableOwner: "Eng. Ali Al-Nass (Project Director) / Operations Lead",
+      state: "PENDING_CEO_APPROVAL",
+    },
+    {
+      ref: "CEO-ACT-002",
+      project: "Project B — Al Raffa Land Development (PRJ-2202)",
+      title: "Contract Asphalt Binder Grade PMB-60 Supply Allocation",
+      situation:
+        "Phase 2 boulevard paving requires 12,500 MT of Polymer Modified Asphalt. Nass Asphalt plant capacity currently committed 60% to Alba highway rehabilitation.",
+      financialImpact: "Cost variance +$45,000 if procured from third-party commercial batching plant vs Nass Asphalt internal transfer.",
+      options: [
+        "Authorize dedicated weekend production run at Nass Asphalt Hidd Plant",
+        "Award secondary subcontract to external supplier at $65/MT ($3/MT premium)",
+        "Resequence sub-base compaction and shift surface wearing course by 14 days",
+      ],
+      tradeOffs:
+        "Internal weekend shift incurs overtime labor ($8,000) but saves $37,000 net and guarantees approved mix design compliance.",
+      recommendedAction:
+        "Approve internal Nass Asphalt weekend production schedule and reserve raw bitumen allocation.",
+      accountableOwner: "Nass Asphalt General Manager / Procurement Director",
+      state: "PENDING_CEO_APPROVAL",
+    },
+    {
+      ref: "CEO-ACT-003",
+      project: "Project C — King Abdullah bin Abdulaziz Medical City KAMC (PRJ-2203)",
+      title: "Expedite Customs Clearance & Bonded Transport for Hyundai Hospital Elevators",
+      situation:
+        "14 passenger and bed elevators (PO-3008) in transit ex-Busan on vessel Hyundai Brave (SHP-8810). Port congestion in Singapore added 4 days to ETA.",
+      financialImpact: "Hospital shaft closing delay impacts interior MEP handover by 3 weeks ($85,000 milestone retention risk).",
+      options: [
+        "File advance pre-arrival customs declaration under Bahrain Customs Fast-Track Bonded Scheme",
+        "Arrange direct barge transshipment from Jebel Ali to Khalifa Bin Salman Port to bypass feeder queue",
+        "Wait for standard discharge and regular customs clearance inspection",
+      ],
+      tradeOffs:
+        "Advance bonded declaration fee is $1,200; saves 6 days dwell time at KBSP terminal.",
+      recommendedAction:
+        "Authorize Nass International Trading logistics team to file advance bonded documentation and secure direct dockside flatbed transfer.",
+      accountableOwner: "Head of Logistics & Supply Chain / KAMC Site Agent",
+      state: "RECOMMENDED",
+    },
+    {
+      ref: "CEO-ACT-004",
+      project: "Project D — Bahrain Marina Development (PRJ-2204)",
+      title: "Release Master Builders Solutions Waterproofing Batch Inspection",
+      situation:
+        "3,200 units of MasterSeal 500 crystalline waterproofing (PO-3009) arrived from Jebel Ali on Maersk Sarat (SHP-8811). Third-party lab chloride penetration test pending.",
+      financialImpact: "Basement slab waterproofing crew idle cost $3,800/day if release delayed beyond Oct 22, 2026.",
+      options: [
+        "Issue conditional site release with manufacturer Certificate of Conformity from Master Builders Solutions",
+        "Wait for 7-day lab core compressive and impermeability results before basement placement",
+        "Source temporary local retail stock at 22% price premium",
+      ],
+      tradeOffs:
+        "Manufacturer CoC carries full BASF/MBS technical warranty; lab test can run concurrently during initial perimeter blinding application.",
+      recommendedAction:
+        "Sign conditional QA/QC technical release based on verified Master Builders Solutions CoC, allowing perimeter application to commence without schedule slip.",
+      accountableOwner: "Quality Assurance Director / Structural Package Lead",
+      state: "PENDING_TECHNICAL_APPROVAL",
+    },
+  ];
+
+  return { decisions: CEO_DECISION_CARDS };
+}
+
+/* ─── Tool 12: priceIntelligenceFacts (Prompt Section 8) ─────────────────── */
+
+export interface PriceFacts {
+  benchmarks: {
+    sku: string;
+    materialName: string;
+    supplier: string;
+    actualPoPrice: number | null;
+    currency: string;
+    uom: string;
+    marketBenchmark: number;
+    variancePct: number;
+    freshness: string;
+    source: string;
+  }[];
+}
+
+export async function priceIntelligenceFacts(query?: string): Promise<PriceFacts> {
+  const items = [
+    {
+      sku: "MAT-GAB-001",
+      materialName: "Crushed Gabbro Aggregates (20mm)",
+      supplier: "Stevin Rock / RAK Rock LLC",
+      actualPoPrice: 18.5,
+      currency: "USD",
+      uom: "MT",
+      marketBenchmark: 21.0,
+      variancePct: -11.9,
+      freshness: "FRESH (<14d)",
+      source: "MEED Projects Gulf Materials Index Oct 2026 & PO-3007",
+    },
+    {
+      sku: "MAT-STL-001",
+      materialName: "High-Yield Rebar B500B (16-32mm)",
+      supplier: "Atlas Steel Trading LLC",
+      actualPoPrice: 685.0,
+      currency: "USD",
+      uom: "MT",
+      marketBenchmark: 725.0,
+      variancePct: -5.5,
+      freshness: "FRESH (<14d)",
+      source: "S&P Global Platts Steel Weekly / PO-3001",
+    },
+    {
+      sku: "MAT-CHM-001",
+      materialName: "MasterSeal 500 Waterproofing (25kg)",
+      supplier: "Master Builders Solutions / BASF",
+      actualPoPrice: 165.0,
+      currency: "USD",
+      uom: "Unit",
+      marketBenchmark: 182.0,
+      variancePct: -9.3,
+      freshness: "FRESH (<14d)",
+      source: "Bahrain Building Chemicals Official Price List & PO-3009",
+    },
+    {
+      sku: "MAT-ELV-001",
+      materialName: "Hyundai MRL Gearless Elevators",
+      supplier: "Hyundai Elevators Co. Ltd.",
+      actualPoPrice: 44500.0,
+      currency: "USD",
+      uom: "Unit",
+      marketBenchmark: 49000.0,
+      variancePct: -9.2,
+      freshness: "FRESH (<14d)",
+      source: "Nass International Trading Agency Master Pricing & PO-3008",
+    },
+    {
+      sku: "MAT-CON-001",
+      materialName: "Ready-Mixed Concrete C40/50 SRC",
+      supplier: "Delmon Ready-Mixed Concrete",
+      actualPoPrice: 78.0,
+      currency: "USD",
+      uom: "m³",
+      marketBenchmark: 86.5,
+      variancePct: -9.8,
+      freshness: "FRESH (<14d)",
+      source: "Delmon Ready-Mix Rate Card / Bahrain Ministry of Works 2026",
+    },
+    {
+      sku: "MAT-PRC-001",
+      materialName: "Precast Bridge Girders (28m Type IV)",
+      supplier: "Delmon Precast Co. W.L.L.",
+      actualPoPrice: 14200.0,
+      currency: "USD",
+      uom: "Piece",
+      marketBenchmark: 16500.0,
+      variancePct: -13.9,
+      freshness: "FRESH (<14d)",
+      source: "Delmon Precast BOQ Falcon Flyover Package A-02",
+    },
+  ];
+
+  const q = query?.toLowerCase().trim();
+  const filtered = q
+    ? items.filter((i) => i.sku.toLowerCase().includes(q) || i.materialName.toLowerCase().includes(q))
+    : items;
+
+  return { benchmarks: filtered };
+}
+

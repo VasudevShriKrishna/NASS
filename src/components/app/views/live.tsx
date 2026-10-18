@@ -253,7 +253,9 @@ function Dossier({ ship, p, now, onClose }: { ship: TraceShip; p: number; now: n
               <Ship className="h-4 w-4 shrink-0 text-primary" />
               <span className="font-mono text-sm font-bold">{ship.ref}</span>
               <LiveStatusChip ship={ship} />
-              <StatusPill value={ship.status} />
+              {ship.status && ship.status.replace(/_/g, " ").toLowerCase() !== ship.liveStatus.replace(/_/g, " ").toLowerCase() && (
+                <StatusPill value={ship.status} />
+              )}
               <FreshnessBadge value={ship.freshness} />
             </div>
             <p className="mt-1 truncate font-display text-lg font-semibold leading-tight">

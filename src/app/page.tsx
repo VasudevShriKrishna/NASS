@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppStore, type ViewId } from "@/lib/app-state";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import {
   ClipboardCheck,
   Compass,
   Container,
+  Crown,
   FileCheck2,
   Gauge,
   Gavel,
@@ -30,9 +31,13 @@ import {
   Menu,
   MessageSquareText,
   PackageSearch,
+  PanelLeft,
+  PanelLeftClose,
   RadioTower,
+  Search,
   ShieldCheck,
   Warehouse,
+  X,
   XCircle,
 } from "lucide-react";
 import { ControlTowerView } from "@/components/app/views/control-tower";
@@ -49,11 +54,14 @@ import { ActionsView } from "@/components/app/views/actions";
 import { AssistantView } from "@/components/app/views/assistant";
 import { GovernanceView } from "@/components/app/views/governance";
 import { ArchitectureView } from "@/components/app/views/architecture";
+import { CeoTowerView } from "@/components/app/views/ceo-tower";
+import { VoiceCopilot } from "@/components/app/voice-copilot";
 
 const NAV: { group: string; items: { id: ViewId; label: string; icon: React.ReactNode }[] }[] = [
   {
     group: "Command",
     items: [
+      { id: "ceo-tower", label: "CEO Decision Tower", icon: <Crown className="h-4 w-4 text-amber-400" /> },
       { id: "live", label: "Live Traceability", icon: <RadioTower className="h-4 w-4" /> },
       { id: "control-tower", label: "Control Tower", icon: <LayoutDashboard className="h-4 w-4" /> },
       { id: "assistant", label: "Operations Assistant", icon: <MessageSquareText className="h-4 w-4" /> },
@@ -101,11 +109,52 @@ const NAV: { group: string; items: { id: ViewId; label: string; icon: React.Reac
   },
 ];
 
-function NavItems({ onNavigate }: { onNavigate?: () => void }) {
+function NavItems({
+  onNavigate,
+  searchQuery = "",
+  onSearchClear,
+}: {
+  onNavigate?: () => void;
+  searchQuery?: string;
+  onSearchClear?: () => void;
+}) {
   const { view, setView } = useAppStore();
+  const q = searchQuery.trim().toLowerCase();
+
+  const filteredNav = NAV.map((g) => {
+    const groupMatches = g.group.toLowerCase().includes(q);
+    const matchingItems = g.items.filter(
+      (it) => it.label.toLowerCase().includes(q) || it.id.toLowerCase().includes(q) || groupMatches
+    );
+    return {
+      group: g.group,
+      items: matchingItems,
+    };
+  }).filter((g) => g.items.length > 0);
+
+  if (q && filteredNav.length === 0) {
+    return (
+      <div className="px-4 py-8 text-center text-xs text-muted-foreground">
+        <p className="font-semibold text-foreground/80">No modules found</p>
+        <p className="mt-1 text-[11px] text-muted-foreground/70">
+          No matches for &ldquo;{searchQuery}&rdquo;
+        </p>
+        {onSearchClear && (
+          <button
+            type="button"
+            onClick={onSearchClear}
+            className="mt-3 inline-flex items-center gap-1 rounded border border-border px-2.5 py-1 text-[11px] font-medium text-primary hover:bg-muted transition-colors"
+          >
+            Clear filter
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <nav aria-label="Main navigation" className="flex flex-col gap-4 px-3 py-4">
-      {NAV.map((g) => (
+    <nav aria-label="Main navigation" className="flex flex-col gap-4 px-3 py-3">
+      {filteredNav.map((g) => (
         <div key={g.group}>
           <p className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">{g.group}</p>
           <div className="flex flex-col gap-0.5">
@@ -125,13 +174,95 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
                 )}
               >
                 {it.icon}
-                {it.label}
+                <span className="truncate">{it.label}</span>
               </button>
             ))}
           </div>
         </div>
       ))}
     </nav>
+  );
+}
+
+function SidebarHeader({
+  onCollapse,
+  isSearchOpen,
+  onToggleSearch,
+  searchQuery,
+  onSearchChange,
+}: {
+  onCollapse: () => void;
+  isSearchOpen: boolean;
+  onToggleSearch: () => void;
+  searchQuery: string;
+  onSearchChange: (q: string) => void;
+}) {
+  return (
+    <div className="shrink-0 pt-3 px-3">
+      <div className="flex items-center justify-between gap-1.5">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#f3dc8e] via-[#d4af37] to-[#8a6a1f] text-[#1a1408] shadow-[0_0_12px_oklch(0.79_0.135_88/20%)]">
+            <Boxes className="h-4 w-4" />
+          </div>
+          <div className="min-w-0 leading-tight">
+            <p className="truncate font-display text-[13px] font-bold tracking-wide">
+              NASS <span className="text-gold-grad">Control Tower</span>
+            </p>
+            <p className="truncate text-[8.5px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              Freight Traceability
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button
+            type="button"
+            onClick={onToggleSearch}
+            title={isSearchOpen ? "Close search" : "Search modules (Filter)"}
+            aria-label="Toggle module search"
+            className={cn(
+              "cursor-pointer flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+              isSearchOpen && "bg-primary/10 text-primary border border-primary/30"
+            )}
+          >
+            <Search className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={onCollapse}
+            title="Collapse sidebar (Ctrl+B)"
+            aria-label="Collapse sidebar"
+            className="cursor-pointer flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      {isSearchOpen && (
+        <div className="mt-2.5 relative flex items-center">
+          <Search className="absolute left-2.5 h-3.5 w-3.5 text-muted-foreground/70 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="Filter modules..."
+            autoFocus
+            className="w-full h-7.5 pl-8 pr-7 text-xs rounded-md bg-muted/40 border border-border/70 focus:outline-none focus:border-primary/60 text-foreground placeholder:text-muted-foreground/60 transition-colors"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => onSearchChange("")}
+              className="absolute right-2 text-muted-foreground hover:text-foreground"
+              aria-label="Clear search"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -151,9 +282,155 @@ function Brand() {
   );
 }
 
+function GrokBotIcon({ className = "h-4 w-4", active = false }: { className?: string; active?: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={cn("transition-transform duration-300", active && "scale-105", className)}
+    >
+      <defs>
+        <linearGradient id="grokGold" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#fceda4" />
+          <stop offset="45%" stopColor="#d4af37" />
+          <stop offset="100%" stopColor="#8a6a1f" />
+        </linearGradient>
+      </defs>
+      {/* Hex/Squircle faceted frame */}
+      <path
+        d="M12 2.5L20 7V17L12 21.5L4 17V7L12 2.5Z"
+        stroke="url(#grokGold)"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+        className={cn(active ? "opacity-100" : "opacity-85")}
+      />
+      {/* Grok-style forward slash with faceted crossbars */}
+      <path
+        d="M8.5 15.5L15.5 8.5"
+        stroke="url(#grokGold)"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M14.5 15.5L16.5 13.5"
+        stroke="url(#grokGold)"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <path
+        d="M7.5 10.5L9.5 8.5"
+        stroke="url(#grokGold)"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      {/* Center cybernetic pulse dot */}
+      <circle cx="12" cy="12" r="1.5" fill="#fceda4" />
+    </svg>
+  );
+}
+
 export default function Home() {
-  const { view, setView, drill, drillTo, clearDrill, openTrace } = useAppStore();
+  const {
+    view,
+    setView,
+    drill,
+    drillTo,
+    clearDrill,
+    openTrace,
+    isVoiceCopilotOpen,
+    toggleVoiceCopilot,
+  } = useAppStore();
   const [navOpen, setNavOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(260);
+  const [isResizing, setIsResizing] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const widthRef = useRef(sidebarWidth);
+
+  useEffect(() => {
+    widthRef.current = sidebarWidth;
+  }, [sidebarWidth]);
+
+  // Restore sidebar preferences from localStorage
+  useEffect(() => {
+    try {
+      const savedOpen = localStorage.getItem("nass_sidebar_open");
+      if (savedOpen !== null) {
+        setIsSidebarOpen(savedOpen === "true");
+      }
+      const savedWidth = localStorage.getItem("nass_sidebar_width");
+      if (savedWidth) {
+        const parsed = parseInt(savedWidth, 10);
+        if (!isNaN(parsed) && parsed >= 180 && parsed <= 480) {
+          setSidebarWidth(parsed);
+        }
+      }
+    } catch {}
+  }, []);
+
+  // Persist sidebar open state
+  const toggleSidebar = useCallback(() => {
+    setIsSidebarOpen((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("nass_sidebar_open", String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  // Keyboard shortcut listeners: Ctrl+B (sidebar) or Ctrl+J (voice copilot)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        (e.key.toLowerCase() === "b" || (e.shiftKey && e.key.toLowerCase() === "s"))
+      ) {
+        e.preventDefault();
+        toggleSidebar();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "j") {
+        e.preventDefault();
+        toggleVoiceCopilot();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [toggleSidebar, toggleVoiceCopilot]);
+
+  // Mouse drag listeners for sidebar resizing
+  const startResizing = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    document.body.classList.add("select-none", "cursor-col-resize");
+  }, []);
+
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = Math.min(480, Math.max(180, e.clientX));
+      setSidebarWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      document.body.classList.remove("select-none", "cursor-col-resize");
+      try {
+        localStorage.setItem("nass_sidebar_width", String(widthRef.current));
+      } catch {}
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+      document.body.classList.remove("select-none", "cursor-col-resize");
+    };
+  }, [isResizing]);
 
   // Deep links: /?view=trace[&ship=SHP-8801] opens the Live Command overlay (shareable, new-tab safe)
   useEffect(() => {
@@ -204,6 +481,22 @@ export default function Home() {
           </div>
 
           <div className="hidden items-center gap-2 lg:flex">
+            {/* ChatGPT-style sidebar toggle button */}
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              title={isSidebarOpen ? "Collapse sidebar (Ctrl+B)" : "Open sidebar (Ctrl+B)"}
+              aria-label={isSidebarOpen ? "Collapse sidebar" : "Open sidebar"}
+              className={cn(
+                "cursor-pointer inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition-all mr-1",
+                !isSidebarOpen
+                  ? "border-primary/60 bg-primary/15 text-primary shadow-[0_0_12px_rgba(212,175,55,0.3)] hover:bg-primary/25"
+                  : "border-border/60 bg-card/40 text-muted-foreground hover:border-primary/40 hover:text-foreground hover:bg-muted"
+              )}
+            >
+              {isSidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
+            </button>
+
             <Activity className="h-4 w-4 text-primary" />
             <h1 className="text-sm font-semibold tracking-tight">
               {NAV.flatMap((g) => g.items).find((i) => i.id === view)?.label ?? "Control Tower"}
@@ -228,6 +521,58 @@ export default function Home() {
             </span>
             <EvidenceBadge label="PROPOSED TARGET CAPABILITY" />
             <FreshnessBadge value="fresh" />
+
+            {/* Top-Right Grokbot Voice AI Assistant Launch Button */}
+            <button
+              type="button"
+              onClick={toggleVoiceCopilot}
+              title={
+                isVoiceCopilotOpen
+                  ? "Close Voice AI Copilot (Ctrl+J)"
+                  : "Open Grok Voice AI Copilot (Ctrl+J)"
+              }
+              aria-label="Toggle Grok Voice AI Assistant"
+              className={cn(
+                "relative group flex items-center gap-2 rounded-lg border px-2.5 py-1 text-xs font-semibold transition-all duration-200 cursor-pointer",
+                isVoiceCopilotOpen
+                  ? "border-primary/80 bg-gradient-to-r from-primary/25 via-[#1a1508] to-primary/20 text-primary shadow-[0_0_16px_rgba(212,175,55,0.4)]"
+                  : "border-primary/35 bg-card/60 hover:bg-primary/15 hover:border-primary/70 text-foreground shadow-sm hover:shadow-[0_0_12px_rgba(212,175,55,0.25)]"
+              )}
+            >
+              <div className="relative flex items-center justify-center">
+                <GrokBotIcon className="h-4 w-4" active={isVoiceCopilotOpen} />
+                <span
+                  className={cn(
+                    "absolute -top-1 -right-1 h-2 w-2 rounded-full transition-all",
+                    isVoiceCopilotOpen
+                      ? "bg-emerald-400 ring-2 ring-emerald-400/40 animate-pulse"
+                      : "bg-primary/70 group-hover:bg-primary group-hover:animate-ping"
+                  )}
+                />
+              </div>
+
+              <div className="hidden sm:flex flex-col text-left leading-none">
+                <div className="flex items-center gap-1">
+                  <span className="font-display text-[11px] font-bold tracking-wide text-gold-grad">
+                    Grok Voice AI
+                  </span>
+                  <span className="rounded bg-primary/20 border border-primary/30 px-1 py-0.2 text-[8px] font-mono text-primary uppercase">
+                    Live
+                  </span>
+                </div>
+                <span className="text-[9px] text-muted-foreground/80 font-mono mt-0.5">
+                  Ctrl+J
+                </span>
+              </div>
+
+              {/* Animated Mini Soundwave Bars on Active / Hover */}
+              <div className="hidden lg:flex items-center gap-0.5 h-3 ml-0.5">
+                <span className={cn("w-0.5 bg-primary/70 rounded-full transition-all duration-300", isVoiceCopilotOpen ? "h-3 animate-pulse" : "h-1 group-hover:h-2")} />
+                <span className={cn("w-0.5 bg-primary rounded-full transition-all duration-300 delay-75", isVoiceCopilotOpen ? "h-2.5 animate-pulse" : "h-2 group-hover:h-3")} />
+                <span className={cn("w-0.5 bg-primary/70 rounded-full transition-all duration-300 delay-150", isVoiceCopilotOpen ? "h-3.5 animate-pulse" : "h-1.5 group-hover:h-2.5")} />
+              </div>
+            </button>
+
             <ThemeToggle />
           </div>
         </div>
@@ -235,14 +580,58 @@ export default function Home() {
         <div className="hairline-gold h-px w-full" aria-hidden />
       </header>
 
-      <div className="flex flex-1">
-        {/* Desktop sidebar */}
-        <aside className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-64 shrink-0 border-r border-primary/10 bg-sidebar lg:block">
-          <ScrollArea className="h-full">
-            <Brand />
-            <Separator className="mt-3" />
-            <NavItems />
-          </ScrollArea>
+      <div className={cn("flex flex-1", isResizing && "select-none")}>
+        {/* Desktop sidebar - clean sticky top-14 positioning WITHOUT relative */}
+        <aside
+          style={{ width: isSidebarOpen ? `${sidebarWidth}px` : "0px" }}
+          className={cn(
+            "sticky top-14 hidden h-[calc(100vh-3.5rem)] shrink-0 border-primary/10 bg-sidebar lg:block z-30 overflow-hidden",
+            isSidebarOpen ? "border-r" : "border-r-0",
+            !isResizing && "transition-[width] duration-300 ease-in-out"
+          )}
+        >
+          <div
+            style={{ width: `${sidebarWidth}px` }}
+            className="flex h-full flex-col justify-between"
+          >
+            <SidebarHeader
+              onCollapse={toggleSidebar}
+              isSearchOpen={isSearchOpen}
+              onToggleSearch={() => {
+                setIsSearchOpen((prev) => {
+                  if (prev) setSearchQuery("");
+                  return !prev;
+                });
+              }}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+            />
+            <Separator className="mt-2.5" />
+            <ScrollArea className="flex-1 overflow-y-auto">
+              <NavItems searchQuery={searchQuery} onSearchClear={() => setSearchQuery("")} />
+            </ScrollArea>
+          </div>
+
+          {/* Draggable vertical resize handle on right border */}
+          {isSidebarOpen && (
+            <div
+              onMouseDown={startResizing}
+              role="separator"
+              aria-orientation="vertical"
+              title="Drag to resize sidebar width (180px – 480px)"
+              className={cn(
+                "absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize z-40 transition-colors group select-none",
+                isResizing ? "bg-primary" : "hover:bg-primary/50"
+              )}
+            >
+              <div
+                className={cn(
+                  "absolute top-1/2 -translate-y-1/2 right-[2px] h-8 w-[2px] rounded-full transition-colors",
+                  isResizing ? "bg-primary-foreground" : "group-hover:bg-primary/80"
+                )}
+              />
+            </div>
+          )}
         </aside>
 
         {/* Main content */}
@@ -256,6 +645,7 @@ export default function Home() {
               <XCircle className="h-3.5 w-3.5" /> Focused on <span className="font-mono font-semibold">{drillRef}</span> — click to clear
             </button>
           ) : null}
+          {view === "ceo-tower" && <CeoTowerView drillRef={drillRef ?? undefined} />}
           {view === "control-tower" && <ControlTowerView drillRef={drillRef} />}
           {view === "procurement" && <ProcurementView />}
           {view === "suppliers" && <SuppliersView />}
@@ -293,6 +683,9 @@ export default function Home() {
           Rendered OUTSIDE PageFade/main: framer-motion's filter on PageFade
           would trap position:fixed inside a transformed containing block. */}
       {view === "live" && <LiveTraceabilityView drillRef={drillRef} />}
+
+      {/* Website-Wide Voice AI Copilot (Sarvam STT/TTS + Mistral reasoning) */}
+      <VoiceCopilot />
     </div>
   );
 }
