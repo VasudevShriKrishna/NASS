@@ -1,7 +1,7 @@
 async function testLive() {
   const urls = [
     'https://mycorps.vercel.app',
-    'https://myantoine.vercel.app'
+    'https://mycorps.vercel.app'
   ];
 
   for (const base of urls) {
