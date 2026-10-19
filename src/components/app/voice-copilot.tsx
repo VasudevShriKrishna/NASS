@@ -1405,13 +1405,7 @@ export function VoiceCopilot() {
           {/* ─── CENTERED CYBERNETIC EYE PAIR (ALWAYS TRACKS MOUSE DIRECTION) ─── */}
           <div
             ref={eyeContainerRef}
-            className="relative flex items-center justify-center gap-1.5 p-1 rounded-full bg-black/80 border transition-all duration-300 pointer-events-none"
-            style={{
-              borderColor: activeRainbow.border,
-              boxShadow: isGlowFlashing
-                ? `0 0 16px ${activeRainbow.glow}`
-                : `0 0 6px ${activeRainbow.glow}`,
-            }}
+            className="relative flex items-center justify-center gap-1.5 pointer-events-none"
           >
             {[0, 1].map((eyeIdx) => (
               <div
