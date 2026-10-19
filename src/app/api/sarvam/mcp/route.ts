@@ -59,7 +59,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, toolName, result: res });
     }
 
-    if (toolName === "sarvam_vision_digitise" || toolName === "sarvam_vision_extract") {
+    if (toolName === "sarvam_vision_extract") {
+      const res = await client.visionExtract({
+        document_base64: parameters.document_base64 || "",
+        fileName: parameters.fileName || "trade_document.pdf",
+        schema_type: parameters.schema_type || "PURCHASE_ORDER",
+      });
+      return NextResponse.json({ success: true, toolName, result: res });
+    }
+
+    if (toolName === "sarvam_vision_digitise") {
       const res = await processTradeDocument(
         parameters.document_base64 || "",
         parameters.fileName || "trade_document.pdf",
