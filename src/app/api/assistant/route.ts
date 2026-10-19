@@ -660,17 +660,20 @@ async function callCopilotLLM(
   userPrompt: string,
   req: NextRequest
 ): Promise<LLMResult | null> {
+  // All credentials operate strictly from .env SARVAM_API_KEY (with header/cookie fallback)
   const sarvamKey =
+    process.env.SARVAM_API_KEY?.trim() ||
     req.cookies.get("sarvam_key")?.value?.trim() ||
-    req.headers.get("x-sarvam-key")?.trim() ||
-    process.env.SARVAM_API_KEY?.trim();
+    req.headers.get("x-sarvam-key")?.trim();
 
-  const mistralKey =
-    req.cookies.get("mistral_key")?.value?.trim() ||
-    req.headers.get("x-mistral-key")?.trim() ||
-    process.env.MISTRAL_API_KEY?.trim();
+  // EXCLUSIVE AI PROVIDER: Sarvam AI 105B Core (sarvam-105b / sarvam-105b-conversations)
+  // All other third-party LLM APIs (Mistral, ZAI, etc.) are commented out and disabled per architectural directive
+  /*
+  const mistralKey = process.env.MISTRAL_API_KEY?.trim();
+  // Mistral fallback disabled: Only Sarvam API is authorized.
+  */
 
-  // 1. Primary: Sarvam AI with sarvam-105b-conversations
+  // 1. Primary Reasoning Core: Sarvam AI with sarvam-105b-conversations / sarvam-105b
   if (sarvamKey) {
     try {
       const res = await fetch("https://api.sarvam.ai/v1/chat/completions", {
@@ -701,45 +704,19 @@ async function callCopilotLLM(
         }
       }
     } catch (e) {
-      console.warn("Sarvam 105b error, checking Mistral fallback:", e);
+      console.warn("[Sarvam 105B Reasoning Exception]", e);
     }
   }
 
-  // 2. Fallback: Mistral AI with open-mistral-7b
+  // 2. All other third-party APIs (Mistral, etc.) are strictly commented out and prohibited:
+  /*
+  // DISABLED BY DIRECTIVE: USE ONLY SARVAM API
   if (mistralKey) {
     try {
-      const res = await fetch("https://api.mistral.ai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${mistralKey}`,
-          "User-Agent": "NASS-Control-Tower/1.0",
-        },
-        body: JSON.stringify({
-          model: "open-mistral-7b",
-          messages: [
-            { role: "system", content: `${system}\n\n${factsBlock}` },
-            { role: "user", content: userPrompt },
-          ],
-          temperature: 0.2,
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        const text = data.choices?.[0]?.message?.content?.trim();
-        if (text) {
-          return {
-            text,
-            provider: "Mistral AI",
-            model: "open-mistral-7b",
-          };
-        }
-      }
-    } catch (e) {
-      console.warn("Mistral AI fallback error:", e);
-    }
+      const res = await fetch("https://api.mistral.ai/v1/chat/completions", { ... });
+    } catch (e) {}
   }
+  */
 
   return null;
 }

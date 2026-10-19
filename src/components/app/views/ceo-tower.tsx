@@ -24,6 +24,7 @@ import {
   Filter,
 } from "lucide-react";
 import { useAppStore, type ViewId } from "@/lib/app-state";
+import { safeParseResponse } from "@/lib/client";
 
 type TabId = "portfolio" | "pricing" | "weights" | "fleet" | "partners" | "decisions";
 
@@ -43,9 +44,11 @@ export function CeoTowerView({ drillRef }: { drillRef?: string }) {
       setLoading(true);
       setError(null);
       const res = await fetch("/api/ceo-control-tower");
-      const json = await res.json();
-      if (!json.success) throw new Error(json.error || "Failed to load CEO Control Tower data");
-      setData(json.data);
+      const parsed = await safeParseResponse<any>(res);
+      if (!parsed.ok) throw new Error(parsed.error?.message || "Failed to load CEO Control Tower data");
+      const json = parsed.data || parsed;
+      if (json?.success === false) throw new Error(json?.error || "Failed to load CEO Control Tower data");
+      setData(json.data || json);
     } catch (err: any) {
       setError(err.message || "Network error loading control tower.");
     } finally {
@@ -71,8 +74,10 @@ export function CeoTowerView({ drillRef }: { drillRef?: string }) {
           notes: `Action ${action} formally confirmed via CEO Decision Tower UI.`,
         }),
       });
-      const json = await res.json();
-      if (!json.success) throw new Error(json.error || "Action failed");
+      const parsed = await safeParseResponse<any>(res);
+      if (!parsed.ok) throw new Error(parsed.error?.message || "Action failed");
+      const json = parsed.data || parsed;
+      if (json?.success === false) throw new Error(json?.error || "Action failed");
       setFeedback({ msg: json.message || `Decision ${decisionRef} updated to ${action}.`, type: "success" });
       await fetchData();
     } catch (err: any) {

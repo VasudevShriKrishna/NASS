@@ -67,6 +67,51 @@ const INITIAL_SUGGESTIONS = [
   "Generate a material and backup-stock report for S355 steel",
 ];
 
+// Rainbow color spectrum (strictly Red, Orange, Yellow, Green, Blue - EXCLUDES Indigo & Violet)
+export const RAINBOW_COLORS = [
+  {
+    name: "Red",
+    hex: "#ef4444",
+    rgb: "239, 68, 68",
+    glow: "rgba(239, 68, 68, 0.75)",
+    border: "rgba(239, 68, 68, 0.65)",
+    bg: "rgba(239, 68, 68, 0.18)",
+  },
+  {
+    name: "Orange",
+    hex: "#f97316",
+    rgb: "249, 115, 22",
+    glow: "rgba(249, 115, 22, 0.75)",
+    border: "rgba(249, 115, 22, 0.65)",
+    bg: "rgba(249, 115, 22, 0.18)",
+  },
+  {
+    name: "Yellow",
+    hex: "#eab308",
+    rgb: "234, 179, 8",
+    glow: "rgba(234, 179, 8, 0.75)",
+    border: "rgba(234, 179, 8, 0.65)",
+    bg: "rgba(234, 179, 8, 0.18)",
+  },
+  {
+    name: "Green",
+    hex: "#22c55e",
+    rgb: "34, 197, 94",
+    glow: "rgba(34, 197, 94, 0.75)",
+    border: "rgba(34, 197, 94, 0.65)",
+    bg: "rgba(34, 197, 94, 0.18)",
+  },
+  {
+    name: "Blue",
+    hex: "#3b82f6",
+    rgb: "59, 130, 246",
+    glow: "rgba(59, 130, 246, 0.75)",
+    border: "rgba(59, 130, 246, 0.65)",
+    bg: "rgba(59, 130, 246, 0.18)",
+  },
+] as const;
+
+
 // Helper: Cookie reading/writing
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null;
@@ -155,28 +200,56 @@ export function VoiceCopilot() {
   const [isTestingMic, setIsTestingMic] = useState(false);
   const [micTestRecordedUrl, setMicTestRecordedUrl] = useState<string | null>(null);
 
+  // ─── RAINBOW COLOR CYCLE & CLICK GLOW STATE (STRICTLY RED, ORANGE, YELLOW, GREEN, BLUE) ───
+  const [rainbowIndex, setRainbowIndex] = useState(0);
+  const [isGlowFlashing, setIsGlowFlashing] = useState(false);
+  const glowTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // ─── MOUSE TRACKING, CIRCULAR CURSOR & EYE PUPIL DISPLACEMENT ───
+  const [mousePos, setMousePos] = useState<{ x: number; y: number }>({ x: -100, y: -100 });
+  const [isMouseOnScreen, setIsMouseOnScreen] = useState(false);
+  const [pupilOffset, setPupilOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [clickRipple, setClickRipple] = useState<{ x: number; y: number; active: boolean }>({ x: 0, y: 0, active: false });
+  const rippleTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const eyeContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const activeRainbow = RAINBOW_COLORS[rainbowIndex] || RAINBOW_COLORS[0];
+
   // ─── DRAGGABLE FLOATING AI BUTTON STATE (PERSISTED IN LOCALSTORAGE) ───
   const [btnPos, setBtnPos] = useState<{ x: number; y: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const dragStartRef = useRef<{ startX: number; startY: number; initX: number; initY: number; moved: boolean }>({
+  const dragStartRef = useRef<{
+    startX: number;
+    startY: number;
+    initX: number;
+    initY: number;
+    moved: boolean;
+    isPointerDown: boolean;
+    startTime: number;
+    pointerId?: number;
+  }>({
     startX: 0,
     startY: 0,
     initX: 0,
     initY: 0,
     moved: false,
+    isPointerDown: false,
+    startTime: 0,
   });
   const buttonContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // Initialize position from localStorage or default to top-right
+  // Initialize position from Cookie or localStorage, or default to bottom-right (as shown in reference screenshot)
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      const saved = localStorage.getItem("nass_ai_btn_pos");
+      const cookieVal = getCookie("nass_ai_btn_pos");
+      const localVal = localStorage.getItem("nass_ai_btn_pos");
+      const saved = cookieVal || localVal;
       if (saved) {
         const parsed = JSON.parse(saved);
         if (typeof parsed.x === "number" && typeof parsed.y === "number") {
-          const maxX = Math.max(10, window.innerWidth - 240);
-          const maxY = Math.max(10, window.innerHeight - 60);
+          const maxX = Math.max(10, window.innerWidth - 88);
+          const maxY = Math.max(10, window.innerHeight - 88);
           setBtnPos({
             x: Math.min(Math.max(10, parsed.x), maxX),
             y: Math.min(Math.max(10, parsed.y), maxY),
@@ -185,9 +258,10 @@ export function VoiceCopilot() {
         }
       }
     } catch {}
-    // Default top-right position
-    const defaultX = Math.max(10, window.innerWidth - 240);
-    setBtnPos({ x: defaultX, y: 12 });
+    // Default position: Exact Bottom-Right (as shown in the user's reference image)
+    const defaultX = Math.max(10, window.innerWidth - 88);
+    const defaultY = Math.max(10, window.innerHeight - 92);
+    setBtnPos({ x: defaultX, y: defaultY });
   }, []);
 
   // Update on window resize to ensure button stays on screen
@@ -195,8 +269,8 @@ export function VoiceCopilot() {
     const handleResize = () => {
       setBtnPos((prev) => {
         if (!prev) return prev;
-        const maxX = Math.max(10, window.innerWidth - 240);
-        const maxY = Math.max(10, window.innerHeight - 60);
+        const maxX = Math.max(10, window.innerWidth - 88);
+        const maxY = Math.max(10, window.innerHeight - 88);
         return {
           x: Math.min(Math.max(10, prev.x), maxX),
           y: Math.min(Math.max(10, prev.y), maxY),
@@ -207,9 +281,73 @@ export function VoiceCopilot() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  // ─── GLOBAL MOUSE TRACKING (EYE PUPILS & CIRCULAR CURSOR) & CLICK COLOR GLOW ───
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      setMousePos({ x: e.clientX, y: e.clientY });
+      setIsMouseOnScreen(true);
+
+      // Eye pupil look direction vector towards mouse cursor
+      if (eyeContainerRef.current) {
+        const rect = eyeContainerRef.current.getBoundingClientRect();
+        const eyeCenterX = rect.left + rect.width / 2;
+        const eyeCenterY = rect.top + rect.height / 2;
+        const dx = e.clientX - eyeCenterX;
+        const dy = e.clientY - eyeCenterY;
+        const dist = Math.hypot(dx, dy);
+        const angle = Math.atan2(dy, dx);
+        // Maximum pupil displacement: 3.5px
+        const maxOffset = 3.5;
+        const offset = Math.min(dist / 35, 1) * maxOffset;
+        setPupilOffset({
+          x: Math.cos(angle) * offset,
+          y: Math.sin(angle) * offset,
+        });
+      }
+    };
+
+    const handleMouseLeave = () => {
+      setIsMouseOnScreen(false);
+    };
+
+    // When clicking ANYWHERE on the screen:
+    // 1. Advance rainbow color sequentially (Red -> Orange -> Yellow -> Green -> Blue -> Red...)
+    // 2. Glow up Copilot agent
+    // 3. Emit cursor click ripple
+    const handleGlobalPointerDown = (e: MouseEvent) => {
+      setRainbowIndex((prev) => (prev + 1) % RAINBOW_COLORS.length);
+      setIsGlowFlashing(true);
+      setClickRipple({ x: e.clientX, y: e.clientY, active: true });
+
+      if (glowTimerRef.current) clearTimeout(glowTimerRef.current);
+      glowTimerRef.current = setTimeout(() => {
+        setIsGlowFlashing(false);
+      }, 700);
+
+      if (rippleTimerRef.current) clearTimeout(rippleTimerRef.current);
+      rippleTimerRef.current = setTimeout(() => {
+        setClickRipple((prev) => ({ ...prev, active: false }));
+      }, 450);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove, { passive: true });
+    window.addEventListener("mouseleave", handleMouseLeave);
+    window.addEventListener("pointerdown", handleGlobalPointerDown, { capture: true });
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseleave", handleMouseLeave);
+      window.removeEventListener("pointerdown", handleGlobalPointerDown, { capture: true });
+      if (glowTimerRef.current) clearTimeout(glowTimerRef.current);
+      if (rippleTimerRef.current) clearTimeout(rippleTimerRef.current);
+    };
+  }, []);
+
   const handlePointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
-    const currentX = btnPos ? btnPos.x : Math.max(10, window.innerWidth - 240);
+    const currentX = btnPos ? btnPos.x : Math.max(10, window.innerWidth - 80);
     const currentY = btnPos ? btnPos.y : 12;
 
     dragStartRef.current = {
@@ -218,25 +356,35 @@ export function VoiceCopilot() {
       initX: currentX,
       initY: currentY,
       moved: false,
+      isPointerDown: true,
+      startTime: Date.now(),
+      pointerId: e.pointerId,
     };
-    setIsDragging(true);
-    try {
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    } catch {}
+    // Do NOT capture pointer or mark dragging here so clicks and double-clicks are clean!
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
-    if (!isDragging) return;
+    if (!dragStartRef.current.isPointerDown) return;
     const dx = e.clientX - dragStartRef.current.startX;
     const dy = e.clientY - dragStartRef.current.startY;
+    const dist = Math.hypot(dx, dy);
 
-    if (Math.hypot(dx, dy) > 4) {
+    // Only initiate drag if moved more than 10 pixels
+    if (!isDragging && dist > 10) {
       dragStartRef.current.moved = true;
+      setIsDragging(true);
+      try {
+        if (dragStartRef.current.pointerId !== undefined) {
+          (e.currentTarget as HTMLElement).setPointerCapture(dragStartRef.current.pointerId);
+        }
+      } catch {}
     }
 
+    if (!isDragging && !dragStartRef.current.moved) return;
+
     const rect = buttonContainerRef.current?.getBoundingClientRect();
-    const btnW = rect?.width || 220;
-    const btnH = rect?.height || 50;
+    const btnW = rect?.width || 64;
+    const btnH = rect?.height || 64;
     const maxX = Math.max(8, window.innerWidth - btnW - 8);
     const maxY = Math.max(8, window.innerHeight - btnH - 8);
 
@@ -247,17 +395,44 @@ export function VoiceCopilot() {
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
-    if (!isDragging) return;
-    setIsDragging(false);
-    try {
-      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-    } catch {}
-
-    if (btnPos) {
+    dragStartRef.current.isPointerDown = false;
+    if (isDragging) {
+      setIsDragging(false);
       try {
-        localStorage.setItem("nass_ai_btn_pos", JSON.stringify(btnPos));
+        if (dragStartRef.current.pointerId !== undefined) {
+          (e.currentTarget as HTMLElement).releasePointerCapture(dragStartRef.current.pointerId);
+        }
+      } catch {}
+
+      const dx = e.clientX - dragStartRef.current.startX;
+      const dy = e.clientY - dragStartRef.current.startY;
+      const rect = buttonContainerRef.current?.getBoundingClientRect();
+      const btnW = rect?.width || 64;
+      const btnH = rect?.height || 64;
+      const maxX = Math.max(8, window.innerWidth - btnW - 8);
+      const maxY = Math.max(8, window.innerHeight - btnH - 8);
+      const finalX = Math.min(Math.max(8, dragStartRef.current.initX + dx), maxX);
+      const finalY = Math.min(Math.max(8, dragStartRef.current.initY + dy), maxY);
+
+      const posToSave = { x: finalX, y: finalY };
+      setBtnPos(posToSave);
+      try {
+        const json = JSON.stringify(posToSave);
+        localStorage.setItem("nass_ai_btn_pos", json);
+        setCookie("nass_ai_btn_pos", json, 365);
       } catch {}
     }
+  };
+
+  // Safe toggle function for single-click, double-click, and close actions
+  const toggleCopilot = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (dragStartRef.current.moved) return;
+    setIsOpen(!isOpen);
+    if (voiceState === "SPEAKING") stopCurrentAudio();
   };
 
   // Audio recording & playback refs
@@ -1132,109 +1307,150 @@ export function VoiceCopilot() {
 
   return (
     <>
-      {/* ─── SINGLE DRAGGABLE FLOATING AI BUTTON (TOP-RIGHT DEFAULT · STAYS ON ALL PAGES) ─── */}
+      {/* ─── SINGLE DRAGGABLE FLOATING AI BUTTON (PURE CIRCLE · DEFAULT BOTTOM-RIGHT DOCKED) ─── */}
       <div
         ref={buttonContainerRef}
         style={
           btnPos
             ? { left: `${btnPos.x}px`, top: `${btnPos.y}px` }
-            : { right: "1.5rem", top: "0.75rem" }
+            : { right: "1.5rem", bottom: "1.75rem" }
         }
         className={cn(
-          "fixed z-[75] flex items-center gap-2 select-none touch-none",
+          "fixed z-[75] flex items-center justify-center select-none touch-none",
           isDragging ? "cursor-grabbing opacity-90 scale-105" : "cursor-grab"
         )}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
+        onDoubleClick={toggleCopilot}
       >
+        {/* Floating Mini Status Indicator (When dictating or speaking) */}
         {!isOpen && (isDictating || voiceState === "SPEAKING") && (
-          <div className="flex items-center gap-2 rounded-full border border-amber-500/40 bg-black/90 px-3 py-1.5 text-xs text-amber-400 shadow-xl backdrop-blur-md animate-pulse">
-            <Radio className="h-3.5 w-3.5 text-amber-400 animate-spin" />
-            <span className="font-medium tracking-wide">
-              {isDictating ? "Voice dictation active..." : "Speaking response..."}
-            </span>
+          <div
+            className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap flex items-center gap-1.5 rounded-full border bg-black/95 px-2.5 py-0.5 text-[10px] font-semibold shadow-xl backdrop-blur-md animate-pulse pointer-events-none"
+            style={{
+              borderColor: activeRainbow.border,
+              color: activeRainbow.hex,
+            }}
+          >
+            <Radio className="h-2.5 w-2.5 animate-spin" />
+            <span>{isDictating ? "Dictating..." : "Speaking..."}</span>
           </div>
         )}
 
+        {/* Dedicated Close Button Badge on Circle (When Open) */}
+        {isOpen && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsOpen(false);
+              if (voiceState === "SPEAKING") stopCurrentAudio();
+            }}
+            className="absolute -top-1.5 -right-1.5 z-30 flex h-6 w-6 items-center justify-center rounded-full bg-red-600 hover:bg-red-500 text-white border-2 border-[#090b10] shadow-lg transition-transform hover:scale-115 active:scale-90 cursor-pointer"
+            title="Close Copilot"
+          >
+            <X className="h-3.5 w-3.5 stroke-[3]" />
+          </button>
+        )}
+
+        {/* Perfectly Circular Cyber-Eye Agent Button */}
         <button
           type="button"
-          onClick={(e) => {
-            if (dragStartRef.current.moved) {
-              e.stopPropagation();
-              return;
-            }
-            setIsOpen(!isOpen);
-            if (voiceState === "SPEAKING") stopCurrentAudio();
+          onClick={toggleCopilot}
+          onDoubleClick={toggleCopilot}
+          style={{
+            borderColor: activeRainbow.border,
+            boxShadow: isGlowFlashing
+              ? `0 0 38px 10px ${activeRainbow.glow}, 0 0 16px ${activeRainbow.hex}`
+              : isOpen
+              ? `0 0 24px 4px ${activeRainbow.glow}`
+              : `0 0 14px 2px ${activeRainbow.glow}`,
           }}
           className={cn(
-            "relative flex items-center gap-2 rounded-full border px-3 py-2 sm:px-3.5 sm:py-2.5 shadow-2xl transition-all duration-200 group",
+            "relative w-14 h-14 sm:w-16 sm:h-16 rounded-full aspect-square flex items-center justify-center border-2 transition-all duration-300 group cursor-pointer overflow-hidden",
             isOpen
-              ? "border-amber-400 bg-[#12141a] text-amber-300 shadow-[0_0_20px_rgba(212,175,55,0.35)] ring-1 ring-amber-400/40"
-              : "border-amber-500/40 bg-[#0d0f14]/95 text-foreground hover:border-amber-400 shadow-black/80 backdrop-blur-lg hover:shadow-[0_0_15px_rgba(212,175,55,0.2)]"
+              ? "bg-[#10131b] ring-2"
+              : "bg-[#080a0f] hover:scale-[1.05] backdrop-blur-xl",
+            isGlowFlashing && "scale-110"
           )}
-          title="Drag anywhere on screen · Click to open Sarvam 105B Voice AI Copilot"
+          title="Sarvam AI Copilot · Double-Click or Click to Open/Close · Drag anywhere on screen"
         >
-          {/* Subtle Drag Grip Handle */}
-          <GripVertical className="h-3.5 w-3.5 text-amber-500/50 group-hover:text-amber-300 shrink-0" />
-
-          <div className="absolute -inset-0.5 rounded-full bg-gradient-to-r from-amber-500/20 to-yellow-600/20 blur opacity-75 group-hover:opacity-100 transition duration-500 -z-10" />
-
+          {/* Animated Rainbow Ambient Glow Backdrop */}
           <div
             className={cn(
-              "flex h-7 w-7 items-center justify-center rounded-full transition-colors shrink-0",
-              isDictating
-                ? "bg-red-500/20 text-red-400 animate-ping"
-                : voiceState === "SPEAKING"
-                ? "bg-amber-500/20 text-amber-300 animate-pulse"
-                : "bg-amber-500/15 text-amber-400"
+              "absolute inset-0 rounded-full blur-md transition-all duration-500 -z-10",
+              isGlowFlashing ? "opacity-100 scale-125" : "opacity-60 group-hover:opacity-90"
             )}
-          >
-            {voiceState === "SPEAKING" ? (
-              <Volume2 className="h-3.5 w-3.5" />
-            ) : isDictating ? (
-              <Mic className="h-3.5 w-3.5" />
-            ) : (
-              <Sparkles className="h-3.5 w-3.5" />
-            )}
-          </div>
+            style={{
+              background: `radial-gradient(circle, ${activeRainbow.glow} 0%, rgba(0,0,0,0) 70%)`,
+            }}
+          />
 
-          <div className="flex flex-col text-left pr-1">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] font-bold tracking-wider uppercase text-amber-300 whitespace-nowrap">
-                Voice AI
-              </span>
-              <span className="rounded bg-amber-500/20 px-1 py-0.2 text-[8px] font-mono font-medium text-amber-400">
-                Sarvam 105B
-              </span>
-            </div>
-            <span className="text-[9px] text-muted-foreground flex items-center gap-1 whitespace-nowrap">
-              {isDictating ? (
-                <span className="text-red-400 font-semibold animate-pulse">● Live Dictating...</span>
-              ) : voiceState === "SPEAKING" ? (
-                <span className="text-amber-400 font-semibold">● Speaking...</span>
-              ) : (
-                <span>Voice Copilot · Drag &amp; Drop</span>
-              )}
-            </span>
-          </div>
-
-          {isOpen ? (
-            <ChevronUp className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-          ) : (
-            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground group-hover:text-amber-400 shrink-0" />
+          {/* Audio / Dictation Active Pulse Ring */}
+          {isDictating && (
+            <div className="absolute inset-0 rounded-full border-2 border-red-500 animate-ping opacity-75 pointer-events-none" />
           )}
+          {voiceState === "SPEAKING" && (
+            <div
+              className="absolute inset-0.5 rounded-full border border-dashed animate-spin pointer-events-none opacity-80"
+              style={{ borderColor: activeRainbow.hex }}
+            />
+          )}
+
+          {/* Futuristic Concentric Bezel Ring */}
+          <div className="absolute inset-1 rounded-full border border-white/10 pointer-events-none" />
+
+          {/* ─── CENTERED CYBERNETIC EYE PAIR (ALWAYS TRACKS MOUSE DIRECTION) ─── */}
+          <div
+            ref={eyeContainerRef}
+            className="relative flex items-center justify-center gap-1.5 p-1 rounded-full bg-black/80 border transition-all duration-300 pointer-events-none"
+            style={{
+              borderColor: activeRainbow.border,
+              boxShadow: isGlowFlashing
+                ? `0 0 16px ${activeRainbow.glow}`
+                : `0 0 6px ${activeRainbow.glow}`,
+            }}
+          >
+            {[0, 1].map((eyeIdx) => (
+              <div
+                key={eyeIdx}
+                className="relative flex items-center justify-center w-5 h-5 sm:w-5.5 sm:h-5.5 rounded-full bg-[#05070c] overflow-hidden border border-white/20 shadow-inner"
+              >
+                {/* Sclera specular background */}
+                <div className="absolute inset-0 bg-gradient-to-b from-white/15 to-transparent" />
+                {/* Iris & Pupil tracking cursor */}
+                <div
+                  className="relative w-3 h-3 rounded-full transition-transform duration-75 flex items-center justify-center"
+                  style={{
+                    transform: `translate(${pupilOffset.x}px, ${pupilOffset.y}px)`,
+                    backgroundColor: activeRainbow.hex,
+                    boxShadow: `0 0 8px ${activeRainbow.glow}`,
+                  }}
+                >
+                  {/* Dark Pupil */}
+                  <div className="w-1.5 h-1.5 rounded-full bg-black flex items-start justify-end">
+                    {/* Specular White Catchlight */}
+                    <div className="w-0.5 h-0.5 rounded-full bg-white opacity-95 mr-0.5 mt-0.5" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </button>
       </div>
 
-      {/* ─── EXPANDABLE VOICE COPILOT DRAWER (TOP-RIGHT ANCHORED) ─── */}
+      {/* ─── EXPANDABLE VOICE COPILOT DRAWER (ADAPTIVE BOTTOM-RIGHT / TOP-RIGHT ANCHORED) ─── */}
       {isOpen && (
         <div
           className={cn(
-            "fixed top-16 right-4 sm:right-6 z-[70] flex flex-col w-[94vw] sm:w-[500px] h-[660px] max-h-[84vh]",
+            "fixed right-4 sm:right-6 z-[70] flex flex-col w-[94vw] sm:w-[500px] h-[660px] max-h-[calc(100vh-6.5rem)]",
             "rounded-2xl border border-amber-500/30 bg-[#0c0e14]/98 shadow-2xl shadow-black/90 backdrop-blur-xl",
-            "transition-all duration-300 animate-in fade-in slide-in-from-top-4"
+            "transition-all duration-300 animate-in fade-in",
+            btnPos && btnPos.y < 350
+              ? "top-20 slide-in-from-top-4"
+              : "bottom-24 slide-in-from-bottom-4"
           )}
         >
           {/* Top Header Bar */}
@@ -2027,6 +2243,53 @@ export function VoiceCopilot() {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ─── CUSTOM SMALL CIRCULAR CURSOR FOLLOWER WITH RAINBOW GLOW ─── */}
+      {isMouseOnScreen && (
+        <div
+          className="fixed pointer-events-none z-[99999] transition-opacity duration-200"
+          style={{
+            left: `${mousePos.x}px`,
+            top: `${mousePos.y}px`,
+            transform: "translate(-50%, -50%)",
+          }}
+        >
+          {/* Inner Precision Dot */}
+          <div
+            className="w-2 h-2 rounded-full transition-transform duration-75"
+            style={{
+              backgroundColor: activeRainbow.hex,
+              boxShadow: `0 0 10px ${activeRainbow.glow}`,
+              transform: isGlowFlashing ? "scale(1.6)" : "scale(1)",
+            }}
+          />
+
+          {/* Outer Sleek Trailing Ring */}
+          <div
+            className={cn(
+              "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border transition-all duration-150",
+              isGlowFlashing ? "w-8 h-8 border-2 scale-110" : "w-6 h-6 border"
+            )}
+            style={{
+              borderColor: activeRainbow.border,
+              boxShadow: isGlowFlashing ? `0 0 14px ${activeRainbow.glow}` : "none",
+            }}
+          />
+
+          {/* Click Ripple Wave on Any Screen Click */}
+          {clickRipple.active && (
+            <div
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border animate-ping pointer-events-none"
+              style={{
+                width: "36px",
+                height: "36px",
+                borderColor: activeRainbow.hex,
+                boxShadow: `0 0 12px ${activeRainbow.glow}`,
+              }}
+            />
+          )}
         </div>
       )}
     </>

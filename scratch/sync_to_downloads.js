@@ -15,6 +15,20 @@ const filesToCopyToDownloads = [
   'src/lib/operational-tools.ts',
   'src/lib/reports-engine.ts',
   'src/app/page.tsx',
+  'src/app/api/assistant/route.ts',
+  'src/lib/sarvam/model-router.ts',
+  'src/lib/sarvam/mcp-client.ts',
+  'src/lib/sarvam/nass-tools.ts',
+  'src/lib/sarvam/live-connectors.ts',
+  'src/lib/sarvam/document-intelligence.ts',
+  'src/lib/sarvam/orchestrator.ts',
+  'src/app/api/sarvam/mcp/route.ts',
+  'src/lib/client.ts',
+  'src/app/api/projects/route.ts',
+  'src/components/app/views/projects.tsx',
+  'solver of info.md',
+  'tests/boq-and-stock.test.ts',
+  '.env',
 ];
 
 const srcDir = 'C:/Users/Krish Sangani/Documents/Trader/Krish_2';
