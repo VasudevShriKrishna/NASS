@@ -347,4 +347,22 @@ export class SarvamMcpClient {
       script: data.script || "Latin",
     };
   }
+
+  /**
+   * Execute sarvam_vision_extract tool via Single-Call JSON Schema Vision Extractor
+   */
+  public async visionExtract(params: {
+    document_base64: string;
+    fileName?: string;
+    schema_type?: "PURCHASE_ORDER" | "BILL_OF_LADING" | "COMMERCIAL_INVOICE" | "MILL_TEST_CERT" | "GENERIC";
+  }) {
+    const { extractDocument } = await import("./vision-extractor");
+    const buffer = Buffer.from(params.document_base64, "base64");
+    return extractDocument({
+      buffer,
+      fileName: params.fileName || "document.pdf",
+      schemaType: params.schema_type || "PURCHASE_ORDER",
+      customApiKey: this.apiKey,
+    });
+  }
 }
