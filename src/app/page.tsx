@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAppStore, type ViewId } from "@/lib/app-state";
+import { useAppStore, parseViewFromPath, type ViewId } from "@/lib/app-state";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -353,6 +353,40 @@ export default function Home() {
     widthRef.current = sidebarWidth;
   }, [sidebarWidth]);
 
+  // Synchronize URL path on initial mount and when user clicks browser back/forward buttons
+  useEffect(() => {
+    const handleUrlSync = () => {
+      if (typeof window === "undefined") return;
+      const detectedView = parseViewFromPath(window.location.pathname);
+      const searchParams = new URLSearchParams(window.location.search);
+      const ref = searchParams.get("ref");
+      const ship = searchParams.get("ship");
+
+      if (detectedView) {
+        if (ref) {
+          useAppStore.setState({
+            view: detectedView,
+            drill: { view: detectedView, ref },
+          });
+        } else if (detectedView === "live" && ship) {
+          useAppStore.setState({
+            view: "live",
+            traceShip: ship,
+          });
+        } else {
+          useAppStore.setState({
+            view: detectedView,
+            drill: null,
+          });
+        }
+      }
+    };
+
+    handleUrlSync();
+    window.addEventListener("popstate", handleUrlSync);
+    return () => window.removeEventListener("popstate", handleUrlSync);
+  }, []);
+
   // Restore sidebar preferences from localStorage
   useEffect(() => {
     try {
@@ -522,57 +556,7 @@ export default function Home() {
             <EvidenceBadge label="PROPOSED TARGET CAPABILITY" />
             <FreshnessBadge value="fresh" />
 
-            {/* Top-Right Grokbot Voice AI Assistant Launch Button */}
-            <button
-              type="button"
-              onClick={toggleVoiceCopilot}
-              title={
-                isVoiceCopilotOpen
-                  ? "Close Voice AI Copilot (Ctrl+J)"
-                  : "Open Grok Voice AI Copilot (Ctrl+J)"
-              }
-              aria-label="Toggle Grok Voice AI Assistant"
-              className={cn(
-                "relative group flex items-center gap-2 rounded-lg border px-2.5 py-1 text-xs font-semibold transition-all duration-200 cursor-pointer",
-                isVoiceCopilotOpen
-                  ? "border-primary/80 bg-gradient-to-r from-primary/25 via-[#1a1508] to-primary/20 text-primary shadow-[0_0_16px_rgba(212,175,55,0.4)]"
-                  : "border-primary/35 bg-card/60 hover:bg-primary/15 hover:border-primary/70 text-foreground shadow-sm hover:shadow-[0_0_12px_rgba(212,175,55,0.25)]"
-              )}
-            >
-              <div className="relative flex items-center justify-center">
-                <GrokBotIcon className="h-4 w-4" active={isVoiceCopilotOpen} />
-                <span
-                  className={cn(
-                    "absolute -top-1 -right-1 h-2 w-2 rounded-full transition-all",
-                    isVoiceCopilotOpen
-                      ? "bg-emerald-400 ring-2 ring-emerald-400/40 animate-pulse"
-                      : "bg-primary/70 group-hover:bg-primary group-hover:animate-ping"
-                  )}
-                />
-              </div>
-
-              <div className="hidden sm:flex flex-col text-left leading-none">
-                <div className="flex items-center gap-1">
-                  <span className="font-display text-[11px] font-bold tracking-wide text-gold-grad">
-                    Grok Voice AI
-                  </span>
-                  <span className="rounded bg-primary/20 border border-primary/30 px-1 py-0.2 text-[8px] font-mono text-primary uppercase">
-                    Live
-                  </span>
-                </div>
-                <span className="text-[9px] text-muted-foreground/80 font-mono mt-0.5">
-                  Ctrl+J
-                </span>
-              </div>
-
-              {/* Animated Mini Soundwave Bars on Active / Hover */}
-              <div className="hidden lg:flex items-center gap-0.5 h-3 ml-0.5">
-                <span className={cn("w-0.5 bg-primary/70 rounded-full transition-all duration-300", isVoiceCopilotOpen ? "h-3 animate-pulse" : "h-1 group-hover:h-2")} />
-                <span className={cn("w-0.5 bg-primary rounded-full transition-all duration-300 delay-75", isVoiceCopilotOpen ? "h-2.5 animate-pulse" : "h-2 group-hover:h-3")} />
-                <span className={cn("w-0.5 bg-primary/70 rounded-full transition-all duration-300 delay-150", isVoiceCopilotOpen ? "h-3.5 animate-pulse" : "h-1.5 group-hover:h-2.5")} />
-              </div>
-            </button>
-
+            {/* Dedicated Theme Toggle in Header Bar */}
             <ThemeToggle />
           </div>
         </div>
@@ -684,7 +668,7 @@ export default function Home() {
           would trap position:fixed inside a transformed containing block. */}
       {view === "live" && <LiveTraceabilityView drillRef={drillRef} />}
 
-      {/* Website-Wide Voice AI Copilot (Sarvam STT/TTS + Mistral reasoning) */}
+      {/* Website-Wide Voice AI Copilot (Sarvam STT/TTS + Sarvam 105B Reasoning & MCP) */}
       <VoiceCopilot />
     </div>
   );

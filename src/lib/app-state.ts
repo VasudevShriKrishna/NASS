@@ -20,6 +20,47 @@ export type ViewId =
   | "governance"
   | "architecture";
 
+export const VALID_VIEWS: ViewId[] = [
+  "control-tower",
+  "ceo-tower",
+  "projects",
+  "procurement",
+  "suppliers",
+  "import-tracking",
+  "bol-intelligence",
+  "inventory",
+  "receiving",
+  "assets",
+  "exceptions",
+  "actions",
+  "assistant",
+  "governance",
+  "architecture",
+  "live",
+];
+
+export function parseViewFromPath(pathname: string): ViewId | null {
+  if (typeof window === "undefined" && !pathname) return null;
+  const segment = (pathname || "").replace(/^\/+|\/+$/g, "").split("/")[0]?.toLowerCase();
+  if (!segment || segment === "") return "control-tower";
+  if (VALID_VIEWS.includes(segment as ViewId)) {
+    return segment as ViewId;
+  }
+  return null;
+}
+
+export function syncUrlPath(view: ViewId, ref?: string | null) {
+  if (typeof window === "undefined") return;
+  const targetPath = view === "control-tower" ? "/" : `/${view}`;
+  const query = ref ? `?ref=${encodeURIComponent(ref)}` : "";
+  const newUrl = `${targetPath}${query}`;
+  if (window.location.pathname + window.location.search !== newUrl) {
+    try {
+      window.history.pushState({ view, ref }, "", newUrl);
+    } catch {}
+  }
+}
+
 interface AppState {
   view: ViewId;
   setView: (v: ViewId) => void;
@@ -42,39 +83,47 @@ interface AppState {
 export const useAppStore = create<AppState>((set, get) => ({
   view: "control-tower",
   viewHistory: ["control-tower"],
-  setView: (v) =>
+  setView: (v) => {
+    syncUrlPath(v);
     set((state) => ({
       view: v,
       viewHistory: state.view === v ? state.viewHistory : [...state.viewHistory.slice(-10), v],
-    })),
+    }));
+  },
   goBack: () => {
     const { viewHistory } = get();
     if (viewHistory.length > 1) {
       const newHistory = [...viewHistory];
       newHistory.pop(); // pop current
       const prev = newHistory[newHistory.length - 1];
+      syncUrlPath(prev);
       set({ view: prev, viewHistory: newHistory, drill: null });
       return true;
     }
     // Default back to control tower if no history
+    syncUrlPath("control-tower");
     set({ view: "control-tower", drill: null });
     return false;
   },
   drill: null,
-  drillTo: (view, ref) =>
+  drillTo: (view, ref) => {
+    syncUrlPath(view, ref);
     set((state) => ({
       view,
       drill: { view, ref },
       viewHistory: state.view === view ? state.viewHistory : [...state.viewHistory.slice(-10), view],
-    })),
+    }));
+  },
   clearDrill: () => set({ drill: null }),
   traceShip: null,
-  openTrace: (ship) =>
+  openTrace: (ship) => {
+    syncUrlPath("live", ship ? `ship=${encodeURIComponent(ship)}` : undefined);
     set((state) => ({
       view: "live",
       traceShip: ship ?? null,
       viewHistory: state.view === "live" ? state.viewHistory : [...state.viewHistory.slice(-10), "live"],
-    })),
+    }));
+  },
   clearTraceShip: () => set({ traceShip: null }),
   isVoiceCopilotOpen: false,
   setVoiceCopilotOpen: (open) => set({ isVoiceCopilotOpen: open }),
