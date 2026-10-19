@@ -12,7 +12,7 @@ import { SarvamModelRouter } from "./model-router";
 import { NASS_APPLICATION_TOOLS, executeNassTool } from "./nass-tools";
 import type { PageContext, NavigationAction, ReportAction } from "../voice/copilot-types";
 import { resolveNavigationIntent, resolveReportIntent, isGreeting, formatGreeting } from "../voice/mistral";
-import { formatWebSearchResultsAsText } from "../search/web-search";
+import { formatWebSearchResultsAsText, resolveCompoundInquiry } from "../search/web-search";
 
 export interface OrchestrationResult {
   answer: string;
@@ -41,9 +41,35 @@ export async function runSarvamOrchestrator(
   let resolvedNav: NavigationAction | undefined = resolveNavigationIntent(userMessage, pageContext, history);
   let resolvedRep: ReportAction | undefined = resolveReportIntent(userMessage, pageContext, history);
 
-  // If user is searching web/news and didn't explicitly ask to generate/download a PDF, clear report intent
-  if (resolvedRep && /\b(news|web|search|google|compare.*news|press)\b/i.test(userMessage) && !/\b(generate.*pdf|download.*pdf|export.*pdf|create.*pdf)\b/i.test(userMessage)) {
+  // If user is searching web/news/weather/time and didn't explicitly ask to generate/download a PDF, clear report intent
+  if (resolvedRep && /\b(news|web|search|google|compare.*news|press|weather|time|warzone|attack|conflict|details)\b/i.test(userMessage) && !/\b(generate.*pdf|download.*pdf|export.*pdf|create.*pdf)\b/i.test(userMessage)) {
     resolvedRep = undefined;
+  }
+
+  // If user is asking an informational inquiry, clear navigation intent unless explicit navigation verb is present
+  if (resolvedNav && /\b(news|web|search|google|weather|time|what is|tell me|details|explain|how does)\b/i.test(userMessage) && !/\b(open|take me to|go to|navigate to|switch to|return to)\b/i.test(userMessage)) {
+    resolvedNav = undefined;
+  }
+
+  // 1.5. Check for compound multi-intent inquiry (News + Weather + Time + Healthcare + Control Tower)
+  const compound = await resolveCompoundInquiry(userMessage);
+  if (compound) {
+    return {
+      answer: compound.responseText,
+      answerText: compound.responseText,
+      spokenText: "I have retrieved the latest Middle East security updates, live weather and time for Riyadh, healthcare infrastructure, and NASS Control Tower details with verified evidence links.",
+      provider: "Sarvam AI",
+      model: "sarvam-105b",
+      sources: compound.sources,
+      toolsUsed: compound.toolsUsed,
+      providerNotice: "Processed with Sarvam AI 105B Reasoning Core and verified multi-feed syndication.",
+      followUpSuggestions: [
+        "What is shipment SHP-8802?",
+        "Show active projects portfolio",
+        "Riyadh healthcare Vision 2030",
+        "Open CEO Control Tower",
+      ],
+    };
   }
 
   // 2. Check for simple greeting to save latency

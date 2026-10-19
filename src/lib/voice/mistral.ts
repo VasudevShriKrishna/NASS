@@ -25,8 +25,16 @@ import {
   nassCeoDecisionBrief,
 } from "../operational-tools";
 import type { PageContext, NavigationAction, ReportAction } from "./copilot-types";
-import { runSarvamOrchestrator } from "../sarvam/orchestrator";
-import { webSearch, searchNews, fetchWebpage, formatWebSearchResultsAsText } from "../search/web-search";
+import {
+  webSearch,
+  searchNews,
+  fetchWebpage,
+  formatWebSearchResultsAsText,
+  distillSearchKeywords,
+  resolveCompoundInquiry,
+  getLiveWeather,
+  getLiveTime,
+} from "../search/web-search";
 
 // All non-Sarvam APIs disabled per strict architectural directive: USE ONLY SARVAM API
 // const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY || "";
@@ -528,9 +536,16 @@ export function resolveNavigationIntent(
   const q = userMessage.toLowerCase().trim();
   const ctx = resolveActiveContext(userMessage, history, pageContext);
 
+  // Negative guard: if query is an informational/research inquiry and lacks explicit navigation command, do not navigate!
+  const hasExplicitNavVerb = /\b(open|take me to|go to|navigate to|switch to|return to|bring up)\b/i.test(q);
+  const isInformational = /\b(what is|tell me|explain|details|news|weather|time|how does|why|search|who is)\b/i.test(q);
+  if (isInformational && !hasExplicitNavVerb) {
+    return undefined;
+  }
+
   const isNav =
-    /\b(open|show me|show|take me to|go to|navigate to|view|return to|bring up|display|go back)\b/i.test(q) ||
-    /\b(materials for|shipment|shipments|purchase order|supplier|inventory|quality inspection|control tower|connector health|live map)\b/i.test(q);
+    hasExplicitNavVerb ||
+    /\b(materials for|shipment|shipments|purchase order|supplier|inventory|quality inspection|connector health|live map)\b/i.test(q);
 
   if (!isNav && !/\b(open|show|go)\b/i.test(q)) return undefined;
 
@@ -545,8 +560,8 @@ export function resolveNavigationIntent(
     };
   }
 
-  // 1. "Open the Control Tower"
-  if (/\b(open (the )?control tower|return to (the )?control tower|control tower)\b/i.test(q) && !/\bceo\b/i.test(q)) {
+  // 1. "Open the Control Tower" - require explicit navigation action verb
+  if (/\b(open (the )?control tower|return to (the )?control tower|go to (the )?control tower|navigate to (the )?control tower)\b/i.test(q) && !/\bceo\b/i.test(q)) {
     return {
       view: "control-tower",
       label: "Executive Control Tower",
@@ -775,8 +790,19 @@ export function resolveReportIntent(
   const isReport = /\b(pdf|report|download|export|generate a report|prepare a report|make a pdf|create a report)\b/i.test(q);
   if (!isReport) return undefined;
 
-  // Negative guard: user explicitly requested text instead of PDF (e.g. "not a pdf", "in text, not a pdf") or is referring to news/press reporting
-  if (/\b(not a pdf|no pdf|without a? pdf|in text|text only|plain text|not pdf|don'?t.*pdf|never.*pdf|news report|press report|media report|public report|compare.*report)\b/i.test(q)) {
+  // Negative guard: user explicitly requested text instead of PDF or is referring to news/weather/media reporting
+  if (
+    /\b(not a pdf|no pdf|without a? pdf|in text|text only|plain text|not pdf|don'?t.*pdf|never.*pdf|news report|weather report|press report|media report|public report|compare.*report|status report|report on attacks)\b/i.test(
+      q
+    )
+  ) {
+    return undefined;
+  }
+
+  // If the query is primarily external news, research, weather, or time, do not trigger PDF report unless explicit PDF verb is present
+  const isInformationalQuery = /\b(news|weather|time|warzone|attacks?|conflict|search|google|what is|tell me)\b/i.test(q);
+  const hasExplicitPdfVerb = /\b(generate.*pdf|download.*pdf|export.*pdf|create.*pdf|make.*pdf|give me.*pdf|pdf of)\b/i.test(q);
+  if (isInformationalQuery && !hasExplicitPdfVerb) {
     return undefined;
   }
 
@@ -912,7 +938,8 @@ export function resolveReportIntent(
   }
 
   // 9. CEO Executive Report ("Prepare a CEO report for the selected project", "prepare a ceo report", "ceo report")
-  if (/\b(ceo|executive|summary for all authorized active projects)\b/i.test(q) || isReport) {
+  const hasExplicitPdfAction = /\b(generate|download|export|prepare|create|make)\b/i.test(q) && /\b(pdf|report|brief)\b/i.test(q);
+  if (/\b(ceo report|executive report|ceo brief|executive brief|ceo decision brief)\b/i.test(q) || (hasExplicitPdfAction && /\b(ceo|executive)\b/i.test(q))) {
     const title = `CEO Executive Decision Brief (${ctx.activeProject})`;
     const filename = "NASS-CEO-Executive-Brief.pdf";
     return {
@@ -1159,21 +1186,30 @@ async function runSarvamReasoning(
 
     const nav = resolveNavigationIntent(userMessage, pageContext, history);
     const rep = resolveReportIntent(userMessage, pageContext, history);
-    if (nav) {
+
+    const qLower = userMessage.toLowerCase();
+    const isInfo = /\b(news|weather|time|warzone|attacks?|conflict|search|google|what is|tell me|details of)\b/i.test(qLower);
+    const hasNav = /\b(open|take me to|go to|navigate to|switch to|return to)\b/i.test(qLower);
+    const hasRep = /\b(generate.*pdf|download.*pdf|export.*pdf|create.*pdf)\b/i.test(qLower);
+
+    const effectiveNav = (!isInfo || hasNav) ? nav : undefined;
+    const effectiveRep = (!isInfo || hasRep) ? rep : undefined;
+
+    if (effectiveNav) {
       toolsUsed.push("navigate_to_module");
-      sources.push(`navigation:${nav.view}`);
+      sources.push(`navigation:${effectiveNav.view}`);
     }
-    if (rep) {
+    if (effectiveRep) {
       toolsUsed.push("generate_pdf_report");
-      sources.push(`report:${rep.reportType}`);
+      sources.push(`report:${effectiveRep.reportType}`);
     }
 
     let spoken = spokenText;
-    if (nav && !spoken.toLowerCase().includes("navigat") && !spoken.toLowerCase().includes("opening") && !spoken.toLowerCase().includes("returning")) {
-      spoken = `Opening ${nav.label}. ${spoken}`;
+    if (effectiveNav && !spoken.toLowerCase().includes("navigat") && !spoken.toLowerCase().includes("opening") && !spoken.toLowerCase().includes("returning")) {
+      spoken = `Opening ${effectiveNav.label}. ${spoken}`;
     }
-    if (rep && !spoken.toLowerCase().includes("report") && !spoken.toLowerCase().includes("pdf") && !spoken.toLowerCase().includes("download")) {
-      spoken = `${spoken} Your ${rep.title} PDF report is generated and ready for download.`;
+    if (effectiveRep && !spoken.toLowerCase().includes("report") && !spoken.toLowerCase().includes("pdf") && !spoken.toLowerCase().includes("download")) {
+      spoken = `${spoken} Your ${effectiveRep.title} PDF report is generated and ready for download.`;
     }
     spoken = spoken.slice(0, 380).trim();
 
@@ -1345,24 +1381,42 @@ async function runDeterministicFallback(
   const toolsUsed: string[] = [];
   const sources: string[] = [];
 
+  // 0. Compound multi-intent inquiries (News + Weather + Time + Healthcare + Control Tower)
+  const compound = await resolveCompoundInquiry(userMessage);
+  if (compound) {
+    let spoken = compound.responseText.replace(/[*#_`•—–|~]/g, " ").replace(/\s+/g, " ").slice(0, 380).trim();
+    return {
+      answer: compound.responseText,
+      answerText: compound.responseText,
+      spokenText: spoken,
+      sources: compound.sources,
+      toolsUsed: compound.toolsUsed,
+      providerNotice: `Grounded local deterministic engine active (multi-topic intelligence synthesis).`,
+    };
+  }
+
   const navigation = resolveNavigationIntent(userMessage, pageContext);
   const report = resolveReportIntent(userMessage, pageContext);
 
-  if (navigation) {
+  const isInformationalQuery = /\b(news|weather|time|warzone|attacks?|conflict|search|google|what is|tell me|details of)\b/i.test(q);
+  const hasExplicitNav = /\b(open|take me to|go to|navigate to|switch to|return to)\b/i.test(q);
+  const hasExplicitRep = /\b(generate.*pdf|download.*pdf|export.*pdf|create.*pdf)\b/i.test(q);
+
+  if (navigation && (!isInformationalQuery || hasExplicitNav)) {
     toolsUsed.push("navigate_to_module");
     sources.push(`navigation:${navigation.view}`);
   }
-  if (report) {
+  if (report && (!isInformationalQuery || hasExplicitRep)) {
     toolsUsed.push("generate_pdf_report");
     sources.push(`report:${report.reportType}`);
   }
 
   const buildReturn = (ans: string, customSources: string[] = [], customTools: string[] = []) => {
     let spoken = ans.replace(/[*#_`•—–|~]/g, " ").replace(/\s+/g, " ");
-    if (navigation && !spoken.toLowerCase().includes("navigat") && !spoken.toLowerCase().includes("opening")) {
+    if (navigation && (!isInformationalQuery || hasExplicitNav) && !spoken.toLowerCase().includes("navigat") && !spoken.toLowerCase().includes("opening")) {
       spoken = `Opening ${navigation.label}. ${spoken}`;
     }
-    if (report && !spoken.toLowerCase().includes("report") && !spoken.toLowerCase().includes("pdf")) {
+    if (report && (!isInformationalQuery || hasExplicitRep) && !spoken.toLowerCase().includes("report") && !spoken.toLowerCase().includes("pdf")) {
       spoken = `${spoken} Your ${report.title} PDF report is generated and ready for download.`;
     }
     spoken = spoken.slice(0, 380).trim();
@@ -1373,8 +1427,8 @@ async function runDeterministicFallback(
       spokenText: spoken,
       sources: Array.from(new Set([...sources, ...customSources])),
       toolsUsed: Array.from(new Set([...toolsUsed, ...customTools])),
-      navigation,
-      report,
+      navigation: (!isInformationalQuery || hasExplicitNav) ? navigation : undefined,
+      report: (!isInformationalQuery || hasExplicitRep) ? report : undefined,
       providerNotice: `Grounded local deterministic engine active${reason ? ` (${reason})` : ""}.`,
     };
   };
@@ -1391,8 +1445,49 @@ async function runDeterministicFallback(
     return buildReturn(ans);
   }
 
+  // Weather query
+  if (/\b(weather|temperature|forecast|climate)\b/i.test(q)) {
+    const loc = /riyadh/i.test(q) ? "Riyadh" : /bahrain|manama/i.test(q) ? "Bahrain" : /dubai/i.test(q) ? "Dubai" : "Bahrain";
+    const w = await getLiveWeather(loc);
+    toolsUsed.push("get_live_weather");
+    sources.push("weather:open_meteo");
+    const ans =
+      `### Answer\n` +
+      `Live weather report for **${w.location}**:\n\n` +
+      `### Key Details\n` +
+      `• **Current Temperature:** **${w.temperatureC}°C** (feels like **${w.apparentTemperatureC}°C**)\n` +
+      `• **Relative Humidity:** ${w.humidityPercent}%\n` +
+      `• **Wind Speed:** ${w.windSpeedKmh} km/h\n` +
+      `• **Atmospheric Conditions:** ${w.condition}\n\n` +
+      `### Evidence\n` +
+      `• [Open-Meteo Global Forecasting](https://open-meteo.com/) — *Live Weather Telemetry*\n\n` +
+      `### Verification Notes\n` +
+      `• Retrieved at ${w.retrievedAt} via Open-Meteo meteorological API with zero inference delay.`;
+    return buildReturn(ans, sources, toolsUsed);
+  }
+
+  // World Time query
+  if (/\b(time in|what is the time|current time|ongoing time|time now)\b/i.test(q)) {
+    const loc = /riyadh/i.test(q) ? "Riyadh" : /dubai/i.test(q) ? "Dubai" : "Bahrain";
+    const t = getLiveTime(loc);
+    toolsUsed.push("get_world_time");
+    sources.push("time:iana_ast");
+    const ans =
+      `### Answer\n` +
+      `The current ongoing time in **${t.city}** is **${t.formattedTime}**.\n\n` +
+      `### Key Details\n` +
+      `• **Standard Time Zone:** Arabia Standard Time (AST, ${t.utcOffset})\n` +
+      `• **Regional Synchronization:** Kingdom of Bahrain and Kingdom of Saudi Arabia share the identical AST (UTC+3) time zone.\n` +
+      `• **Daylight Saving Time:** Not observed.\n\n` +
+      `### Evidence\n` +
+      `• [IANA Time Zone Database (Asia/Riyadh)](https://www.iana.org/time-zones) — *Authoritative World Time Database*\n\n` +
+      `### Verification Notes\n` +
+      `• Deterministically synchronized with UTC+3 AST master clock.`;
+    return buildReturn(ans, sources, toolsUsed);
+  }
+
   // ─── EXTERNAL PUBLIC WEB & LIVE NEWS SEARCH (ADD-ON FIX) ───
-  if (/search|news|google|web|announcement|prime minister|biography|bio|who is|market update|infrastructure project|tender|public figure|historical.*marine|historical.*announcement/i.test(q)) {
+  if (/search|news|google|web|announcement|prime minister|biography|bio|who is|market update|infrastructure project|tender|public figure|historical.*marine|historical.*announcement|war|attack|conflict/i.test(q)) {
     // 1. Compare public news with internal project record (Mixed Query test case)
     if (/compare.*public.*internal|compare.*news.*project|compare.*news.*record/i.test(q)) {
       toolsUsed.push("search_news", "nass_project_portfolio");
@@ -1419,18 +1514,20 @@ async function runDeterministicFallback(
     }
 
     // 2. Live News Search (e.g. "Find news published in the last 24 hours about Bahrain's Prime Minister")
-    if (/news|last 24|today|yesterday|prime minister|breaking|headline/i.test(q)) {
+    if (/news|last 24|today|yesterday|prime minister|breaking|headline|war|attack|conflict/i.test(q)) {
       toolsUsed.push("search_news");
       const dateRange = /24|today/i.test(q) ? "last 24 hours" : /7|week/i.test(q) ? "last seven days" : "latest";
-      const newsRes = await searchNews(userMessage, dateRange);
+      const distilled = distillSearchKeywords(userMessage);
+      const newsRes = await searchNews(distilled || userMessage, dateRange);
       sources.push(...(newsRes.results.map((r) => `news:${r.source}`) || ["news:live_feed"]));
       const ans = formatWebSearchResultsAsText(newsRes, "news");
       return buildReturn(ans, sources, toolsUsed);
     }
 
-    // 3. General Web Search (e.g. "Search the web for the latest public announcement from NASS Group", "Research a public figure and provide a sourced biography", "Find the latest construction-material procurement market updates in Bahrain", "Find current publicly announced infrastructure projects relevant to NASS", "Search for a historical NASS marine-operation announcement")
+    // 3. General Web Search
     toolsUsed.push("web_search");
-    const webRes = await webSearch(userMessage);
+    const distilled = distillSearchKeywords(userMessage);
+    const webRes = await webSearch(distilled || userMessage);
     sources.push(...(webRes.results.map((r) => `web:${r.source}`) || ["web:public_search"]));
     const ans = formatWebSearchResultsAsText(webRes, "web");
     return buildReturn(ans, sources, toolsUsed);

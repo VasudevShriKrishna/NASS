@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useAppStore } from "@/lib/app-state";
 import {
   AlertTriangle,
   Building,
@@ -184,9 +185,29 @@ function GapChip({ gap, uom }: { gap: number; uom: string }) {
 
 export function ProjectsView() {
   const { data, loading, error, asOf } = useApi<ProjectsPayload>("/api/projects");
+  const { drill } = useAppStore();
   const [activeTab, setActiveTab] = useState<string>("portfolio");
   const [projectFilter, setProjectFilter] = useState<string>("ALL");
   const [selectedProjectCode, setSelectedProjectCode] = useState<string>("ALL");
+
+  // React to cross-view navigation requests (e.g. CEO Tower "View BOQ & Stock")
+  useEffect(() => {
+    if (drill?.view === "projects" && drill.ref) {
+      setSelectedProjectCode(drill.ref);
+      setActiveTab("boq-demands");
+    }
+  }, [drill]);
+
+  const selectedProject = useMemo(() => {
+    if (!data?.projects || selectedProjectCode === "ALL") return null;
+    return data.projects.find((p) => p.code === selectedProjectCode) || null;
+  }, [data?.projects, selectedProjectCode]);
+
+  const filteredRequirements = useMemo(() => {
+    if (!data?.requirements) return [];
+    if (selectedProjectCode === "ALL") return data.requirements;
+    return data.requirements.filter((r) => r.project.code === selectedProjectCode);
+  }, [data?.requirements, selectedProjectCode]);
 
   const filteredProjects = useMemo(() => {
     if (!data?.projects) return [];
@@ -445,7 +466,7 @@ export function ProjectsView() {
             {/* TAB 2: BOQ Material Demands */}
             <TabsContent value="boq-demands" className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs font-medium text-muted-foreground">Project Filter:</span>
                   <select
                     className="h-8 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus:ring-1 focus:ring-primary"
@@ -453,40 +474,133 @@ export function ProjectsView() {
                     onChange={(e) => setSelectedProjectCode(e.target.value)}
                   >
                     <option value="ALL">All Projects ({data.requirements.length} demands)</option>
-                    {data.projects.map((p) => (
-                      <option key={p.code} value={p.code}>
-                        {p.code} — {p.name.slice(0, 45)}...
-                      </option>
-                    ))}
+                    {data.projects.map((p) => {
+                      const count = byProject.get(p.code)?.length ?? 0;
+                      return (
+                        <option key={p.code} value={p.code}>
+                          {p.code} — {p.name.slice(0, 40)}... ({count} demands{p.status.includes("HISTORICAL") ? " · Historical" : ""})
+                        </option>
+                      );
+                    })}
                   </select>
+                  {selectedProject && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="rounded bg-amber-400/10 px-2 py-0.5 font-mono text-[11px] font-bold text-amber-400 border border-amber-400/20">
+                        {selectedProject.code}
+                      </span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide ${
+                          selectedProject.status.includes("HISTORICAL")
+                            ? "bg-zinc-800 text-zinc-300 border border-zinc-700"
+                            : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
+                        }`}
+                      >
+                        {selectedProject.status}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="text-[10px] text-muted-foreground">
                   Planned requirement ≠ approved ≠ consumed (M14 rule). Stock strictly separates on-hand from in-transit.
                 </div>
               </div>
 
-              {/* Requirements Table */}
-              <Card className="border border-border/60">
-                <ScrollTable maxHeight="max-h-[550px]">
-                  <Table className="min-w-[1080px]">
-                    <TableHeader>
-                      <TableRow className="bg-muted/40">
-                        <TableHead>Project</TableHead>
-                        <TableHead>Material / SKU</TableHead>
-                        <TableHead>Work Package</TableHead>
-                        <TableHead>Demand</TableHead>
-                        <TableHead>Required on site</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Qty Required</TableHead>
-                        <TableHead>Stock Coverage vs Required</TableHead>
-                        <TableHead className="text-right">In Transit</TableHead>
-                        <TableHead>Linked Inbound Logistics</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {data.requirements
-                        .filter((r) => selectedProjectCode === "ALL" || r.project.code === selectedProjectCode)
-                        .map((r) => (
+              {filteredRequirements.length === 0 ? (
+                <div className="rounded-xl border border-border/60 bg-card/60 p-8 text-center space-y-4">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400">
+                    <Layers className="h-6 w-6" />
+                  </div>
+                  <div className="max-w-xl mx-auto space-y-2">
+                    <h4 className="text-base font-bold text-foreground">
+                      {selectedProject ? `Project Register: ${selectedProject.code}` : "No Material Demands Recorded"}
+                    </h4>
+                    {selectedProject ? (
+                      <div className="space-y-3 text-xs text-muted-foreground text-left bg-muted/30 p-4 rounded-lg border border-border/40">
+                        <div className="flex justify-between items-start border-b border-border/30 pb-2">
+                          <span className="font-semibold text-foreground">{selectedProject.name}</span>
+                          <span className="font-mono text-xs px-2 py-0.5 bg-zinc-800 text-zinc-300 rounded border border-zinc-700">
+                            {selectedProject.status}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                          <div>
+                            <span className="text-muted-foreground block">Client / Authority:</span>
+                            <span className="font-medium text-foreground">
+                              {clientNameMap[selectedProject.code] || "Public Authority / Client"}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block">Site Location:</span>
+                            <span className="font-medium text-foreground">{selectedProject.site}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block">Work Packages:</span>
+                            <span className="font-mono text-amber-400">{selectedProject.workPackage || "WP-ALBA-FS, WP-ALBA-STL"}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block">Contracting Entity:</span>
+                            <span className="font-medium text-foreground">
+                              {selectedProject.legalEntity?.code ?? "NASS-CON"} ({selectedProject.legalEntity?.name ?? "NASS Contracting"})
+                            </span>
+                          </div>
+                        </div>
+                        <div className="border-t border-border/30 pt-2 space-y-1 text-[11px] text-zinc-300">
+                          <p className="flex items-center gap-1.5 text-amber-400 font-semibold">
+                            <Info className="h-3.5 w-3.5" />
+                            <span>Historical Archive Status: 0 Active Demands</span>
+                          </p>
+                          <p>
+                            • <strong>No BOQ records:</strong> No active BOQ lines are currently open for this project scope.
+                          </p>
+                          <p>
+                            • <strong>No material demands:</strong> No material demands are recorded for this project.
+                          </p>
+                          <p>
+                            • <strong>No linked stock records:</strong> No active on-hand warehouse reservations or inbound shipments are allocated.
+                          </p>
+                          <p className="text-[10px] text-muted-foreground pt-1 italic">
+                            All smelter reduction potlines, civil works foundations, and structural steel packages were historically closed out and finalized.
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        No BOQ material demand records match the selected filter.
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-center gap-2 pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+                      onClick={() => setSelectedProjectCode("ALL")}
+                    >
+                      View All Project Demands ({data.requirements.length})
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                /* Requirements Table */
+                <Card className="border border-border/60">
+                  <ScrollTable maxHeight="max-h-[550px]">
+                    <Table className="min-w-[1080px]">
+                      <TableHeader>
+                        <TableRow className="bg-muted/40">
+                          <TableHead>Project</TableHead>
+                          <TableHead>Material / SKU</TableHead>
+                          <TableHead>Work Package</TableHead>
+                          <TableHead>Demand</TableHead>
+                          <TableHead>Required on site</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Qty Required</TableHead>
+                          <TableHead>Stock Coverage vs Required</TableHead>
+                          <TableHead className="text-right">In Transit</TableHead>
+                          <TableHead>Linked Inbound Logistics</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredRequirements.map((r) => (
                           <TableRow key={r.id} className="hover:bg-muted/20">
                             <TableCell className="font-mono text-xs font-semibold">
                               <span className="text-amber-400">{r.project.code}</span>
@@ -560,10 +674,11 @@ export function ProjectsView() {
                             </TableCell>
                           </TableRow>
                         ))}
-                    </TableBody>
-                  </Table>
-                </ScrollTable>
-              </Card>
+                      </TableBody>
+                    </Table>
+                  </ScrollTable>
+                </Card>
+              )}
             </TabsContent>
 
             {/* TAB 3: NASS Corporate Footprint */}

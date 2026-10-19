@@ -9,7 +9,7 @@ export const runtime = "nodejs";
  * POST /api/voice/copilot
  * Full Conversational Loop Orchestrator:
  * 1. Audio Ingestion (optional) -> Sarvam STT
- * 2. Reasoning & Tool Calling -> Mistral AI (or Grounded Deterministic Engine)
+ * 2. Reasoning & Tool Calling -> Sarvam 105B MCP Core (or Grounded Deterministic Engine)
  * 3. Audio Synthesis (optional) -> Sarvam TTS
  * 4. Grounded Metadata & Sources returned to client
  */
@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
 
     const fullPrompt = attachedMediaNote ? `${userMessage.trim()}${attachedMediaNote}` : userMessage.trim();
 
-    // Run Mistral / Sarvam dual-engine reasoning + operational tool calling loop
+    // Run Sarvam 105B reasoning + operational tool calling loop
     const reasoning = await runCopilotReasoning({
       userMessage: fullPrompt,
       history,
