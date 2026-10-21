@@ -300,7 +300,7 @@ export function OperationMap({
     fSrc?.setData({ type: "FeatureCollection", features: feeders });
   };
 
-  /* ── labels: greedy collision engine ───────────────────────────────── */
+  /* ── labels: greedy collision & automatic repositioning engine ─────── */
   const updateLabels = () => {
     const map = mapRef.current;
     const layer = labelLayerRef.current;
@@ -319,14 +319,25 @@ export function OperationMap({
 
     const items = [...labelsRef.current.values()].sort((a, b) => a.priority - b.priority);
     for (const it of items) {
-      let minZoom = it.baseMinZoom;
-      if (sel && it.id !== `ship:${sel}`) minZoom += 0.9;
+      const isVessel = it.kind === "vessel";
+      const shipRef = isVessel ? it.id.slice(5) : null;
+      const isSelectedVessel = isVessel && shipRef === sel;
+
+      /* Display a shipment label ONLY when zoomed in (zoom >= 4.2) or selected */
+      if (isVessel && !isSelectedVessel && zoom < 4.2) {
+        it.el.classList.remove(styles.labelVisible);
+        it.leaderEl.style.opacity = "0";
+        continue;
+      }
+
+      let minZoom = isSelectedVessel ? -1 : it.baseMinZoom;
+      if (sel && !isSelectedVessel) minZoom += 0.8;
       const [lng, lat] = it.anchor();
       const proj = map.project([lng, lat]);
       /* clustered vessels: anchor to the spiderfy-offset screen position */
       let pt: { x: number; y: number } = { x: proj.x, y: proj.y };
-      if (it.kind === "vessel") {
-        const v = vesselsRef.current.get(it.id.slice(5));
+      if (isVessel && shipRef) {
+        const v = vesselsRef.current.get(shipRef);
         if (v && (v.px || v.py)) pt = { x: v.px, y: v.py };
       }
       const off = pt.x < 34 || pt.y < 26 || pt.x > w - 34 || pt.y > h - 58;
@@ -335,17 +346,44 @@ export function OperationMap({
         it.leaderEl.style.opacity = "0";
         continue;
       }
-      const charW = it.kind === "vessel" ? 6.5 : 5.7;
+      const charW = isVessel ? 6.5 : 5.7;
       const bw = it.text.length * charW + 10;
       const bh = 14;
+
+      /* Automatic repositioning: multi-tier candidate offsets (cardinal, diagonal, expanded) */
+      const d1 = 14;
+      const d2 = 24;
+      const d3 = 34;
       const cands = [
-        { x: pt.x - bw / 2, y: pt.y - bh - 12, side: 0 },
-        { x: pt.x + 13, y: pt.y - bh / 2, side: 1 },
-        { x: pt.x - bw / 2, y: pt.y + 11, side: 2 },
-        { x: pt.x - bw - 13, y: pt.y - bh / 2, side: 3 },
+        /* Primary cardinal */
+        { x: pt.x - bw / 2, y: pt.y - bh - d1 },
+        { x: pt.x + d1, y: pt.y - bh / 2 },
+        { x: pt.x - bw / 2, y: pt.y + d1 },
+        { x: pt.x - bw - d1, y: pt.y - bh / 2 },
+        /* Diagonal quadrants */
+        { x: pt.x + 12, y: pt.y - bh - 8 },
+        { x: pt.x + 12, y: pt.y + 8 },
+        { x: pt.x - bw - 12, y: pt.y - bh - 8 },
+        { x: pt.x - bw - 12, y: pt.y + 8 },
+        /* Secondary ring (automatically positions around obstacles) */
+        { x: pt.x - bw / 2, y: pt.y - bh - d2 },
+        { x: pt.x + d2, y: pt.y - bh / 2 },
+        { x: pt.x - bw / 2, y: pt.y + d2 },
+        { x: pt.x - bw - d2, y: pt.y - bh / 2 },
+        { x: pt.x + 18, y: pt.y - bh - 16 },
+        { x: pt.x + 18, y: pt.y + 16 },
+        { x: pt.x - bw - 18, y: pt.y - bh - 16 },
+        { x: pt.x - bw - 18, y: pt.y + 16 },
+        /* Tertiary ring for densely populated port hubs */
+        { x: pt.x - bw / 2, y: pt.y - bh - d3 },
+        { x: pt.x + d3, y: pt.y - bh / 2 },
+        { x: pt.x - bw / 2, y: pt.y + d3 },
+        { x: pt.x - bw - d3, y: pt.y - bh / 2 },
       ];
+
       let placed: { x: number; y: number; box: { x: number; y: number; w: number; h: number } } | null = null;
       for (const c of cands) {
+        if (c.x < 4 || c.y < 4 || c.x + bw > w - 4 || c.y + bh > h - 4) continue;
         const box = { x: c.x - 3, y: c.y - 2, w: bw + 6, h: bh + 4 };
         if (!rects.some((r) => r.id !== it.id && r.x < box.x + box.w && r.x + r.w > box.x && r.y < box.y + box.h && r.y + r.h > box.y)) {
           placed = { x: c.x, y: c.y, box };
@@ -360,7 +398,8 @@ export function OperationMap({
       rects.push({ ...placed.box, id: it.id });
       it.el.style.transform = `translate3d(${placed.x.toFixed(1)}px, ${placed.y.toFixed(1)}px, 0)`;
       it.el.classList.add(styles.labelVisible);
-      /* leader line from anchor toward the label when displaced */
+
+      /* leader line automatically repositioned and directed from anchor toward label */
       const ex = placed.x + bw / 2;
       const ey = placed.y + bh / 2;
       const dx = ex - pt.x;
@@ -368,15 +407,15 @@ export function OperationMap({
       const dist = Math.hypot(dx, dy);
       if (dist > 15) {
         it.leaderEl.style.transform = `translate3d(${pt.x.toFixed(1)}px, ${pt.y.toFixed(1)}px, 0) rotate(${((Math.atan2(dy, dx) * 180) / Math.PI).toFixed(1)}deg)`;
-        it.leaderEl.style.width = `${Math.min(dist - 6, 30).toFixed(0)}px`;
-        it.leaderEl.style.opacity = "0.8";
+        it.leaderEl.style.width = `${Math.min(dist - 6, 42).toFixed(0)}px`;
+        it.leaderEl.style.opacity = "0.85";
       } else {
         it.leaderEl.style.opacity = "0";
       }
     }
   };
 
-  /* ── vessels: glide + spiderfy + cluster chips ─────────────────────── */
+  /* ── vessels: glide + marker clustering + spiderfy + cluster chips ─── */
   const updateVessels = (simNow: number) => {
     const map = mapRef.current;
     if (!map) return;
@@ -390,12 +429,14 @@ export function OperationMap({
       pts.push(pt);
       v.rotEl.style.transform = `rotate(${v.pos.angle.toFixed(1)}deg)`;
     }
-    /* spiderfy overlapping vessels (same corridor at low zoom) */
+    /* marker clustering: cluster overlapping vessels with adaptive zoom threshold */
+    const zoom = map.getZoom();
+    const clusterDist = zoom < 3.2 ? 46 : zoom < 4.2 ? 38 : 28;
     const parent = entries.map((_, i) => i);
     const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
     for (let i = 0; i < entries.length; i++) {
       for (let j = i + 1; j < entries.length; j++) {
-        if (Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y) < 26) parent[find(i)] = find(j);
+        if (Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y) < clusterDist) parent[find(i)] = find(j);
       }
     }
     const groups = new Map<number, number[]>();
@@ -418,7 +459,7 @@ export function OperationMap({
       }
       const cx = g.reduce((s, i) => s + pts[i].x, 0) / n;
       const cy = g.reduce((s, i) => s + pts[i].y, 0) / n;
-      const radius = 15 + n * 3.2;
+      const radius = 16 + n * 3.8;
       const ordered = [...g].sort(
         (a, b) => Math.atan2(pts[a].y - cy, pts[a].x - cx) - Math.atan2(pts[b].y - cy, pts[b].x - cx),
       );
@@ -733,14 +774,13 @@ export function OperationMap({
       });
     }
     for (const [ref, v] of vesselsRef.current) {
-      const hold = v.ship.liveStatus === "CUSTOMS_HOLD";
       const sel = ref === selectedRefRef.current;
       addLabel({
         id: `ship:${ref}`,
         kind: "vessel",
         text: ref,
-        priority: sel ? 0 : hold ? 1 : 2,
-        baseMinZoom: sel || hold ? -1 : 1.75,
+        priority: sel ? 0 : 2,
+        baseMinZoom: sel ? -1 : 4.2,
         color: STATUS_COLOR[v.ship.liveStatus],
         anchor: () => {
           const e = vesselsRef.current.get(ref);
