@@ -5,6 +5,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import dynamic from "next/dynamic";
 import {  Anchor,
   Building2,
+  ChevronDown,
+  ChevronUp,
   Container,
   ExternalLink,
   Factory,
@@ -762,6 +764,7 @@ export function LiveTraceabilityView({ drillRef }: { drillRef?: string | null })
   const [simBase, setSimBase] = useState<{ server: number; wall: number } | null>(null);
   const [fleetQuery, setFleetQuery] = useState("");
   const [fleetFilter, setFleetFilter] = useState<string>("all");
+  const [legendExpanded, setLegendExpanded] = useState(false);
   const now = useNow(1000);
 
   const activeRef = picked ?? traceShip ?? drillRef ?? null;
@@ -1004,35 +1007,120 @@ export function LiveTraceabilityView({ drillRef }: { drillRef?: string | null })
               onSitePick={setPickedSite}
             />
 
-            {/* legend — statuses + freight-chain symbols */}
-            <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-lg border border-border/70 bg-card/80 px-3 py-2 backdrop-blur">
-              <p className="mb-1 text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Fleet status</p>
-              <MapLegend className="max-w-[240px]" />
-              <div className="mt-2 space-y-1.5 border-t border-border/60 pt-2">
-                <p className="flex items-center gap-2 text-[10px] font-medium text-muted-foreground">
-                  <svg width="16" height="10" viewBox="-11 -6 22 12" aria-hidden className="shrink-0">
-                    <path d="M 8 0 L 2.2 2.9 L -6.5 2.9 L -6.5 -2.9 L 2.2 -2.9 Z" fill="#d4af37" stroke="oklch(0.1 0.01 80)" strokeWidth="1" strokeLinejoin="round" />
-                  </svg>
-                  Vessel — freight movement (hero layer)
-                </p>
-                <p className="flex items-center gap-2 text-[10px] font-medium text-muted-foreground">
-                  <Factory className="h-3 w-3 shrink-0 text-[#e9c765]" />
-                  Supplier site <span className="text-[9px]">· dotted feeder → port</span>
-                </p>
-                <p className="flex items-center gap-2 text-[10px] font-medium text-muted-foreground">
-                  <Warehouse className="h-3 w-3 shrink-0 text-[#34d399]" />
-                  NASS warehouse <span className="text-[9px]">· feeder ← port</span>
-                </p>
-                <p className="flex items-center gap-2 text-[10px] font-medium text-muted-foreground">
-                  <svg width="16" height="8" viewBox="0 0 16 8" aria-hidden className="shrink-0">
-                    <line x1="0" y1="4" x2="16" y2="4" stroke="#d4af37" strokeWidth="2" />
-                  </svg>
-                  Solid = traveled · dashed = remaining
-                </p>
-                <p className="border-t border-border/60 pt-1.5 text-[9px] text-muted-foreground/80">
-                  Basemap © Esri — Esri, HERE, Garmin, FAO, NOAA, USGS
-                </p>
+            {/* legend — essential symbols visible; secondary definitions in collapsible legend */}
+            <div className="absolute left-3 top-3 z-10 max-w-[280px] rounded-lg border border-border/70 bg-card/85 p-2.5 shadow-lg backdrop-blur-md transition-all">
+              {/* Header with Title and Collapsible Toggle */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary/80 animate-pulse" />
+                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-foreground/90">Fleet status</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLegendExpanded((prev) => !prev)}
+                  className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
+                  aria-expanded={legendExpanded}
+                  title="Toggle secondary symbols and definitions"
+                >
+                  <span>{legendExpanded ? "Less" : "Details"}</span>
+                  {legendExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                </button>
               </div>
+
+              {/* Essential active statuses (always visible) */}
+              <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                {(["IN_TRANSIT", "AT_PORT", "CUSTOMS_HOLD", "DELAYED"] as const).map((s) => (
+                  <span key={s} className="inline-flex items-center gap-1.5 text-[10px] font-medium text-foreground/85">
+                    <span
+                      className="h-2 w-2 rounded-full shrink-0"
+                      style={{ background: STATUS_COLOR[s], boxShadow: `0 0 6px ${STATUS_COLOR[s]}66` }}
+                    />
+                    {STATUS_LABEL[s]}
+                  </span>
+                ))}
+              </div>
+
+              {/* Essential symbol: Vessel (always visible) */}
+              <div className="mt-1.5 flex items-center gap-2 text-[10px] font-medium text-muted-foreground">
+                <svg width="15" height="9" viewBox="-11 -6 22 12" aria-hidden className="shrink-0">
+                  <path d="M 8 0 L 2.2 2.9 L -6.5 2.9 L -6.5 -2.9 L 2.2 -2.9 Z" fill="#d4af37" stroke="oklch(0.1 0.01 80)" strokeWidth="1" strokeLinejoin="round" />
+                </svg>
+                <span>Vessel · Freight Movement</span>
+              </div>
+
+              {/* Collapsible secondary definitions */}
+              <AnimatePresence>
+                {legendExpanded && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-2.5 space-y-2 border-t border-border/60 pt-2.5 text-[10px] text-muted-foreground">
+                      {/* Secondary statuses */}
+                      <div>
+                        <p className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/70">Secondary Statuses</p>
+                        <div className="flex flex-wrap gap-x-3 gap-y-1">
+                          {(["ARRIVED", "BOOKED", "UNKNOWN"] as const).map((s) => (
+                            <span key={s} className="inline-flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
+                              <span
+                                className="h-2 w-2 rounded-full shrink-0"
+                                style={{ background: STATUS_COLOR[s], boxShadow: `0 0 5px ${STATUS_COLOR[s]}44` }}
+                              />
+                              {STATUS_LABEL[s]}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Secondary route and site symbols */}
+                      <div className="space-y-1.5 border-t border-border/40 pt-2">
+                        <p className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/70">Route & Site Symbols</p>
+                        <p className="flex items-center gap-2">
+                          <svg width="16" height="8" viewBox="0 0 16 8" aria-hidden className="shrink-0">
+                            <line x1="0" y1="4" x2="16" y2="4" stroke="#d4af37" strokeWidth="2" />
+                          </svg>
+                          <span>Solid gold = Traveled corridor</span>
+                        </p>
+                        <p className="flex items-center gap-2">
+                          <svg width="16" height="8" viewBox="0 0 16 8" aria-hidden className="shrink-0">
+                            <line x1="0" y1="4" x2="16" y2="4" stroke="#f3dc8e" strokeWidth="1.8" strokeDasharray="3 2" opacity="0.6" />
+                          </svg>
+                          <span>Dashed line = Remaining voyage</span>
+                        </p>
+                        <p className="flex items-center gap-2">
+                          <svg width="16" height="8" viewBox="0 0 16 8" aria-hidden className="shrink-0">
+                            <line x1="0" y1="4" x2="16" y2="4" stroke="#34d399" strokeWidth="1.4" strokeDasharray="1.5 2" opacity="0.75" />
+                          </svg>
+                          <span>Dotted green = Land feeder leg</span>
+                        </p>
+                        <p className="flex items-center gap-2">
+                          <Factory className="h-3.5 w-3.5 shrink-0 text-[#e9c765]" />
+                          <span>Supplier site · Origin factory</span>
+                        </p>
+                        <p className="flex items-center gap-2">
+                          <Warehouse className="h-3.5 w-3.5 shrink-0 text-[#34d399]" />
+                          <span>NASS warehouse · Destination storage</span>
+                        </p>
+                        <p className="flex items-center gap-2">
+                          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden className="shrink-0">
+                            <circle cx="6" cy="6" r="5" fill="none" stroke="#fbbf24" strokeWidth="1.2" />
+                            <circle cx="6" cy="6" r="2" fill="#fbbf24" />
+                          </svg>
+                          <span>Port / Customs checkpoint</span>
+                        </p>
+                      </div>
+
+                      {/* Technical & Attribution Note */}
+                      <p className="border-t border-border/40 pt-1.5 text-[9px] text-muted-foreground/75 leading-tight">
+                        Basemap © Esri &middot; Estimated corridors based on waypoint geometry.
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             {/* sim note + data-source honesty (Phase 8) */}
