@@ -193,6 +193,7 @@ export function OperationMap({
   onPick,
   onBackgroundClick,
   onSitePick,
+  railExpanded = true,
 }: {
   ships: TraceShip[];
   simBase: { server: number; wall: number } | null;
@@ -201,6 +202,7 @@ export function OperationMap({
   onPick: (ref: string) => void;
   onBackgroundClick?: () => void;
   onSitePick: (pick: SitePick) => void;
+  railExpanded?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const labelLayerRef = useRef<HTMLDivElement>(null);
@@ -845,8 +847,9 @@ export function OperationMap({
     }
     if (bounds.isEmpty()) return;
     const isDesktop = window.innerWidth >= 640;
+    const bottomPad = railExpanded ? 150 : 60;
     const cam = map.cameraForBounds(bounds, {
-      padding: { top: 70, bottom: 150, left: 70, right: isDesktop ? (selectedRefRef.current ? 460 : 70) : 60 },
+      padding: { top: 70, bottom: bottomPad, left: 70, right: isDesktop ? (selectedRefRef.current ? 460 : 70) : 60 },
     });
     if (!cam) return;
     map.flyTo({
@@ -1085,13 +1088,24 @@ export function OperationMap({
       <div ref={tooltipRef} className={styles.tooltip} role="tooltip" />
 
       {/* hint */}
-      <div className={styles.hint} aria-hidden>
+      <div
+        className={cn(styles.hint, !railExpanded && styles.hintRailCollapsed)}
+        aria-hidden
+      >
         drag · scroll · pinch · dbl-click
       </div>
 
-      {/* control stack — bottom-right, above fleet rail */}
+      {/* control stack — bottom-right, above fleet rail, shifts left when drawer is open */}
       <TooltipProvider delayDuration={250}>
-        <div className={styles.controls} role="group" aria-label="Map camera controls">
+        <div
+          className={cn(
+            styles.controls,
+            !railExpanded && styles.controlsRailCollapsed,
+            Boolean(selectedRef) && styles.controlsDrawerOpen
+          )}
+          role="group"
+          aria-label="Map camera controls"
+        >
           <Tooltip>
             <TooltipTrigger asChild>
               <button
