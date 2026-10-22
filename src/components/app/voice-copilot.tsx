@@ -420,16 +420,12 @@ export function VoiceCopilot() {
     };
   }, []);
 
-  // ─── DYNAMIC EMOTIONAL MOOD RESOLUTION ───
-  // - "happy": Cursor is nearby (< 220px) or user is directly hovering the agent
-  // - "sad": Cursor is far away (> 440px) or has exited the screen
-  // - "normal": Cursor is in the comfortable intermediate zone (220px – 440px)
-  const currentMood: "happy" | "normal" | "sad" =
-    isAgentHovered || (isMouseOnScreen && cursorDistance < 220)
-      ? "happy"
-      : !isMouseOnScreen || cursorDistance > 440
-      ? "sad"
-      : "normal";
+  // ─── DYNAMIC DISTANCE & NATURAL EMOTIONAL RESOLUTION ───
+  // - "normal": When cursor is hovered, near, or medium distance (<= 750px) -> Natural, alert, curious, alive eyes
+  // - "sad": ONLY when cursor is truly too far away (> 750px) or has exited the screen
+  const isNear = isAgentHovered || (isMouseOnScreen && cursorDistance < 320);
+  const isMedium = isMouseOnScreen && cursorDistance >= 320 && cursorDistance <= 750;
+  const currentMood: "normal" | "sad" = !isMouseOnScreen || cursorDistance > 750 ? "sad" : "normal";
 
   const handlePointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
@@ -1676,23 +1672,33 @@ export function VoiceCopilot() {
             borderColor: activeRainbow.border,
             background: isOpen ? activeRainbow.bodyOpen : activeRainbow.bodyGrad,
             boxShadow: isGlowFlashing
-              ? `0 0 42px 12px ${activeRainbow.glow}, 0 0 20px ${activeRainbow.hex}, inset 0 0 16px ${activeRainbow.glow}`
+              ? `0 0 28px 6px ${activeRainbow.glow}, 0 0 14px ${activeRainbow.hex}, inset 0 0 12px ${activeRainbow.glow}`
               : isOpen
-              ? `0 0 26px 5px ${activeRainbow.glow}, inset 0 0 12px ${activeRainbow.glow}`
-              : `0 0 16px 3px ${activeRainbow.glow}, inset 0 0 10px ${activeRainbow.glow}`,
+              ? `0 0 20px 3px ${activeRainbow.glow}, inset 0 0 10px ${activeRainbow.glow}`
+              : isNear
+              ? `0 0 16px 3px ${activeRainbow.glow}, inset 0 0 8px ${activeRainbow.glow}`
+              : isMedium
+              ? `0 0 12px 2px ${activeRainbow.glow}, inset 0 0 6px ${activeRainbow.glow}`
+              : `0 0 7px 1px ${activeRainbow.glow}, inset 0 0 3px ${activeRainbow.glow}`,
           }}
           className={cn(
             "relative w-14 h-14 sm:w-16 sm:h-16 rounded-full aspect-square flex flex-col items-center justify-center border-2 transition-all duration-500 group cursor-pointer overflow-hidden",
-            isOpen ? "ring-2 ring-amber-300/60" : "hover:scale-[1.06]",
-            isGlowFlashing && "scale-110"
+            isOpen ? "ring-2 ring-amber-300/60" : "hover:scale-[1.05]",
+            isGlowFlashing && "scale-108"
           )}
           title="NASS Cute King Copilot · Dynamic Living Color Glow · Click to Change Color · Double-Click to Open/Close"
         >
-          {/* Animated Ambient Glow Backdrop (Reflects current active glow color) */}
+          {/* Animated Ambient Glow Backdrop (Refined natural glow) */}
           <div
             className={cn(
               "absolute inset-0 rounded-full blur-md transition-all duration-500 -z-10",
-              isGlowFlashing ? "opacity-100 scale-125" : "opacity-75 group-hover:opacity-100"
+              isGlowFlashing
+                ? "opacity-90 scale-120"
+                : isNear
+                ? "opacity-65 scale-108"
+                : isMedium
+                ? "opacity-45 scale-102"
+                : "opacity-25 scale-95"
             )}
             style={{
               background: `radial-gradient(circle, ${activeRainbow.glow} 0%, rgba(0,0,0,0) 70%)`,
@@ -1714,67 +1720,43 @@ export function VoiceCopilot() {
           <div className="absolute inset-0 rounded-full bg-gradient-to-b from-white/30 via-white/5 to-black/20 pointer-events-none" />
           <div className="absolute inset-1 rounded-full border border-amber-300/35 pointer-events-none" />
 
-          {/* ─── CUTE CHARACTER FACE: EXPRESSIVE EYES, ROSY CHEEKS & ADORABLE MOUTH ─── */}
+          {/* ─── PROPER EXPRESSIVE EYE PAIR (CLEAN, CHARMING & NATURAL · NO OVER-THE-TOP MOUTH/CHEEKS) ─── */}
           <div
             ref={eyeContainerRef}
-            className="relative flex flex-col items-center justify-center pointer-events-none transition-transform duration-150 pt-1"
+            className="relative flex items-center justify-center pointer-events-none transition-transform duration-150"
             style={{
-              transform: `rotate(${Math.max(-4, Math.min(4, pupilOffset.x * 1.2))}deg)`,
+              transform: `rotate(${Math.max(-3, Math.min(3, pupilOffset.x * 1.1))}deg)`,
             }}
           >
             {/* Eye Pair */}
-            <div className="relative flex items-center justify-center gap-2">
+            <div className="relative flex items-center justify-center gap-2.5">
               {[0, 1].map((eyeIdx) => {
                 const isLeft = eyeIdx === 0;
                 return (
                   <div
                     key={eyeIdx}
                     className={cn(
-                      "relative flex items-center justify-center w-4.5 h-5.5 sm:w-5 sm:h-6 rounded-full bg-[#080d18] overflow-hidden border border-white/35 shadow-md transition-transform duration-100",
+                      "relative flex items-center justify-center w-5 h-6 sm:w-5.5 sm:h-7 rounded-full bg-[#070b14] overflow-hidden border border-white/35 shadow-[0_2px_5px_rgba(0,0,0,0.6)] transition-transform duration-100",
                       isBlinking && "scale-y-[0.1]"
                     )}
                   >
-                    {/* Sclera soft ambient glow */}
-                    <div className="absolute inset-0 bg-gradient-to-b from-white/15 to-transparent" />
+                    {/* Sclera soft ambient specular sheen */}
+                    <div className="absolute inset-0 bg-gradient-to-b from-white/20 via-transparent to-transparent pointer-events-none" />
 
-                    {/* Happy smiling eyes (Upward smiling crescent arc) */}
-                    {currentMood === "happy" ? (
-                      <div className="relative w-full h-full flex flex-col items-center justify-center">
-                        {/* Expressive shiny smiling pupil tracking cursor */}
-                        <div
-                          className="relative w-3.5 h-4 sm:w-4 sm:h-4.5 rounded-full transition-transform duration-75 flex items-center justify-center"
-                          style={{
-                            transform: `translate(${pupilOffset.x * 0.75}px, ${pupilOffset.y * 0.75}px)`,
-                            background: activeRainbow.irisGrad,
-                            boxShadow: `0 0 7px ${activeRainbow.glow}`,
-                          }}
-                        >
-                          {/* Inner dark pupil */}
-                          <div className="w-2 h-2.5 rounded-full bg-black flex items-start justify-end p-0.5">
-                            {/* Primary sparkling catchlight */}
-                            <div className="w-1.2 h-1.2 rounded-full bg-white opacity-95" />
-                          </div>
-                          {/* Secondary twinkle catchlight */}
-                          <div className="absolute bottom-1 left-0.5 w-0.5 h-0.5 rounded-full bg-white opacity-90" />
-                        </div>
-
-                        {/* Cheerful smiling lower-lid cheek push (Duchenne smile) */}
-                        <div className="absolute -bottom-1 inset-x-0 h-2 bg-[#080d18] rounded-t-full border-t border-amber-300/40" />
-                      </div>
-                    ) : currentMood === "sad" ? (
-                      /* Sad cute puppy eyes (Dewy reflection, slightly tilted downward gaze) */
+                    {currentMood === "sad" ? (
+                      /* Sad/Pensive cute eyes (ONLY when cursor is too far away > 750px or off-screen) */
                       <div className="relative w-full h-full flex flex-col items-center justify-center">
                         {/* Upper sad eyelid slope */}
                         <div
                           className={cn(
-                            "absolute top-0 inset-x-0 h-2 bg-[#080d18] z-10 border-b border-white/15",
-                            isLeft ? "rotate-6 origin-left" : "-rotate-6 origin-right"
+                            "absolute top-0 inset-x-0 h-2.5 bg-[#070b14] z-10 border-b border-white/15",
+                            isLeft ? "rotate-8 origin-left" : "-rotate-8 origin-right"
                           )}
                         />
 
                         {/* Large dewy pupil looking slightly downward */}
                         <div
-                          className="relative w-3.5 h-4 rounded-full transition-transform duration-100 flex items-center justify-center"
+                          className="relative w-4 h-4.5 rounded-full transition-transform duration-100 flex items-center justify-center"
                           style={{
                             transform: `translate(${pupilOffset.x * 0.6}px, ${Math.max(1, pupilOffset.y * 0.6 + 0.8)}px)`,
                             background: activeRainbow.irisGrad,
@@ -1782,99 +1764,35 @@ export function VoiceCopilot() {
                           }}
                         >
                           {/* Dark pupil */}
-                          <div className="w-1.5 h-2 rounded-full bg-black flex items-start justify-end">
-                            <div className="w-0.5 h-0.5 rounded-full bg-white opacity-90 mr-0.5 mt-0.5" />
+                          <div className="w-2 h-2.5 rounded-full bg-black flex items-start justify-end p-0.5">
+                            <div className="w-0.8 h-0.8 rounded-full bg-white opacity-90 mr-0.5 mt-0.5" />
                           </div>
-                          {/* Cute watery teardrop glint at corner */}
-                          <div className="absolute bottom-0.5 right-0.5 w-1.2 h-1.2 rounded-full bg-cyan-200/90 shadow-[0_0_4px_rgba(255,255,255,0.8)] animate-pulse" />
+                          {/* Soft watery teardrop reflection glint at corner */}
+                          <div className="absolute bottom-0.5 right-0.5 w-1 h-1 rounded-full bg-cyan-200/90 shadow-[0_0_3px_rgba(255,255,255,0.8)] animate-pulse" />
                         </div>
                       </div>
                     ) : (
-                      /* Normal cute, alert, curious eyes with double sparkling catchlights */
+                      /* Natural, alert, curious, alive eye tracking cursor smoothly */
                       <div
-                        className="relative w-3.5 h-4 rounded-full transition-transform duration-75 flex items-center justify-center"
+                        className="relative w-4 h-4.5 rounded-full transition-transform duration-75 flex items-center justify-center"
                         style={{
                           transform: `translate(${pupilOffset.x}px, ${pupilOffset.y}px)`,
                           background: activeRainbow.irisGrad,
-                          boxShadow: `0 0 6px ${activeRainbow.glow}`,
+                          boxShadow: `0 0 7px ${activeRainbow.glow}`,
                         }}
                       >
-                        {/* Dark pupil with double catchlight */}
-                        <div className="w-1.8 h-2.2 rounded-full bg-black flex flex-col justify-between p-0.5">
-                          {/* Main specular catchlight */}
-                          <div className="w-0.8 h-0.8 rounded-full bg-white opacity-95 self-end" />
-                          {/* Twinkle specular catchlight */}
-                          <div className="w-0.5 h-0.5 rounded-full bg-white opacity-80 self-start" />
+                        {/* Dark center pupil with authentic twin catchlights */}
+                        <div className="w-2.2 h-2.6 rounded-full bg-black flex flex-col justify-between p-0.5">
+                          {/* Main glossy specular reflection */}
+                          <div className="w-1 h-1 rounded-full bg-white opacity-95 self-end" />
+                          {/* Secondary twinkle reflection */}
+                          <div className="w-0.6 h-0.6 rounded-full bg-white opacity-85 self-start" />
                         </div>
                       </div>
                     )}
                   </div>
                 );
               })}
-            </div>
-
-            {/* Rosy Cheeks & Expressive Mouth */}
-            <div className="relative w-full flex items-center justify-between px-1 mt-1">
-              {/* Left Rosy Blush */}
-              <div
-                className={cn(
-                  "w-2.5 h-1.5 sm:w-3 sm:h-1.5 rounded-full transition-all duration-300",
-                  currentMood === "happy"
-                    ? "bg-[#ff4757] blur-[0.6px] scale-125 shadow-[0_0_6px_rgba(255,71,87,0.8)]"
-                    : currentMood === "sad"
-                    ? "bg-[#ff6b81]/40 blur-[0.8px] scale-90"
-                    : "bg-[#ff6b81]/60 blur-[0.7px]"
-                )}
-              />
-
-              {/* Expressive Mouth (Happy Smile vs Sad Pout vs Sweet Rest) */}
-              <div className="flex items-center justify-center px-0.5">
-                {currentMood === "happy" ? (
-                  /* Cute smiling open curve in bright white */
-                  <svg width="8" height="5" viewBox="0 0 8 5" fill="none">
-                    <path
-                      d="M 1 1 Q 4 5, 7 1"
-                      stroke="#ffffff"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                ) : currentMood === "sad" ? (
-                  /* Cute little sad pout in bright white */
-                  <svg width="7" height="4" viewBox="0 0 7 4" fill="none">
-                    <path
-                      d="M 1 3.5 Q 3.5 1, 6 3.5"
-                      stroke="#ffffff"
-                      strokeWidth="1.4"
-                      strokeLinecap="round"
-                      opacity="0.9"
-                    />
-                  </svg>
-                ) : (
-                  /* Sweet gentle resting smile in bright white */
-                  <svg width="6" height="3" viewBox="0 0 6 3" fill="none">
-                    <path
-                      d="M 1 0.8 Q 3 2.6, 5 0.8"
-                      stroke="#ffffff"
-                      strokeWidth="1.3"
-                      strokeLinecap="round"
-                      opacity="0.9"
-                    />
-                  </svg>
-                )}
-              </div>
-
-              {/* Right Rosy Blush */}
-              <div
-                className={cn(
-                  "w-2.5 h-1.5 sm:w-3 sm:h-1.5 rounded-full transition-all duration-300",
-                  currentMood === "happy"
-                    ? "bg-[#ff4757] blur-[0.6px] scale-125 shadow-[0_0_6px_rgba(255,71,87,0.8)]"
-                    : currentMood === "sad"
-                    ? "bg-[#ff6b81]/40 blur-[0.8px] scale-90"
-                    : "bg-[#ff6b81]/60 blur-[0.7px]"
-                )}
-              />
             </div>
           </div>
         </button>

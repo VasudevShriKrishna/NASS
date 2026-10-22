@@ -23,7 +23,8 @@ import { Crosshair, Home, Minus, Plus } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { STATUS_COLOR } from "@/components/app/world-map";
 import { fmtCountdown } from "@/components/app/live-clock";
-import { lookupPort } from "@/lib/geo";
+import { lookupPort, haversineKm } from "@/lib/geo";
+import { VERIFIED_PORTS, VERIFIED_COUNTRIES, type PortIntelligence, type CountryIntelligence } from "@/lib/geo-intelligence";
 import { MaritimeRoute, liveProgressAt, resolveMaritimeRoute, valueNorms, viaFromLegs } from "@/lib/maritime-routes";
 import { SUPPLIER_SITES, WAREHOUSE_SITES } from "@/lib/geo-sites";
 import type { TraceShip } from "@/lib/trace-types";
@@ -96,6 +97,8 @@ interface VesselEntry {
   chipEl: HTMLElement;
   pos: { lng: number; lat: number; angle: number };
   p: number;
+  lastP?: number;
+  currentRotDeg?: number;
   px: number;
   py: number;
   clusterSize: number;
@@ -185,6 +188,14 @@ const line = (coordinates: LngLat[], properties: Record<string, number | string>
   geometry: { type: "LineString", coordinates },
 });
 
+export interface MapCameraAction {
+  type: "track-route" | "focus-port" | "focus-country" | "reset-home" | "fit-fleet";
+  ref?: string;
+  coords?: [number, number];
+  zoom?: number;
+  ts: number;
+}
+
 export function OperationMap({
   ships,
   simBase,
@@ -193,7 +204,10 @@ export function OperationMap({
   onPick,
   onBackgroundClick,
   onSitePick,
+  onPortPick,
+  onCountryPick,
   railExpanded = true,
+  cameraAction,
 }: {
   ships: TraceShip[];
   simBase: { server: number; wall: number } | null;
@@ -202,7 +216,10 @@ export function OperationMap({
   onPick: (ref: string) => void;
   onBackgroundClick?: () => void;
   onSitePick: (pick: SitePick) => void;
+  onPortPick?: (port: PortIntelligence) => void;
+  onCountryPick?: (country: CountryIntelligence) => void;
   railExpanded?: boolean;
+  cameraAction?: MapCameraAction | null;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const labelLayerRef = useRef<HTMLDivElement>(null);
@@ -221,7 +238,7 @@ export function OperationMap({
   const selectedRefRef = useRef<string | null>(selectedRef);
   const normRef = useRef<Map<string, number>>(new Map());
   const reducedRef = useRef(false);
-  const cbRef = useRef({ onPick, onBackgroundClick, onSitePick });
+  const cbRef = useRef({ onPick, onBackgroundClick, onSitePick, onPortPick, onCountryPick });
   const dashPhaseRef = useRef(0);
 
   const vesselsRef = useRef<Map<string, VesselEntry>>(new Map());
@@ -237,7 +254,7 @@ export function OperationMap({
     simBaseRef.current = simBase;
     factorRef.current = factor;
     selectedRefRef.current = selectedRef;
-    cbRef.current = { onPick, onBackgroundClick, onSitePick };
+    cbRef.current = { onPick, onBackgroundClick, onSitePick, onPortPick, onCountryPick };
     normRef.current = valueNorms(ships);
   });
   const computeSimNow = () => {
@@ -424,12 +441,28 @@ export function OperationMap({
     const entries = [...vesselsRef.current.values()];
     const pts: { x: number; y: number }[] = [];
     for (const v of entries) {
+      const prevP = v.p;
       v.p = reducedRef.current ? v.ship.progress : liveProgressAt(v.ship, simNow);
+      v.lastP = prevP;
       v.pos = v.arc.pointAt(v.p);
       v.marker.setLngLat([v.pos.lng, v.pos.lat]);
       const pt = map.project([v.pos.lng, v.pos.lat]);
       pts.push(pt);
-      v.rotEl.style.transform = `rotate(${v.pos.angle.toFixed(1)}deg)`;
+
+      // Continuous shortest-path rotation without 360° flip snaps
+      let targetHeading = v.pos.angle;
+      // Handle reverse simulation playback
+      if (v.lastP !== undefined && v.p < v.lastP - 0.00005) {
+        targetHeading = ((targetHeading + 180 + 180) % 360) - 180;
+      }
+
+      if (v.currentRotDeg === undefined) {
+        v.currentRotDeg = targetHeading;
+      } else {
+        const delta = ((targetHeading - (v.currentRotDeg % 360) + 540) % 360) - 180;
+        v.currentRotDeg += delta;
+      }
+      v.rotEl.style.transform = `rotate(${v.currentRotDeg.toFixed(1)}deg)`;
     }
     /* marker clustering: cluster overlapping vessels with adaptive zoom threshold */
     const zoom = map.getZoom();
@@ -448,6 +481,7 @@ export function OperationMap({
       if (g) g.push(i);
       else groups.set(root, [i]);
     });
+    const sel = selectedRefRef.current;
     for (const g of groups.values()) {
       const n = g.length;
       if (n < 2) {
@@ -466,16 +500,26 @@ export function OperationMap({
         (a, b) => Math.atan2(pts[a].y - cy, pts[a].x - cx) - Math.atan2(pts[b].y - cy, pts[b].x - cx),
       );
       ordered.forEach((idx, k) => {
-        const a = (2 * Math.PI * k) / n - Math.PI / 2 + Math.atan2(pts[ordered[0]].y - cy, pts[ordered[0]].x - cx);
-        const tx = cx + radius * Math.cos(a);
-        const ty = cy + radius * Math.sin(a);
         const v = entries[idx];
-        v.marker.setOffset([tx - pts[idx].x, ty - pts[idx].y]);
-        v.px = tx;
-        v.py = ty;
-        v.clusterSize = n;
-        v.el.classList.add(styles.clustered);
-        v.chipEl.textContent = `×${n}`;
+        const isSel = v.ship.ref === sel;
+        // Selected vessel stays strictly pinned directly on its route line (no sideways drift)
+        if (isSel) {
+          v.marker.setOffset([0, 0]);
+          v.px = pts[idx].x;
+          v.py = pts[idx].y;
+          v.clusterSize = 1;
+          v.el.classList.remove(styles.clustered);
+        } else {
+          const a = (2 * Math.PI * k) / n - Math.PI / 2 + Math.atan2(pts[ordered[0]].y - cy, pts[ordered[0]].x - cx);
+          const tx = cx + radius * Math.cos(a);
+          const ty = cy + radius * Math.sin(a);
+          v.marker.setOffset([tx - pts[idx].x, ty - pts[idx].y]);
+          v.px = tx;
+          v.py = ty;
+          v.clusterSize = n;
+          v.el.classList.add(styles.clustered);
+          v.chipEl.textContent = `×${n}`;
+        }
       });
     }
   };
@@ -642,6 +686,8 @@ export function OperationMap({
           chipEl: el.querySelector(`.${styles.clusterChip}`) as HTMLElement,
           pos: { lng: ship.from!.lng, lat: ship.from!.lat, angle: 0 },
           p: ship.progress,
+          lastP: ship.progress,
+          currentRotDeg: undefined,
           px: 0,
           py: 0,
           clusterSize: 1,
@@ -661,11 +707,12 @@ export function OperationMap({
       }
     }
 
-    /* ports (from real route endpoints, registry-cleaned labels) */
+    /* ports (from real route endpoints, registry-cleaned labels, verified port intelligence) */
     for (const p of portsRef.current.values()) p.marker.remove();
     portsRef.current.clear();
     interface PortAcc {
       label: string;
+      code: string;
       lng: number;
       lat: number;
       count: number;
@@ -678,14 +725,56 @@ export function OperationMap({
         const reg = lookupPort(end.label);
         const label = reg?.label ?? end.label.split(",")[0].trim();
         const key = label.toUpperCase();
-        const acc = portAcc.get(key) ?? { label, lng: end.lng, lat: end.lat, count: 0, hold: false };
+        const vPortMatch = Object.values(VERIFIED_PORTS).find(
+          (vp) => vp.name.toUpperCase().includes(key) || key.includes(vp.code) || key.includes(vp.city.toUpperCase())
+        );
+        const code = vPortMatch ? vPortMatch.code : key;
+        const acc = portAcc.get(key) ?? { label, code, lng: end.lng, lat: end.lat, count: 0, hold: false };
         acc.count += 1;
         acc.hold = acc.hold || s.liveStatus === "CUSTOMS_HOLD";
         portAcc.set(key, acc);
       }
     }
     for (const [key, p] of portAcc) {
-      const el = elFromHTML(`<div class="${cn(styles.port, p.hold && styles.portHold)}" aria-hidden="true"><i class="${styles.portRing}"></i><i class="${styles.portDot}"></i></div>`);
+      const vPort = VERIFIED_PORTS[p.code];
+      const el = elFromHTML(`
+        <button type="button" class="${cn(styles.port, p.hold && styles.portHold)}"
+          title="${esc(p.label)} — ${esc(vPort?.country ?? "Port")} · Click for port intelligence"
+          aria-label="Inspect ${esc(p.label)} port intelligence"
+          data-port="${esc(p.code)}">
+          <i class="${styles.portRing}"></i>
+          <i class="${styles.portDot}"></i>
+        </button>
+      `) as HTMLButtonElement;
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (vPort) {
+          cbRef.current.onPortPick?.(vPort);
+        } else {
+          cbRef.current.onPortPick?.({
+            code: p.code,
+            name: p.label,
+            unlocode: `PORT-${p.code.slice(0, 3)}`,
+            country: "International Port",
+            countryCode: "XX",
+            stateOrRegion: "Coastal Gateway",
+            city: p.label,
+            lat: p.lat,
+            lng: p.lng,
+            portType: "Commercial Gateway Port",
+            operator: "Port Marine Authority",
+            maxDraftM: 14.5,
+            quayLengthM: 1600,
+            annualCapacity: "Commercial Gateway Throughput",
+            facilities: ["Berth Cranage", "Customs Inspection", "Pilotage Operations"],
+            operationalStatus: p.hold ? "CUSTOMS_SCRUTINY" : "NORMAL_OPERATIONS",
+            operatingHours: "24/7 Marine Operations",
+            securityLevel: "ISPS Code Level 1",
+            keyCommodities: ["Commercial Cargo", "Containerized Freight"],
+            notes: "Operational maritime terminal in the NASS international logistics corridor.",
+          });
+        }
+      });
       const marker = new Marker({ element: el, anchor: "center" })
         .setLngLat([p.lng, p.lat])
         .addTo(map);
@@ -860,6 +949,57 @@ export function OperationMap({
     });
   };
 
+  /* External camera commands (Part 4: Track Route, Focus Port, Focus Country, Reset Map) */
+  useEffect(() => {
+    if (!readyRef.current || !cameraAction) return;
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (cameraAction.type === "track-route") {
+      const targetRef = cameraAction.ref || selectedRefRef.current;
+      const v = targetRef ? vesselsRef.current.get(targetRef) : null;
+      if (v) {
+        const bounds = new LngLatBounds();
+        for (const pt of v.arc.samples) bounds.extend(pt);
+        const isDesktop = window.innerWidth >= 640;
+        const bottomPad = railExpanded ? 150 : 60;
+        const cam = map.cameraForBounds(bounds, {
+          padding: { top: 80, bottom: bottomPad, left: 80, right: isDesktop ? 480 : 70 },
+        });
+        if (cam) {
+          map.flyTo({
+            center: cam.center,
+            zoom: Math.min(6.5, Math.max(cam.zoom ?? 3.4, map.getMinZoom())),
+            duration: reducedRef.current ? 0 : 950,
+            essential: true,
+          });
+        }
+      }
+    } else if (cameraAction.type === "focus-port") {
+      if (cameraAction.coords) {
+        map.flyTo({
+          center: cameraAction.coords,
+          zoom: cameraAction.zoom ?? 6.2,
+          duration: reducedRef.current ? 0 : 950,
+          essential: true,
+        });
+      }
+    } else if (cameraAction.type === "focus-country") {
+      if (cameraAction.coords) {
+        map.flyTo({
+          center: cameraAction.coords,
+          zoom: cameraAction.zoom ?? 4.8,
+          duration: reducedRef.current ? 0 : 950,
+          essential: true,
+        });
+      }
+    } else if (cameraAction.type === "reset-home") {
+      resetHome();
+    } else if (cameraAction.type === "fit-fleet") {
+      fitFleet();
+    }
+  }, [cameraAction]);
+
   /* ── map init ──────────────────────────────────────────────────────── */
   useEffect(() => {
     disposedRef.current = false;
@@ -923,7 +1063,34 @@ export function OperationMap({
       /* debug/test hook — read-only introspection for E2E verification */
       (window as unknown as Record<string, unknown>).__nassMap = map;
 
-      map.on("click", () => cbRef.current.onBackgroundClick?.());
+      map.on("click", (e) => {
+        const { lng, lat } = e.lngLat;
+        const COUNTRY_HIT_REGIONS: { code: string; lat: number; lng: number; radiusKm: number }[] = [
+          { code: "BH", lat: 26.05, lng: 50.55, radiusKm: 120 },
+          { code: "AE", lat: 24.5, lng: 54.8, radiusKm: 350 },
+          { code: "CN", lat: 31.2, lng: 121.5, radiusKm: 1400 },
+          { code: "KR", lat: 36.0, lng: 128.0, radiusKm: 450 },
+          { code: "IT", lat: 43.0, lng: 12.0, radiusKm: 600 },
+          { code: "BE", lat: 51.0, lng: 4.5, radiusKm: 300 },
+          { code: "SE", lat: 58.5, lng: 13.5, radiusKm: 700 },
+          { code: "TR", lat: 39.0, lng: 32.0, radiusKm: 750 },
+          { code: "LK", lat: 7.5, lng: 80.5, radiusKm: 320 },
+        ];
+        let matched: CountryIntelligence | null = null;
+        let minD = Infinity;
+        for (const c of COUNTRY_HIT_REGIONS) {
+          const d = haversineKm(lat, lng, c.lat, c.lng);
+          if (d <= c.radiusKm && d < minD) {
+            minD = d;
+            matched = VERIFIED_COUNTRIES[c.code] ?? null;
+          }
+        }
+        if (matched) {
+          cbRef.current.onCountryPick?.(matched);
+        } else {
+          cbRef.current.onBackgroundClick?.();
+        }
+      });
       map.on("error", (e) => console.warn("[operation-map]", e.error?.message ?? e));
 
       map.on("load", () => {

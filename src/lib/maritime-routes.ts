@@ -240,12 +240,13 @@ export function isBahrainDestination(raw: string | null | undefined): boolean {
 /* ── Distance-based polyline: vessels only ever exist ON the route ───────── */
 export class MaritimeRoute {
   readonly samples: [number, number][]; // [lng, lat]
+  readonly angles: number[]; // continuous tangent angles (screen-space heading in degrees)
   private cumKm: number[]; // cumulative distance at each sample
   private totalKm: number;
   readonly nodeCount: number;
   readonly viaNames: string[];
 
-  constructor(nodeKeys: string[], sampleStepKm = 45) {
+  constructor(nodeKeys: string[], sampleStepKm = 12) {
     const nodes = nodeKeys.map((k) => {
       const n = SEA_NODES[k];
       if (!n) throw new Error(`Unknown maritime node: ${k}`);
@@ -257,40 +258,136 @@ export class MaritimeRoute {
       .map((k) => SEA_NODES[k]?.name)
       .filter((n, i, a) => n && a.indexOf(n) === i);
 
-    // dense-sample each leg, then resample by cumulative distance
+    // ── Centripetal Catmull-Rom Spline (alpha = 0.5) ──
+    // Eliminates overshoots, cusps, loops, and self-intersections.
+    // Produces Google-Maps-grade smooth curves through realistic sea corridors.
+    const n = nodes.length;
     const dense: [number, number][] = [];
-    for (let i = 0; i < nodes.length - 1; i++) {
-      const [lng0, lat0] = nodes[i];
-      const [lng1, lat1] = nodes[i + 1];
-      const d = haversineKm(lat0, lng0, lat1, lng1);
-      const steps = Math.max(2, Math.round(d / Math.max(8, sampleStepKm / 3)));
+    const denseDeriv: [number, number][] = [];
+
+    if (n < 2) {
+      this.samples = nodes.length ? [[nodes[0][0], nodes[0][1]]] : [];
+      this.angles = [0];
+      this.cumKm = [0];
+      this.totalKm = 0;
+      return;
+    }
+
+    for (let i = 0; i < n - 1; i++) {
+      const p0 = i > 0 ? nodes[i - 1] : [2 * nodes[0][0] - nodes[1][0], 2 * nodes[0][1] - nodes[1][1]];
+      const p1 = nodes[i];
+      const p2 = nodes[i + 1];
+      const p3 = i < n - 2 ? nodes[i + 2] : [2 * nodes[n - 1][0] - nodes[n - 2][0], 2 * nodes[n - 1][1] - nodes[n - 2][1]];
+
+      // Chord distances in km
+      const d01 = Math.max(0.1, haversineKm(p0[1], p0[0], p1[1], p1[0]));
+      const d12 = Math.max(0.1, haversineKm(p1[1], p1[0], p2[1], p2[0]));
+      const d23 = Math.max(0.1, haversineKm(p2[1], p2[0], p3[1], p3[0]));
+
+      // Centripetal parameterization (alpha = 0.5)
+      const dt0 = Math.sqrt(d01);
+      const dt1 = Math.sqrt(d12);
+      const dt2 = Math.sqrt(d23);
+
+      // Centripetal tangent vectors at p1 and p2 scaled to segment parameter [0, 1]
+      let tx1 = ((p2[0] - p1[0]) / dt1 + (p1[0] - p0[0]) / dt0 - (p2[0] - p0[0]) / (dt0 + dt1)) * dt1;
+      let ty1 = ((p2[1] - p1[1]) / dt1 + (p1[1] - p0[1]) / dt0 - (p2[1] - p0[1]) / (dt0 + dt1)) * dt1;
+      let tx2 = ((p3[0] - p2[0]) / dt2 + (p2[0] - p1[0]) / dt1 - (p3[0] - p1[0]) / (dt1 + dt2)) * dt1;
+      let ty2 = ((p3[1] - p2[1]) / dt2 + (p2[1] - p1[1]) / dt1 - (p3[1] - p1[1]) / (dt1 + dt2)) * dt1;
+
+      // Tight-turn damping: prevents overshooting beyond segment bounding region
+      const chordDist = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]);
+      const maxT = 1.35 * chordDist;
+      const mag1 = Math.hypot(tx1, ty1);
+      const mag2 = Math.hypot(tx2, ty2);
+      if (mag1 > maxT && mag1 > 1e-6) {
+        tx1 = (tx1 / mag1) * maxT;
+        ty1 = (ty1 / mag1) * maxT;
+      }
+      if (mag2 > maxT && mag2 > 1e-6) {
+        tx2 = (tx2 / mag2) * maxT;
+        ty2 = (ty2 / mag2) * maxT;
+      }
+
+      // Adaptive sampling steps proportional to distance
+      const steps = Math.max(8, Math.min(80, Math.round(d12 / 10)));
+
       for (let s = 0; s < steps; s++) {
         const t = s / steps;
-        dense.push([lng0 + (lng1 - lng0) * t, lat0 + (lat1 - lat0) * t]);
+        const t2 = t * t;
+        const t3 = t2 * t;
+
+        // Cubic Hermite basis functions
+        const h00 = 2 * t3 - 3 * t2 + 1;
+        const h10 = t3 - 2 * t2 + t;
+        const h01 = -2 * t3 + 3 * t2;
+        const h11 = t3 - t2;
+
+        const lng = h00 * p1[0] + h10 * tx1 + h01 * p2[0] + h11 * tx2;
+        const lat = h00 * p1[1] + h10 * ty1 + h01 * p2[1] + h11 * ty2;
+
+        // Exact analytical derivative of the cubic spline
+        const dh00 = 6 * t2 - 6 * t;
+        const dh10 = 3 * t2 - 4 * t + 1;
+        const dh01 = -6 * t2 + 6 * t;
+        const dh11 = 3 * t2 - 2 * t;
+
+        const dlng = dh00 * p1[0] + dh10 * tx1 + dh01 * p2[0] + dh11 * tx2;
+        const dlat = dh00 * p1[1] + dh10 * ty1 + dh01 * p2[1] + dh11 * ty2;
+
+        dense.push([lng, lat]);
+        denseDeriv.push([dlng, dlat]);
       }
     }
-    dense.push(nodes[nodes.length - 1]);
+    dense.push([nodes[n - 1][0], nodes[n - 1][1]]);
+    denseDeriv.push(denseDeriv.length ? denseDeriv[denseDeriv.length - 1] : [1, 0]);
 
-    // cumulative distance + distance-uniform resample
+    // Cumulative distance along the dense spline
     const cum: number[] = [0];
     for (let i = 1; i < dense.length; i++) {
       cum.push(cum[i - 1] + haversineKm(dense[i - 1][1], dense[i - 1][0], dense[i][1], dense[i][0]));
     }
     this.totalKm = cum[cum.length - 1];
-    const nSamples = Math.max(48, Math.min(240, Math.round(this.totalKm / sampleStepKm)));
+
+    // Uniform spatial resampling along the curve (Google Maps navigation quality)
+    const nSamples = Math.max(80, Math.min(600, Math.round(this.totalKm / Math.min(sampleStepKm, 12))));
     const samples: [number, number][] = [];
     const cumS: number[] = [];
+    const angles: number[] = [];
     let j = 0;
+
     for (let s = 0; s <= nSamples; s++) {
       const target = (s / nSamples) * this.totalKm;
       while (j < cum.length - 2 && cum[j + 1] < target) j++;
       const segLen = Math.max(1e-9, cum[j + 1] - cum[j]);
       const f = Math.min(1, Math.max(0, (target - cum[j]) / segLen));
-      samples.push([dense[j][0] + (dense[j + 1][0] - dense[j][0]) * f, dense[j][1] + (dense[j + 1][1] - dense[j][1]) * f]);
+
+      const lng = dense[j][0] + (dense[j + 1][0] - dense[j][0]) * f;
+      const lat = dense[j][1] + (dense[j + 1][1] - dense[j][1]) * f;
+      samples.push([lng, lat]);
       cumS.push(target);
+
+      // Local tangent direction: blend analytical spline derivative with forward-backward chord
+      const dlngA = denseDeriv[j][0] + (denseDeriv[j + 1][0] - denseDeriv[j][0]) * f;
+      const dlatA = denseDeriv[j][1] + (denseDeriv[j + 1][1] - denseDeriv[j][1]) * f;
+      const dmercA = mercY(lat + dlatA * 0.001) - mercY(lat - dlatA * 0.001);
+
+      const prevPt = dense[Math.max(0, j - 1)];
+      const nextPt = dense[Math.min(dense.length - 1, j + 2)];
+      const dlngC = nextPt[0] - prevPt[0];
+      const dmercC = mercY(nextPt[1]) - mercY(prevPt[1]);
+
+      const dlng = Math.abs(dlngA) > 1e-5 ? dlngA : dlngC;
+      const dmerc = Math.abs(dmercA) > 1e-5 ? dmercA : dmercC;
+
+      // In CSS screen space: 0° is East (+X), Y increases downwards (South = +Y, North = -Y)
+      const angle = Math.atan2(-dmerc, dlng) * R2D;
+      angles.push(angle);
     }
+
     this.samples = samples;
     this.cumKm = cumS;
+    this.angles = angles;
   }
 
   get distanceNm(): number {
@@ -300,6 +397,7 @@ export class MaritimeRoute {
   /** Project a recorded vessel position onto the corridor (spec 1.2: progress
    * from the recorded fix, never from endpoint interpolation). */
   projectPoint(lng: number, lat: number): { progress: number; offRouteKm: number } {
+    if (!this.samples || this.samples.length === 0) return { progress: 0, offRouteKm: 0 };
     let best = 0;
     let bestKm = Infinity;
     for (let i = 0; i < this.samples.length; i++) {
@@ -309,30 +407,40 @@ export class MaritimeRoute {
         best = i;
       }
     }
-    return { progress: best / (this.samples.length - 1), offRouteKm: bestKm };
+    return { progress: best / Math.max(1, this.samples.length - 1), offRouteKm: bestKm };
   }
 
   pointAt(p: number): GcPos {
+    if (!this.samples || this.samples.length === 0) {
+      return { lng: 0, lat: 0, angle: 0 };
+    }
+    if (this.samples.length === 1) {
+      return { lng: this.samples[0][0], lat: this.samples[0][1], angle: this.angles[0] ?? 0 };
+    }
     const t = clamp01(p) * (this.samples.length - 1);
     const i = Math.min(this.samples.length - 2, Math.floor(t));
     const f = t - i;
     const a = this.samples[i];
     const b = this.samples[i + 1];
+    const angleA = this.angles[i];
+    const angleB = this.angles[i + 1];
+
     return {
       lng: a[0] + (b[0] - a[0]) * f,
       lat: a[1] + (b[1] - a[1]) * f,
-      angle: Math.atan2(mercY(b[1]) - mercY(a[1]), b[0] - a[0]) * R2D,
+      angle: lerpAngle(angleA, angleB, f),
     };
   }
 
   /** Angle in degrees at sample index (for headings). */
   angleAt(i: number): number {
-    const a = this.samples[Math.min(i, this.samples.length - 2)];
-    const b = this.samples[Math.min(i + 1, this.samples.length - 1)];
-    return Math.atan2(mercY(b[1]) - mercY(a[1]), b[0] - a[0]) * R2D;
+    if (!this.angles || this.angles.length === 0) return 0;
+    return this.angles[Math.max(0, Math.min(i, this.angles.length - 1))];
   }
 
   traveledCoords(p: number): [number, number][] {
+    if (!this.samples || this.samples.length === 0) return [];
+    if (this.samples.length === 1) return [[this.samples[0][0], this.samples[0][1]]];
     const t = clamp01(p) * (this.samples.length - 1);
     const i = Math.min(this.samples.length - 2, Math.floor(t));
     const pos = this.pointAt(p);
@@ -340,6 +448,8 @@ export class MaritimeRoute {
   }
 
   remainingCoords(p: number): [number, number][] {
+    if (!this.samples || this.samples.length === 0) return [];
+    if (this.samples.length === 1) return [[this.samples[0][0], this.samples[0][1]]];
     const t = clamp01(p) * (this.samples.length - 1);
     const i = Math.min(this.samples.length - 2, Math.floor(t));
     const pos = this.pointAt(p);
