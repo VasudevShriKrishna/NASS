@@ -43,6 +43,7 @@ export interface MediaAttachment {
   url: string;
   mimeType: string;
   duration?: number;
+  base64?: string;
 }
 
 export interface NavigationAction {

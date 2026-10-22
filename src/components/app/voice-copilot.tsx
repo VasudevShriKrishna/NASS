@@ -1237,14 +1237,20 @@ export function VoiceCopilot() {
     const type: "video" | "image" | "document" = isVideo ? "video" : isImage ? "image" : "document";
     const url = URL.createObjectURL(file);
 
-    setAttachedMedia({
-      id: `media-${Date.now()}`,
-      name: file.name,
-      size: file.size,
-      type,
-      url,
-      mimeType: file.type || (isVideo ? "video/mp4" : "application/octet-stream"),
-    });
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = typeof reader.result === "string" ? reader.result.split(",")[1] : undefined;
+      setAttachedMedia({
+        id: `media-${Date.now()}`,
+        name: file.name,
+        size: file.size,
+        type,
+        url,
+        mimeType: file.type || (isVideo ? "video/mp4" : "application/octet-stream"),
+        base64,
+      });
+    };
+    reader.readAsDataURL(file);
 
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -1304,6 +1310,7 @@ export function VoiceCopilot() {
           pageContext,
           voiceOutputWanted: !isAudioMuted,
           sarvamApiKey: sarvamKey || undefined,
+          fileBase64: mediaSnapshot?.base64,
           media: mediaSnapshot
             ? {
                 name: mediaSnapshot.name,
