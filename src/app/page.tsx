@@ -51,7 +51,7 @@ import { ProjectsView } from "@/components/app/views/projects";
 import { AssetsView } from "@/components/app/views/assets";
 import { ExceptionsView } from "@/components/app/views/exceptions";
 import { ActionsView } from "@/components/app/views/actions";
-import { AssistantView } from "@/components/app/views/assistant";
+// import { AssistantView } from "@/components/app/views/assistant";
 import { GovernanceView } from "@/components/app/views/governance";
 import { ArchitectureView } from "@/components/app/views/architecture";
 import { CeoTowerView } from "@/components/app/views/ceo-tower";
@@ -64,7 +64,7 @@ const NAV: { group: string; items: { id: ViewId; label: string; icon: React.Reac
       { id: "ceo-tower", label: "CEO Decision Tower", icon: <Crown className="h-4 w-4 text-amber-400" /> },
       { id: "live", label: "Live Traceability", icon: <RadioTower className="h-4 w-4" /> },
       { id: "control-tower", label: "Control Tower", icon: <LayoutDashboard className="h-4 w-4" /> },
-      { id: "assistant", label: "Operations Assistant", icon: <MessageSquareText className="h-4 w-4" /> },
+      // { id: "assistant", label: "Operations Assistant", icon: <MessageSquareText className="h-4 w-4" /> },
     ],
   },
   {
@@ -207,9 +207,6 @@ function SidebarHeader({
           <div className="min-w-0 leading-tight">
             <p className="truncate font-display text-[13px] font-bold tracking-wide">
               NASS <span className="text-gold-grad">Control Tower</span>
-            </p>
-            <p className="truncate text-[8.5px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              Freight Traceability
             </p>
           </div>
         </div>
@@ -401,7 +398,7 @@ export default function Home() {
           setSidebarWidth(parsed);
         }
       }
-    } catch {}
+    } catch { }
   }, []);
 
   // Persist sidebar open state
@@ -410,7 +407,7 @@ export default function Home() {
       const next = !prev;
       try {
         localStorage.setItem("nass_sidebar_open", String(next));
-      } catch {}
+      } catch { }
       return next;
     });
   }, []);
@@ -453,7 +450,7 @@ export default function Home() {
       document.body.classList.remove("select-none", "cursor-col-resize");
       try {
         localStorage.setItem("nass_sidebar_width", String(widthRef.current));
-      } catch {}
+      } catch { }
     };
 
     window.addEventListener("mousemove", handleMouseMove);
@@ -622,28 +619,28 @@ export default function Home() {
         <main className="min-w-0 flex-1 px-3 py-4 sm:px-5 sm:py-5">
           <PageFade viewKey={view}>
             {drillRef ? (
-            <button
-              onClick={() => drillTo(view)}
-              className="mb-3 inline-flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
-            >
-              <XCircle className="h-3.5 w-3.5" /> Focused on <span className="font-mono font-semibold">{drillRef}</span> — click to clear
-            </button>
-          ) : null}
-          {view === "ceo-tower" && <CeoTowerView drillRef={drillRef ?? undefined} />}
-          {view === "control-tower" && <ControlTowerView drillRef={drillRef} />}
-          {view === "procurement" && <ProcurementView />}
-          {view === "suppliers" && <SuppliersView />}
-          {view === "import-tracking" && <ImportTrackingView drillRef={drillRef} />}
-          {view === "bol-intelligence" && <BolIntelligenceView drillRef={drillRef} />}
-          {view === "inventory" && <InventoryView />}
-          {view === "receiving" && <ReceivingView />}
-          {view === "projects" && <ProjectsView />}
-          {view === "assets" && <AssetsView />}
-          {view === "exceptions" && <ExceptionsView drillRef={drillRef} />}
-          {view === "actions" && <ActionsView drillRef={drillRef} />}
-          {view === "assistant" && <AssistantView />}
-          {view === "governance" && <GovernanceView />}
-          {view === "architecture" && <ArchitectureView />}
+              <button
+                onClick={() => drillTo(view)}
+                className="mb-3 inline-flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+              >
+                <XCircle className="h-3.5 w-3.5" /> Focused on <span className="font-mono font-semibold">{drillRef}</span> — click to clear
+              </button>
+            ) : null}
+            {view === "ceo-tower" && <CeoTowerView drillRef={drillRef ?? undefined} />}
+            {view === "control-tower" && <ControlTowerView drillRef={drillRef} />}
+            {view === "procurement" && <ProcurementView />}
+            {view === "suppliers" && <SuppliersView />}
+            {view === "import-tracking" && <ImportTrackingView drillRef={drillRef} />}
+            {view === "bol-intelligence" && <BolIntelligenceView drillRef={drillRef} />}
+            {view === "inventory" && <InventoryView />}
+            {view === "receiving" && <ReceivingView />}
+            {view === "projects" && <ProjectsView />}
+            {view === "assets" && <AssetsView />}
+            {view === "exceptions" && <ExceptionsView drillRef={drillRef} />}
+            {view === "actions" && <ActionsView drillRef={drillRef} />}
+            {/* {view === "assistant" && <AssistantView />} */}
+            {view === "governance" && <GovernanceView />}
+            {view === "architecture" && <ArchitectureView />}
           </PageFade>
         </main>
       </div>
