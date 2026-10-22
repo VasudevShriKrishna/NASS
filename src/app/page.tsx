@@ -354,6 +354,11 @@ export default function Home() {
   useEffect(() => {
     const handleUrlSync = () => {
       if (typeof window === "undefined") return;
+      if (window.location.pathname === "/" || window.location.pathname === "") {
+        try {
+          window.history.replaceState({ view: "ceo-tower" }, "", `/ceo-tower${window.location.search}`);
+        } catch {}
+      }
       const detectedView = parseViewFromPath(window.location.pathname);
       const searchParams = new URLSearchParams(window.location.search);
       const ref = searchParams.get("ref");
