@@ -274,7 +274,7 @@ function Brand() {
       </div>
       <div className="min-w-0 leading-tight">
         <p className="truncate font-display text-sm font-bold tracking-wide">
-          NASS <span className="text-gold-grad">Closed-Loop Control Tower</span>
+          NASS <span className="text-gold-grad">Executive Control Tower</span>
         </p>
         <p className="mt-0.5 text-[9px] font-medium uppercase tracking-[0.22em] text-muted-foreground">Freight Traceability · Decision Management · Operations Assistant</p>
       </div>
@@ -653,7 +653,7 @@ export default function Home() {
         <div className="hairline-gold h-px w-full" aria-hidden />
         <div className="flex flex-col items-center justify-between gap-2 px-4 py-3 text-[11px] text-muted-foreground sm:flex-row">
           <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center sm:text-left">
-            <span className="font-semibold text-foreground">NASS <span className="text-gold-grad">Closed-Loop Control Tower</span></span>
+            <span className="font-semibold text-foreground">NASS <span className="text-gold-grad">Executive Control Tower</span></span>
             <span>· Freight Traceability, Decision Management &amp; Operations Assistant</span>
             <span>· evidence-before-assertion · vessel ≠ container · verified outcomes only</span>
           </p>

@@ -263,9 +263,40 @@
   100% { opacity: 0; }
 }
 
+/* Cute King AI Copilot subtle living character animations */
+@keyframes cute-king-float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+.animate-cute-king-float {
+  animation: cute-king-float 3.6s ease-in-out infinite;
+}
+
+@keyframes crown-gleam {
+  0%, 75%, 100% {
+    opacity: 0.35;
+    transform: scale(0.85) rotate(0deg);
+  }
+  85% {
+    opacity: 1;
+    transform: scale(1.3) rotate(15deg);
+  }
+}
+
+.animate-crown-gleam {
+  animation: crown-gleam 4.2s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ambient-field *,
-  .map-flash-layer {
+  .map-flash-layer,
+  .animate-cute-king-float,
+  .animate-crown-gleam {
     animation: none !important;
   }
 }

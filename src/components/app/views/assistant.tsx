@@ -218,6 +218,13 @@ export function AssistantView() {
   const [voiceCommandAlert, setVoiceCommandAlert] = useState<string | null>(null);
   const sendRef = useRef<(q: string) => Promise<void>>(() => Promise.resolve());
   const attachedMediaRef = useRef(attachedMedia);
+  const isRecordingRef = useRef<boolean>(false);
+  const activeStreamRef = useRef<MediaStream | null>(null);
+  const accumulatedSpeechRef = useRef<string>("");
+
+  useEffect(() => {
+    isRecordingRef.current = isRecording;
+  }, [isRecording]);
 
   useEffect(() => {
     attachedMediaRef.current = attachedMedia;
@@ -359,59 +366,123 @@ export function AssistantView() {
       autoSentRef.current = false;
       setVoiceCommandAlert(null);
       setMicStatus("checking");
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      setMicStatus("granted");
-      const track = stream.getAudioTracks()[0];
-      if (track) setMicLabel(track.label || "Microphone Input");
 
-      setupAudioMeter(stream);
-
-      // Save pre-existing input so voice appends or starts fresh
       preSpeechTextRef.current = input.trim() ? input.trim() + " " : "";
+      accumulatedSpeechRef.current = "";
 
-      // Initialize live interim Web Speech Recognition (like ChatGPT live streaming dictation!)
+      const isMobile =
+        typeof navigator !== "undefined" &&
+        /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
+
       const SpeechRecognition =
-        (window as unknown as { SpeechRecognition?: typeof SpeechRecognition; webkitSpeechRecognition?: typeof SpeechRecognition })
+        typeof window !== "undefined" &&
+        ((window as unknown as { SpeechRecognition?: typeof SpeechRecognition; webkitSpeechRecognition?: typeof SpeechRecognition })
           .SpeechRecognition ||
-        (window as unknown as { webkitSpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition;
+          (window as unknown as { webkitSpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition);
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        if (!SpeechRecognition) {
+          setMicStatus("denied");
+          return;
+        }
+      }
+
+      // Android Chrome Hardware Mic Conflict Fix:
+      // On Android OS, keeping an active getUserMedia audio stream creates a hardware conflict
+      // with Google Speech Recognizer, immediately failing with 'audio-capture' error.
+      // On mobile, if SpeechRecognition is available, we probe permission and close the getUserMedia
+      // tracks so SpeechRecognition has 100% exclusive access to the microphone hardware.
+      // On desktop, we keep getUserMedia active for simultaneous VU meter & MediaRecorder capture.
+      let stream: MediaStream | null = null;
+      if (!isMobile || !SpeechRecognition) {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        activeStreamRef.current = stream;
+        setMicStatus("granted");
+        const track = stream.getAudioTracks()[0];
+        if (track) setMicLabel(track.label || "Microphone Input");
+        setupAudioMeter(stream);
+      } else {
+        try {
+          const probe = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const track = probe.getAudioTracks()[0];
+          if (track) setMicLabel(track.label || "Android Microphone");
+          probe.getTracks().forEach((t) => t.stop());
+          setMicStatus("granted");
+        } catch {
+          // Let SpeechRecognition trigger native Android mic prompt
+        }
+      }
 
       if (SpeechRecognition) {
         try {
           const recognizer = new SpeechRecognition();
-          recognizer.continuous = true;
+          speechRecognitionRef.current = recognizer;
+
+          // Android Chrome does not support continuous: true natively.
+          // Continuous false with auto-restart in onend provides seamless continuous dictation on Android!
+          recognizer.continuous = !isMobile;
           recognizer.interimResults = true;
-          recognizer.lang = "en-US";
+          recognizer.lang =
+            typeof navigator !== "undefined" && navigator.language
+              ? navigator.language
+              : "en-US";
+
+          if (isMobile) {
+            (recognizer as any).onaudiostart = () => setAudioLevel(45);
+            (recognizer as any).onsoundstart = () => setAudioLevel(65);
+            (recognizer as any).onspeechstart = () => setAudioLevel(85);
+            (recognizer as any).onspeechend = () => setAudioLevel(20);
+            (recognizer as any).onaudioend = () => setAudioLevel(0);
+          }
 
           recognizer.onresult = (event: SpeechRecognitionEvent) => {
             if (autoSentRef.current) return;
 
-            let transcriptText = "";
-            for (let i = 0; i < event.results.length; i++) {
-              transcriptText += event.results[i][0].transcript;
-            }
-            const fullText = (preSpeechTextRef.current + transcriptText).trim();
+            let interim = "";
+            let sessionFinal = "";
 
-            // AUTO-SEND TRIGGER: If user speaks "send it send it", auto-send immediately without stop permission!
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+              const res = event.results[i];
+              if (res.isFinal) {
+                sessionFinal += res[0].transcript;
+              } else {
+                interim += res[0].transcript;
+              }
+            }
+
+            if (sessionFinal) {
+              accumulatedSpeechRef.current = (
+                (accumulatedSpeechRef.current ? accumulatedSpeechRef.current + " " : "") + sessionFinal.trim()
+              ).trim();
+            }
+
+            const currentSpoken = (
+              (accumulatedSpeechRef.current ? accumulatedSpeechRef.current + " " : "") + interim.trim()
+            ).trim();
+
+            const fullText = (preSpeechTextRef.current + currentSpoken).trim();
+
+            // AUTO-SEND TRIGGER: "send it send it"
             if (!autoSentRef.current && SEND_IT_TRIGGER.test(fullText)) {
               autoSentRef.current = true;
+              isRecordingRef.current = false;
               const promptToSend = stripSendItTrigger(fullText);
 
-              // Immediately unbind and abort speech recognition so no trailing events restore text
               try {
                 recognizer.onresult = null;
                 recognizer.onerror = null;
+                recognizer.onend = null;
                 recognizer.abort();
               } catch {}
               speechRecognitionRef.current = null;
 
-              // Immediately wipe the prompt conversation box completely!
               preSpeechTextRef.current = "";
+              accumulatedSpeechRef.current = "";
               setInput("");
 
               setVoiceCommandAlert('⚡ Voice Command Detected: "send it send it" — Sending directly without stop permission!');
               setTimeout(() => setVoiceCommandAlert(null), 4000);
 
-              // Immediately terminate recording
               stopRecording();
 
               if (promptToSend || attachedMediaRef.current) {
@@ -420,64 +491,87 @@ export function AssistantView() {
               return;
             }
 
-            // LIVE WRITING INTO PROMPT CONVERSATION BOX (only if not auto-sent)
             if (!autoSentRef.current) {
-              setInput(preSpeechTextRef.current + transcriptText);
+              setInput(preSpeechTextRef.current + currentSpoken);
             }
           };
 
-          recognizer.onerror = () => {};
+          // OnEnd auto-restart loop for Android speech pauses
+          recognizer.onend = () => {
+            if (isRecordingRef.current && !autoSentRef.current) {
+              try {
+                recognizer.start();
+              } catch {}
+            }
+          };
+
+          recognizer.onerror = (e: any) => {
+            if (e?.error === "no-speech") return;
+            if (e?.error === "not-allowed") {
+              setMicStatus("denied");
+            }
+          };
+
           recognizer.start();
-          speechRecognitionRef.current = recognizer;
         } catch {}
       }
 
-      // Simultaneously capture audio chunks with MediaRecorder for Sarvam precision backend
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : MediaRecorder.isTypeSupported("audio/webm")
-        ? "audio/webm"
-        : "audio/mp4";
+      // MediaRecorder for desktop or stream fallback
+      if (stream) {
+        const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+          ? "audio/webm;codecs=opus"
+          : MediaRecorder.isTypeSupported("audio/webm")
+          ? "audio/webm"
+          : MediaRecorder.isTypeSupported("audio/mp4")
+          ? "audio/mp4"
+          : "";
 
-      const mr = new MediaRecorder(stream, { mimeType });
-      mediaRecorderRef.current = mr;
-      audioChunksRef.current = [];
+        try {
+          const mr = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+          mediaRecorderRef.current = mr;
+          audioChunksRef.current = [];
 
-      mr.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
-      };
+          mr.ondataavailable = (e) => {
+            if (e.data.size > 0) audioChunksRef.current.push(e.data);
+          };
 
-      mr.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-        if (audioContextRef.current && audioContextRef.current.state !== "closed") {
-          audioContextRef.current.close().catch(() => {});
-        }
-        setAudioLevel(0);
+          mr.onstop = async () => {
+            if (activeStreamRef.current) {
+              activeStreamRef.current.getTracks().forEach((t) => t.stop());
+              activeStreamRef.current = null;
+            }
+            if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+            if (audioContextRef.current && audioContextRef.current.state !== "closed") {
+              audioContextRef.current.close().catch(() => {});
+            }
+            setAudioLevel(0);
 
-        // Stop live recognizer if still active
-        if (speechRecognitionRef.current) {
-          try {
-            const r = speechRecognitionRef.current as { abort?: () => void; stop?: () => void; onresult?: unknown; onerror?: unknown };
-            r.onresult = null;
-            r.onerror = null;
-            if (typeof r.abort === "function") r.abort();
-            else if (typeof r.stop === "function") r.stop();
-          } catch {}
-          speechRecognitionRef.current = null;
-        }
+            if (speechRecognitionRef.current) {
+              try {
+                const r = speechRecognitionRef.current as any;
+                r.onresult = null;
+                r.onerror = null;
+                r.onend = null;
+                if (typeof r.abort === "function") r.abort();
+                else if (typeof r.stop === "function") r.stop();
+              } catch {}
+              speechRecognitionRef.current = null;
+            }
 
-        // If it was already auto-sent by live speech recognition, skip transcription request & keep input erased
-        if (autoSentRef.current) {
-          setInput("");
-          return;
-        }
+            if (autoSentRef.current) {
+              setInput("");
+              return;
+            }
 
-        const blob = new Blob(audioChunksRef.current, { type: mimeType });
-        await handleAudioTranscription(blob);
-      };
+            const blob = new Blob(audioChunksRef.current, { type: mimeType || "audio/webm" });
+            await handleAudioTranscription(blob);
+          };
 
-      mr.start(250);
+          mr.start(250);
+        } catch {}
+      }
+
+      isRecordingRef.current = true;
       setIsRecording(true);
       setRecordingSeconds(0);
       timerRef.current = setInterval(() => {
@@ -485,12 +579,16 @@ export function AssistantView() {
       }, 1000);
     } catch {
       setMicStatus("denied");
+      isRecordingRef.current = false;
       setIsRecording(false);
     }
   }
 
   // STOP RECORDING — Leaves transcribed text in prompt for review!
   function stopRecording() {
+    isRecordingRef.current = false;
+    setIsRecording(false);
+
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
@@ -499,18 +597,25 @@ export function AssistantView() {
       try {
         mediaRecorderRef.current.stop();
       } catch {}
+      mediaRecorderRef.current = null;
     }
     if (speechRecognitionRef.current) {
       try {
-        const r = speechRecognitionRef.current as { abort?: () => void; stop?: () => void; onresult?: unknown; onerror?: unknown };
+        const r = speechRecognitionRef.current as any;
         r.onresult = null;
         r.onerror = null;
+        r.onend = null;
         if (typeof r.abort === "function") r.abort();
         else if (typeof r.stop === "function") r.stop();
       } catch {}
       speechRecognitionRef.current = null;
     }
-    setIsRecording(false);
+    if (activeStreamRef.current) {
+      try {
+        activeStreamRef.current.getTracks().forEach((t) => t.stop());
+      } catch {}
+      activeStreamRef.current = null;
+    }
   }
 
   // Send audio to /api/voice/sarvam to refine transcript with Sarvam AI
@@ -605,7 +710,17 @@ export function AssistantView() {
     u.onend = () => setSpeakingIdx(null);
     u.onerror = () => setSpeakingIdx(null);
     setSpeakingIdx(idx);
-    window.speechSynthesis.speak(u);
+
+    setTimeout(() => {
+      try {
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+        }
+        window.speechSynthesis.speak(u);
+      } catch {
+        setSpeakingIdx(null);
+      }
+    }, 50);
   }
 
   // Send message from prompt

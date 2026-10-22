@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="appleBgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b121e" />
+      <stop offset="45%" stop-color="#06090f" />
+      <stop offset="100%" stop-color="#020407" />
+    </linearGradient>
+
+    <linearGradient id="appleGoldBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fff0b3" stop-opacity="0.95" />
+      <stop offset="30%" stop-color="#d4af37" stop-opacity="0.75" />
+      <stop offset="70%" stop-color="#8a6a1f" stop-opacity="0.45" />
+      <stop offset="100%" stop-color="#eac766" stop-opacity="0.9" />
+    </linearGradient>
+
+    <linearGradient id="appleGoldLight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="20%" stop-color="#fff4c2" />
+      <stop offset="50%" stop-color="#e5be49" />
+      <stop offset="85%" stop-color="#b8860b" />
+      <stop offset="100%" stop-color="#7a580e" />
+    </linearGradient>
+
+    <linearGradient id="appleGoldDark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#d4af37" />
+      <stop offset="40%" stop-color="#a67c1e" />
+      <stop offset="80%" stop-color="#694e10" />
+      <stop offset="100%" stop-color="#402e07" />
+    </linearGradient>
+
+    <linearGradient id="appleEmeraldGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#059669" />
+      <stop offset="50%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#6ee7b7" />
+    </linearGradient>
+
+    <radialGradient id="appleCoreGlow" cx="50%" cy="48%" r="58%">
+      <stop offset="0%" stop-color="#d4af37" stop-opacity="0.22" />
+      <stop offset="45%" stop-color="#0f2138" stop-opacity="0.12" />
+      <stop offset="100%" stop-color="#020407" stop-opacity="0" />
+    </radialGradient>
+
+    <filter id="appleBeaconGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+
+    <filter id="appleSubtleGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#appleBgGrad)" stroke="url(#appleGoldBorder)" stroke-width="5" />
+  <rect x="26" y="26" width="460" height="460" rx="98" fill="none" stroke="#d4af37" stroke-width="1.2" stroke-opacity="0.25" />
+  <circle cx="256" cy="256" r="215" fill="url(#appleCoreGlow)" />
+
+  <circle cx="256" cy="256" r="182" fill="none" stroke="url(#appleGoldLight)" stroke-width="2" stroke-dasharray="5 11" opacity="0.32" />
+  <path d="M 108 256 A 148 148 0 0 1 392 188" fill="none" stroke="url(#appleGoldLight)" stroke-width="4.5" stroke-linecap="round" stroke-dasharray="140 30 50 25" opacity="0.65" />
+  <path d="M 398 270 A 148 148 0 0 1 142 342" fill="none" stroke="url(#appleEmeraldGrad)" stroke-width="4" stroke-linecap="round" stroke-dasharray="120 40 40 20" opacity="0.75" />
+
+  <circle cx="392" cy="188" r="4.5" fill="#fef08a" filter="url(#appleSubtleGlow)" />
+  <circle cx="142" cy="342" r="5" fill="#34d399" filter="url(#appleSubtleGlow)" />
+  <circle cx="108" cy="256" r="3.5" fill="#d4af37" opacity="0.8" />
+
+  <g transform="translate(0, 8)">
+    <path d="M 154 362 C 204 402 308 402 358 362 C 334 388 288 414 256 418 C 224 414 178 388 154 362 Z" fill="url(#appleGoldLight)" />
+    <path d="M 186 348 L 256 390 L 326 348 L 256 366 Z" fill="url(#appleGoldLight)" opacity="0.9" />
+
+    <polygon points="132,185 220,250 162,335 142,305" fill="url(#appleGoldDark)" />
+    <polygon points="132,185 244,142 220,250" fill="url(#appleGoldLight)" />
+    <polygon points="220,250 244,142 244,345 220,340" fill="url(#appleGoldDark)" />
+
+    <polygon points="380,185 268,142 292,250" fill="url(#appleGoldLight)" />
+    <polygon points="380,185 292,250 350,335 370,305" fill="url(#appleGoldDark)" />
+    <polygon points="292,250 268,142 268,345 292,340" fill="url(#appleGoldLight)" />
+
+    <polygon points="256,76 244,142 244,345 256,366" fill="url(#appleGoldDark)" />
+    <polygon points="256,76 268,142 268,345 256,366" fill="url(#appleGoldLight)" />
+    <line x1="256" y1="76" x2="256" y2="366" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" opacity="0.85" />
+
+    <circle cx="256" cy="76" r="18" fill="url(#appleGoldLight)" opacity="0.35" filter="url(#appleBeaconGlow)" />
+    <path d="M 256 46 L 256 106 M 226 76 L 286 76 M 235 55 L 277 97 M 277 55 L 235 97" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" opacity="0.95" />
+    <polygon points="256,62 260,73 271,76 260,79 256,90 252,79 241,76 252,73" fill="#ffffff" />
+    <circle cx="256" cy="76" r="4.5" fill="#ffffff" filter="url(#appleSubtleGlow)" />
+    <circle cx="256" cy="226" r="3.5" fill="#34d399" filter="url(#appleSubtleGlow)" />
+  </g>
+</svg>
