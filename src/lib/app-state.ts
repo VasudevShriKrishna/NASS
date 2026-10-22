@@ -51,7 +51,7 @@ export function parseViewFromPath(pathname: string): ViewId | null {
 
 export function syncUrlPath(view: ViewId, ref?: string | null) {
   if (typeof window === "undefined") return;
-  const targetPath = view === "ceo-tower" ? "/" : `/${view}`;
+  const targetPath = `/${view}`;
   const query = ref ? `?ref=${encodeURIComponent(ref)}` : "";
   const newUrl = `${targetPath}${query}`;
   if (window.location.pathname + window.location.search !== newUrl) {

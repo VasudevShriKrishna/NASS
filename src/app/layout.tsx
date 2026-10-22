@@ -51,13 +51,13 @@ export const metadata: Metadata = {
   creator: "NASS Corporation",
   publisher: "NASS Corporation",
   alternates: {
-    canonical: "https://mycorps.vercel.app",
+    canonical: "https://mycorps.vercel.app/ceo-tower",
   },
   openGraph: {
     title: "NASS · Board Executive Control Tower",
     description:
       "NASS Board Executive Control Tower — Freight Traceability, Decision Management & Operations Assistant: Bahrain-first maritime freight visibility, evidence-before-assertion, verified outcomes only.",
-    url: "https://mycorps.vercel.app",
+    url: "https://mycorps.vercel.app/ceo-tower",
     siteName: "NASS Board Executive Control Tower",
     images: [
       {
