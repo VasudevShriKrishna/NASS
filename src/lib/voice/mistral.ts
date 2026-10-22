@@ -35,6 +35,7 @@ import {
   getLiveWeather,
   getLiveTime,
 } from "../search/web-search";
+import { runSarvamOrchestrator } from "../sarvam/orchestrator";
 
 // All non-Sarvam APIs disabled per strict architectural directive: USE ONLY SARVAM API
 // const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY || "";
@@ -477,7 +478,7 @@ export function resolveActiveContext(
   const explicitShipment = q.match(/\bSHP-880[1-9]\b/)?.[0];
   const contextShipment =
     pageContext?.selectedRef?.startsWith("SHP-") ? pageContext.selectedRef :
-    pageContext?.context?.selectedShipment;
+      pageContext?.context?.selectedShipment;
   let historyShipment: string | undefined;
   for (let i = history.length - 1; i >= 0; i--) {
     const m = history[i].content.toUpperCase().match(/\bSHP-880[1-9]\b/);
@@ -493,7 +494,7 @@ export function resolveActiveContext(
   const explicitProject = q.match(/\b(PRJ-220[1-5]|PRJ-2210|PRJ-1998|PRJ-BIA-01)\b/)?.[0];
   const contextProject =
     pageContext?.selectedRef?.startsWith("PRJ-") ? pageContext.selectedRef :
-    pageContext?.context?.selectedProject;
+      pageContext?.context?.selectedProject;
   let inferredProject = "PRJ-2201";
   if (activeShipment === "SHP-8801" || activeShipment === "SHP-8804") inferredProject = "PRJ-2210";
   else if (activeShipment === "SHP-8809") inferredProject = "PRJ-BIA-01";
@@ -505,7 +506,7 @@ export function resolveActiveContext(
   const explicitPo = q.match(/\bPO-300[1-9]\b/)?.[0];
   const contextPo =
     pageContext?.selectedRef?.startsWith("PO-") ? pageContext.selectedRef :
-    pageContext?.context?.selectedPo;
+      pageContext?.context?.selectedPo;
   const inferredPo = (activeShipment === "SHP-8802" || activeShipment === "SHP-8801") ? "PO-3001" : "PO-3002";
   const activePo = explicitPo || contextPo || inferredPo;
 
@@ -1749,8 +1750,6 @@ async function runDeterministicFallback(
   const fallbackAns =
     `I can help you explore verified operational records across the NASS Control Tower in natural language.\n\n` +
     `You can ask me about:\n` +
-    `• **Mathematical Calculations:** "What is 250 * 180 + 15%?" or "Convert 50,000 BHD to USD"\n` +
-    `• **MENA & Global Supply/Demand:** "What is the latest news on MENA region global supply and demand?"\n` +
     `• **Executive Projects:** Active vs historical project portfolio (PRJ-2201 to PRJ-ALBA-06)\n` +
     `• **Price Benchmarking:** LME steel rebar, aggregate landed cost breakdowns (FOB + freight + tariff)\n` +
     `• **Shipments & Weight:** Manifest gross vs weighbridge scale weight, ±2.5% discrepancy flags\n` +

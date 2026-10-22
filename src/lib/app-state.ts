@@ -16,7 +16,7 @@ export type ViewId =
   | "assets"
   | "exceptions"
   | "actions"
-  | "assistant"
+  // | "assistant"
   | "governance"
   | "architecture";
 
@@ -33,7 +33,7 @@ export const VALID_VIEWS: ViewId[] = [
   "assets",
   "exceptions",
   "actions",
-  "assistant",
+  // "assistant",
   "governance",
   "architecture",
   "live",
