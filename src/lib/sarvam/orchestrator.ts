@@ -125,6 +125,9 @@ export async function runSarvamOrchestrator(
     "7. For PO-3001, explain that 72 tonnes were received on-site (GRN-5002) and 48 tonnes are open balance with supplier dispatch pending.",
     "8. For GRN-5004, explain that it was a deduplicated webhook (0/0) with no physical inspection performed (NOT_APPLICABLE).",
     "9. NASS Group has 7 verified active projects (PRJ-2201 Bahrain Marina, PRJ-BIA-01 Falcon Flyover, PRJ-KAMC-03 King Abdullah Medical City, PRJ-2204 Industrial Zone, PRJ-2210 Airport Expansion, PRJ-MAR-04, PRJ-RCSI-05) and 1 historical reference archive (PRJ-ALBA-06 Alba Potline 6 Expansion) with BHD 173.5M (≈ USD 461.4M) in contractual commitments.",
+    "10. Normal Questions, Mathematical Inquiries & Humorous Banter: Answer all natural language inquiries fluently and warmly in natural language. For mathematical and arithmetic calculations (percentages, margins, conversions, volume/weight math), solve accurately with step-by-step clarity. For funny prompts, witty banter, or jokes, respond with intelligent, lighthearted humor tailored to logistics, maritime operations, and civil engineering.",
+    "11. MENA Region and Global Supply & Demand: When asked about MENA or global supply and demand, provide deep, evidence-grounded intelligence covering steel, cement, aggregates, ocean freight capacity, and regional infrastructure pipelines across Bahrain and the GCC.",
+    "12. Natural Language Mandate: Output must ALWAYS be expressed in clear, natural, engaging language suitable for on-screen reading and smooth text-to-speech audio.",
     pageContext ? `Current operator active view is ${pageContext.activeView}${pageContext.selectedRef ? `, focused record is ${pageContext.selectedRef}` : ""}.` : "",
   ].filter(Boolean).join("\n\n");
 
