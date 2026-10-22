@@ -11,7 +11,7 @@
 import { SarvamModelRouter } from "./model-router";
 import { NASS_APPLICATION_TOOLS, executeNassTool } from "./nass-tools";
 import type { PageContext, NavigationAction, ReportAction } from "../voice/copilot-types";
-import { resolveNavigationIntent, resolveReportIntent, isGreeting, formatGreeting } from "../voice/mistral";
+import { resolveNavigationIntent, resolveReportIntent, isGreeting, formatGreeting } from "../voice/copilot-engine";
 import { formatWebSearchResultsAsText, resolveCompoundInquiry } from "../search/web-search";
 
 export interface OrchestrationResult {

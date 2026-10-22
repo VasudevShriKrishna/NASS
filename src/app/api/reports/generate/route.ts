@@ -27,6 +27,39 @@ export async function GET(req: NextRequest) {
     const targetRef = searchParams.get("ref") ?? searchParams.get("code") ?? undefined;
     const format = (searchParams.get("format") ?? "pdf").toLowerCase() as ExportFormat;
 
+    const engine = searchParams.get("engine");
+
+    if (engine === "python" && (format === "xlsx" || format === "csv")) {
+      const { generateNativeReport } = await import("@/lib/services/python-bridge");
+      const fs = await import("fs");
+      const pythonReport = await generateNativeReport({
+        format: format as "xlsx" | "csv",
+        title: `NASS Group ${type.toUpperCase()} Report`,
+        headers: ["Code", "Description", "Value", "Currency", "Status", "Timestamp"],
+        data: [
+          ["PRJ-2201", "Bahrain Marina Phase 1", 45000000, "BHD", "ACTIVE", new Date().toISOString()],
+          ["SHP-8802", "Industrial Chiller 800 kW", 36192, "BHD", "IN_TRANSIT", new Date().toISOString()],
+          ["PO-3001", "Rebar B500B (120 MT)", 44000, "USD", "PARTIAL_RECEIVED", new Date().toISOString()],
+          ["MAT-REBAR-B500B", "On-hand yard reserve", 840, "MT", "SUFFICIENT", new Date().toISOString()],
+        ],
+        outputFilename: `NASS_${type}_${Date.now()}.${format}`,
+      });
+
+      if (pythonReport.success && fs.existsSync(pythonReport.outputPath)) {
+        const fileBuf = fs.readFileSync(pythonReport.outputPath);
+        const mimeType = format === "xlsx" 
+          ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          : "text/csv; charset=utf-8";
+        return new Response(fileBuf, {
+          headers: {
+            "Content-Type": mimeType,
+            "Content-Disposition": `attachment; filename="${pythonReport.filename}"`,
+            "Cache-Control": "no-store",
+          },
+        });
+      }
+    }
+
     const report = await generateMultiFormatReport({ type, targetRef, format });
 
     const isInline = searchParams.get("inline") === "true" || searchParams.get("inline") === "1";

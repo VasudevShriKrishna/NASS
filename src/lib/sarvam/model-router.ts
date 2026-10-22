@@ -10,10 +10,7 @@
 
 export type ModelPriority =
   | "sarvam-105b"
-  | "sarvam-105b-conversations"
-  | "deepseekv4.1-flash"
-  | "glm5.3"
-  | "gemma4";
+  | "sarvam-105b-conversations";
 
 export interface ModelCapability {
   id: ModelPriority;
@@ -23,7 +20,7 @@ export interface ModelCapability {
   supportsTools: boolean;
   supportsStructuredJson: boolean;
   maxTokens: number;
-  recommendedTask: "complex-reasoning" | "conversational-voice" | "fast-fallback" | "structured-planning";
+  recommendedTask: "complex-reasoning" | "conversational-voice" | "structured-planning";
   endpoint: string;
 }
 
@@ -49,39 +46,6 @@ export const SARVAM_MODEL_REGISTRY: Record<ModelPriority, ModelCapability> = {
     maxTokens: 2048,
     recommendedTask: "conversational-voice",
     endpoint: "https://api.sarvam.ai/v1/chat/completions",
-  },
-  "deepseekv4.1-flash": {
-    id: "deepseekv4.1-flash",
-    name: "DeepSeek v4.1 Flash (V2 Alternate)",
-    isAvailable: false, // Requires explicit V2 account allowlisting
-    isDeprecated: false,
-    supportsTools: true,
-    supportsStructuredJson: true,
-    maxTokens: 4096,
-    recommendedTask: "fast-fallback",
-    endpoint: "https://api.sarvam.ai/v2/chat/completions",
-  },
-  "glm5.3": {
-    id: "glm5.3",
-    name: "GLM 5.3 (V2 Alternate)",
-    isAvailable: false,
-    isDeprecated: false,
-    supportsTools: true,
-    supportsStructuredJson: true,
-    maxTokens: 4096,
-    recommendedTask: "structured-planning",
-    endpoint: "https://api.sarvam.ai/v2/chat/completions",
-  },
-  "gemma4": {
-    id: "gemma4",
-    name: "Gemma 4 (V2 Alternate)",
-    isAvailable: false,
-    isDeprecated: false,
-    supportsTools: false,
-    supportsStructuredJson: false,
-    maxTokens: 2048,
-    recommendedTask: "fast-fallback",
-    endpoint: "https://api.sarvam.ai/v2/chat/completions",
   },
 };
 

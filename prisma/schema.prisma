@@ -982,3 +982,33 @@ model CeoDecisionRecommendation {
   approvedAt              DateTime?
   createdAt               DateTime  @default(now())
 }
+
+// ─── Phase 15 & 16: Agent Prompt Audit Log (High-Security Integrity & HMAC) ────
+model AgentPromptLog {
+  id                    String   @id @default(cuid())
+  createdAt             DateTime @default(now())
+  promptText            String   // Exact UTF-8 submitted prompt as received by server
+  promptSha256          String   // SHA-256 digest of exact prompt text
+  promptHmacSha256      String   // HMAC-SHA-256 with server-side signing secret
+  ipAddress             String?  // Server-side captured client IP (x-forwarded-for / x-real-ip)
+  sessionId             String?
+  conversationId        String?
+  messageSequence       Int      @default(1)
+  userId                String?
+  pagePath              String?
+  host                  String?
+  deploymentEnvironment String?
+  deploymentUrl         String?
+  userAgent             String?
+  requestId             String?
+  model                 String?  // e.g. "sarvam-105b"
+  toolsUsed             String?  // JSON array of invoked tools
+  latencyMs             Int?
+  status                String   @default("RECEIVED") // RECEIVED | PROCESSED | FAILED
+  error                 String?
+
+  @@index([conversationId])
+  @@index([createdAt])
+  @@index([promptSha256])
+  @@index([requestId])
+}
