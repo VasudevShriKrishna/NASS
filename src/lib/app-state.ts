@@ -42,7 +42,7 @@ export const VALID_VIEWS: ViewId[] = [
 export function parseViewFromPath(pathname: string): ViewId | null {
   if (typeof window === "undefined" && !pathname) return null;
   const segment = (pathname || "").replace(/^\/+|\/+$/g, "").split("/")[0]?.toLowerCase();
-  if (!segment || segment === "") return "control-tower";
+  if (!segment || segment === "") return "ceo-tower";
   if (VALID_VIEWS.includes(segment as ViewId)) {
     return segment as ViewId;
   }
@@ -51,7 +51,7 @@ export function parseViewFromPath(pathname: string): ViewId | null {
 
 export function syncUrlPath(view: ViewId, ref?: string | null) {
   if (typeof window === "undefined") return;
-  const targetPath = view === "control-tower" ? "/" : `/${view}`;
+  const targetPath = view === "ceo-tower" ? "/" : `/${view}`;
   const query = ref ? `?ref=${encodeURIComponent(ref)}` : "";
   const newUrl = `${targetPath}${query}`;
   if (window.location.pathname + window.location.search !== newUrl) {
@@ -81,8 +81,8 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
-  view: "control-tower",
-  viewHistory: ["control-tower"],
+  view: "ceo-tower",
+  viewHistory: ["ceo-tower"],
   setView: (v) => {
     syncUrlPath(v);
     set((state) => ({
@@ -100,9 +100,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ view: prev, viewHistory: newHistory, drill: null });
       return true;
     }
-    // Default back to control tower if no history
-    syncUrlPath("control-tower");
-    set({ view: "control-tower", drill: null });
+    // Default back to CEO tower if no history
+    syncUrlPath("ceo-tower");
+    set({ view: "ceo-tower", drill: null });
     return false;
   },
   drill: null,
