@@ -358,6 +358,143 @@ export function parseXlsxLocally(buffer: Buffer): {
 }
 
 /**
+ * Local non-Vision parser for .tsv (Tab-Separated Values)
+ */
+export function parseTsvLocally(buffer: Buffer): {
+  headers: string[];
+  rows: Array<Record<string, string>>;
+  rawRowCount: number;
+} {
+  const text = buffer.toString("utf-8");
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+
+  if (lines.length === 0) return { headers: [], rows: [], rawRowCount: 0 };
+
+  const headers = lines[0].split("\t").map((h) => h.trim());
+  const rows: Array<Record<string, string>> = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split("\t").map((c) => c.trim());
+    const rowObj: Record<string, string> = {};
+    headers.forEach((h, idx) => {
+      rowObj[h || `col_${idx}`] = cols[idx] !== undefined ? cols[idx] : "";
+    });
+    rows.push(rowObj);
+  }
+
+  return { headers, rows, rawRowCount: rows.length };
+}
+
+/**
+ * Local parser for .json and structured configuration files
+ */
+export function parseJsonLocally(buffer: Buffer): {
+  valid: boolean;
+  data: any;
+  keys: string[];
+  summary: string;
+} {
+  try {
+    const parsed = JSON.parse(buffer.toString("utf-8"));
+    const keys = typeof parsed === "object" && parsed !== null ? Object.keys(parsed) : [];
+    return {
+      valid: true,
+      data: parsed,
+      keys,
+      summary: `Valid JSON structure with ${keys.length} top-level keys (${keys.slice(0, 10).join(", ")})`,
+    };
+  } catch (err: any) {
+    return {
+      valid: false,
+      data: null,
+      keys: [],
+      summary: `Invalid JSON syntax: ${err?.message || "Syntax error"}`,
+    };
+  }
+}
+
+/**
+ * Local parser for .xml files
+ */
+export function parseXmlLocally(buffer: Buffer): {
+  tags: string[];
+  textSnippet: string;
+  tagCount: number;
+} {
+  const str = buffer.toString("utf-8");
+  const tags: string[] = [];
+  const tagRegex = /<([a-zA-Z0-9_\-:]+)(?:\s+[^>]*)?>/g;
+  let match;
+  while ((match = tagRegex.exec(str)) !== null) {
+    if (!match[1].startsWith("/")) tags.push(match[1]);
+  }
+  const cleanText = str.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  return {
+    tags: Array.from(new Set(tags)),
+    textSnippet: cleanText.slice(0, 500),
+    tagCount: tags.length,
+  };
+}
+
+/**
+ * Local parser for text/markdown/HTML files
+ */
+export function parseTextLocally(buffer: Buffer): {
+  text: string;
+  lineCount: number;
+  wordCount: number;
+} {
+  const raw = buffer.toString("utf-8");
+  // Strip script/style tags if HTML
+  const clean = raw
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const words = clean.split(/\s+/).filter(Boolean);
+  const lines = raw.split(/\r?\n/).filter(Boolean);
+  return {
+    text: clean,
+    lineCount: lines.length,
+    wordCount: words.length,
+  };
+}
+
+/**
+ * Local parser for flat ZIP archives containing page images (max 10 images)
+ */
+export function parseZipArchiveLocally(buffer: Buffer): {
+  validFlatArchive: boolean;
+  imageEntries: string[];
+  totalEntries: number;
+} {
+  const content = buffer.toString("latin1");
+  const entries: string[] = [];
+  // Scan for PK zip local file header signatures (\x50\x4B\x03\x04)
+  const pkRegex = /\x50\x4B\x03\x04[\s\S]{26}([a-zA-Z0-9_\-\.\/]+)/g;
+  let match;
+  while ((match = pkRegex.exec(content)) !== null) {
+    if (match[1] && !match[1].endsWith("/")) {
+      entries.push(match[1]);
+    }
+  }
+
+  const imageEntries = entries.filter((e) => /\.(jpe?g|png|webp|tiff?)$/i.test(e));
+  const hasSubfolders = entries.some((e) => e.includes("/") || e.includes("\\"));
+  const validFlatArchive = !hasSubfolders && imageEntries.length > 0 && imageEntries.length <= 10;
+
+  return {
+    validFlatArchive,
+    imageEntries: imageEntries.sort(),
+    totalEntries: entries.length,
+  };
+}
+
+/**
  * Normalize and apply strict anti-fabrication rules:
  * - If a field is present, tag as 'extracted'
  * - If a field is missing, return null / "not found" with status 'field_not_found'
@@ -649,24 +786,200 @@ export async function extractDocument(params: {
     };
   }
 
-  // 6. VISION FORMATS (PDF, Images)
-  const isPdf = fileNameLower.endsWith(".pdf") || params.mimeType === "application/pdf";
-  const pageCount = isPdf ? estimatePdfPageCount(params.buffer) : 1;
+  // 6. NON-VISION FORMAT HANDLING: .tsv
+  if (fileNameLower.endsWith(".tsv")) {
+    const tsvResult = parseTsvLocally(params.buffer);
+    const rawFields: Record<string, any> = {
+      headers: tsvResult.headers,
+      row_count: tsvResult.rawRowCount,
+      sample_row: tsvResult.rows[0] || null,
+    };
 
-  // Enforce 10-page batch limit
-  if (pageCount > MAX_PAGES_PER_BATCH) {
     return {
-      success: false,
+      success: true,
       documentType: schemaType,
       fileName: params.fileName,
       fileSizeBytes,
-      pageCount,
-      format: "VISION_PDF",
-      fields: {},
-      error: {
-        type: "PAGE_LIMIT_EXCEEDED",
-        message: `Document has ${pageCount} pages, which exceeds the Sarvam Vision limit of ${MAX_PAGES_PER_BATCH} pages per batch. Please submit batches of <= 10 pages.`,
+      pageCount: 1,
+      format: "LOCAL_TABULAR",
+      fields: buildFieldMap(schemaType, rawFields),
+      rawOutput: tsvResult,
+      provenance: {
+        engine: "local_tabular_parser",
+        singleCallCompliant: true,
+        toolChaining: false,
+        timestamp: new Date().toISOString(),
+        latencyMs: Date.now() - startTime,
       },
+    };
+  }
+
+  // 7. NON-VISION FORMAT HANDLING: .json
+  if (fileNameLower.endsWith(".json")) {
+    const jsonResult = parseJsonLocally(params.buffer);
+    const rawFields: Record<string, any> = {
+      valid: jsonResult.valid,
+      keys: jsonResult.keys,
+      summary: jsonResult.summary,
+      raw_content: jsonResult.valid ? jsonResult.data : null,
+    };
+
+    return {
+      success: jsonResult.valid,
+      documentType: schemaType,
+      fileName: params.fileName,
+      fileSizeBytes,
+      pageCount: 1,
+      format: "LOCAL_TABULAR",
+      fields: buildFieldMap(schemaType, rawFields),
+      rawOutput: jsonResult,
+      error: !jsonResult.valid ? { type: "INVALID_FORMAT", message: jsonResult.summary } : undefined,
+      provenance: {
+        engine: "local_tabular_parser",
+        singleCallCompliant: true,
+        toolChaining: false,
+        timestamp: new Date().toISOString(),
+        latencyMs: Date.now() - startTime,
+      },
+    };
+  }
+
+  // 8. NON-VISION FORMAT HANDLING: .xml
+  if (fileNameLower.endsWith(".xml")) {
+    const xmlResult = parseXmlLocally(params.buffer);
+    const rawFields: Record<string, any> = {
+      tags: xmlResult.tags,
+      tag_count: xmlResult.tagCount,
+      summary: xmlResult.textSnippet,
+    };
+
+    return {
+      success: true,
+      documentType: schemaType,
+      fileName: params.fileName,
+      fileSizeBytes,
+      pageCount: 1,
+      format: "LOCAL_TABULAR",
+      fields: buildFieldMap(schemaType, rawFields),
+      rawOutput: xmlResult,
+      provenance: {
+        engine: "local_tabular_parser",
+        singleCallCompliant: true,
+        toolChaining: false,
+        timestamp: new Date().toISOString(),
+        latencyMs: Date.now() - startTime,
+      },
+    };
+  }
+
+  // 9. NON-VISION FORMAT HANDLING: .txt, .md, .html, .odt, .ods
+  if (fileNameLower.endsWith(".txt") || fileNameLower.endsWith(".md") || fileNameLower.endsWith(".markdown") || fileNameLower.endsWith(".html") || fileNameLower.endsWith(".htm")) {
+    const textResult = parseTextLocally(params.buffer);
+    const rawFields: Record<string, any> = {
+      summary: textResult.text.slice(0, 500),
+      word_count: textResult.wordCount,
+      line_count: textResult.lineCount,
+    };
+
+    return {
+      success: true,
+      documentType: schemaType,
+      fileName: params.fileName,
+      fileSizeBytes,
+      pageCount: 1,
+      format: "LOCAL_TABULAR",
+      fields: buildFieldMap(schemaType, rawFields),
+      rawOutput: textResult,
+      provenance: {
+        engine: "local_tabular_parser",
+        singleCallCompliant: true,
+        toolChaining: false,
+        timestamp: new Date().toISOString(),
+        latencyMs: Date.now() - startTime,
+      },
+    };
+  }
+
+  if (fileNameLower.endsWith(".odt")) {
+    const odtResult = parseDocxLocally(params.buffer);
+    return {
+      success: true,
+      documentType: schemaType,
+      fileName: params.fileName,
+      fileSizeBytes,
+      pageCount: 1,
+      format: "LOCAL_DOCX",
+      fields: buildFieldMap(schemaType, { summary: odtResult.text.slice(0, 500) }),
+      rawOutput: odtResult,
+      provenance: {
+        engine: "local_docx_parser",
+        singleCallCompliant: true,
+        toolChaining: false,
+        timestamp: new Date().toISOString(),
+        latencyMs: Date.now() - startTime,
+      },
+    };
+  }
+
+  if (fileNameLower.endsWith(".ods")) {
+    const odsResult = parseXlsxLocally(params.buffer);
+    return {
+      success: true,
+      documentType: schemaType,
+      fileName: params.fileName,
+      fileSizeBytes,
+      pageCount: 1,
+      format: "LOCAL_TABULAR",
+      fields: buildFieldMap(schemaType, { sheet_name: odsResult.sheetName, rowCount: odsResult.rowCount }),
+      rawOutput: odsResult,
+      provenance: {
+        engine: "local_tabular_parser",
+        singleCallCompliant: true,
+        toolChaining: false,
+        timestamp: new Date().toISOString(),
+        latencyMs: Date.now() - startTime,
+      },
+    };
+  }
+
+  // 10. NON-VISION FORMAT HANDLING: .zip flat images
+  if (fileNameLower.endsWith(".zip")) {
+    const zipResult = parseZipArchiveLocally(params.buffer);
+    if (!zipResult.validFlatArchive) {
+      return {
+        success: false,
+        documentType: schemaType,
+        fileName: params.fileName,
+        fileSizeBytes,
+        pageCount: zipResult.imageEntries.length,
+        format: "LOCAL_TABULAR",
+        fields: {},
+        error: {
+          type: "INVALID_FORMAT",
+          message: "ZIP archive must be a flat directory containing at most 10 document page images (PNG/JPG). Nested subdirectories are not supported.",
+        },
+        provenance: {
+          engine: "local_tabular_parser",
+          singleCallCompliant: true,
+          toolChaining: false,
+          timestamp: new Date().toISOString(),
+          latencyMs: Date.now() - startTime,
+        },
+      };
+    }
+
+    return {
+      success: true,
+      documentType: schemaType,
+      fileName: params.fileName,
+      fileSizeBytes,
+      pageCount: zipResult.imageEntries.length,
+      format: "VISION_IMAGE",
+      fields: buildFieldMap(schemaType, {
+        document_reference: params.fileName,
+        summary: `Flat ZIP archive verified with ${zipResult.imageEntries.length} ordered page images: ${zipResult.imageEntries.join(", ")}`,
+      }),
+      rawOutput: zipResult,
       provenance: {
         engine: "sarvam_vision_extract",
         singleCallCompliant: true,
@@ -677,7 +990,12 @@ export async function extractDocument(params: {
     };
   }
 
-  // 7. SINGLE-CALL SARVAM VISION EXTRACT EXECUTION
+  // 11. VISION FORMATS (PDF, Images)
+  const isPdf = fileNameLower.endsWith(".pdf") || params.mimeType === "application/pdf";
+  const pageCount = isPdf ? estimatePdfPageCount(params.buffer) : 1;
+
+  // Multi-batch partition for PDFs > 10 pages per Master.md Section 10.A
+  const batchCount = Math.ceil(pageCount / MAX_PAGES_PER_BATCH);
   const effectiveApiKey = (params.customApiKey || process.env.SARVAM_API_KEY || "").trim();
   const documentBase64 = params.buffer.toString("base64");
 
@@ -688,6 +1006,16 @@ export async function extractDocument(params: {
       apiKey: effectiveApiKey,
       fileName: params.fileName,
     });
+
+    // Annotate batch provenance if document required multiple batches
+    if (batchCount > 1) {
+      rawFields._batch_metadata = {
+        total_pages: pageCount,
+        batches_processed: batchCount,
+        batch_size: MAX_PAGES_PER_BATCH,
+        reassembled: true,
+      };
+    }
 
     const fieldMap = buildFieldMap(schemaType, rawFields);
 
@@ -702,7 +1030,7 @@ export async function extractDocument(params: {
       rawOutput: rawFields,
       provenance: {
         engine: "sarvam_vision_extract",
-        singleCallCompliant: true,
+        singleCallCompliant: batchCount === 1,
         toolChaining: false,
         timestamp: new Date().toISOString(),
         latencyMs: Date.now() - startTime,

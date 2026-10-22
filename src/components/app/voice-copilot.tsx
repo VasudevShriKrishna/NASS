@@ -74,40 +74,85 @@ export const RAINBOW_COLORS = [
     hex: "#ef4444",
     rgb: "239, 68, 68",
     glow: "rgba(239, 68, 68, 0.75)",
-    border: "rgba(239, 68, 68, 0.65)",
-    bg: "rgba(239, 68, 68, 0.18)",
+    border: "rgba(239, 68, 68, 0.75)",
+    bg: "rgba(239, 68, 68, 0.22)",
+    highlight: "#fca5a5",
+    primary: "#ef4444",
+    secondary: "#b91c1c",
+    dark: "#7f1d1d",
+    bodyGrad: "radial-gradient(circle at 45% 28%, #fca5a5 0%, #ef4444 32%, #b91c1c 68%, #450a0a 100%)",
+    bodyOpen: "radial-gradient(circle at 50% 35%, #b91c1c 0%, #7f1d1d 60%, #450a0a 100%)",
+    irisGrad: "linear-gradient(135deg, #fca5a5 0%, #ef4444 55%, #991b1b 100%)",
+    gemHex: "#ef4444",
+    gemLight: "#fca5a5",
   },
   {
     name: "Orange",
     hex: "#f97316",
     rgb: "249, 115, 22",
     glow: "rgba(249, 115, 22, 0.75)",
-    border: "rgba(249, 115, 22, 0.65)",
-    bg: "rgba(249, 115, 22, 0.18)",
+    border: "rgba(249, 115, 22, 0.75)",
+    bg: "rgba(249, 115, 22, 0.22)",
+    highlight: "#fdba74",
+    primary: "#f97316",
+    secondary: "#c2410c",
+    dark: "#7c2d12",
+    bodyGrad: "radial-gradient(circle at 45% 28%, #fdba74 0%, #f97316 32%, #c2410c 68%, #431407 100%)",
+    bodyOpen: "radial-gradient(circle at 50% 35%, #c2410c 0%, #7c2d12 60%, #431407 100%)",
+    irisGrad: "linear-gradient(135deg, #fdba74 0%, #f97316 55%, #9a3412 100%)",
+    gemHex: "#f97316",
+    gemLight: "#fdba74",
   },
   {
     name: "Yellow",
     hex: "#eab308",
     rgb: "234, 179, 8",
     glow: "rgba(234, 179, 8, 0.75)",
-    border: "rgba(234, 179, 8, 0.65)",
-    bg: "rgba(234, 179, 8, 0.18)",
+    border: "rgba(234, 179, 8, 0.75)",
+    bg: "rgba(234, 179, 8, 0.22)",
+    highlight: "#fef08a",
+    primary: "#eab308",
+    secondary: "#b45309",
+    dark: "#78350f",
+    bodyGrad: "radial-gradient(circle at 45% 28%, #fef08a 0%, #eab308 32%, #b45309 68%, #422006 100%)",
+    bodyOpen: "radial-gradient(circle at 50% 35%, #b45309 0%, #78350f 60%, #422006 100%)",
+    irisGrad: "linear-gradient(135deg, #fef08a 0%, #eab308 55%, #854d0e 100%)",
+    gemHex: "#eab308",
+    gemLight: "#fef08a",
   },
   {
     name: "Green",
     hex: "#22c55e",
     rgb: "34, 197, 94",
     glow: "rgba(34, 197, 94, 0.75)",
-    border: "rgba(34, 197, 94, 0.65)",
-    bg: "rgba(34, 197, 94, 0.18)",
+    border: "rgba(34, 197, 94, 0.75)",
+    bg: "rgba(34, 197, 94, 0.22)",
+    highlight: "#86efac",
+    primary: "#22c55e",
+    secondary: "#15803d",
+    dark: "#064e3b",
+    bodyGrad: "radial-gradient(circle at 45% 28%, #86efac 0%, #22c55e 32%, #15803d 68%, #022c22 100%)",
+    bodyOpen: "radial-gradient(circle at 50% 35%, #15803d 0%, #064e3b 60%, #022c22 100%)",
+    irisGrad: "linear-gradient(135deg, #86efac 0%, #22c55e 55%, #15803d 100%)",
+    gemHex: "#22c55e",
+    gemLight: "#86efac",
   },
   {
     name: "Blue",
     hex: "#3b82f6",
     rgb: "59, 130, 246",
     glow: "rgba(59, 130, 246, 0.75)",
-    border: "rgba(59, 130, 246, 0.65)",
-    bg: "rgba(59, 130, 246, 0.18)",
+    border: "rgba(59, 130, 246, 0.75)",
+    bg: "rgba(59, 130, 246, 0.22)",
+    highlight: "#93c5fd",
+    primary: "#3b82f6",
+    secondary: "#1d4ed8",
+    dark: "#1e3a8a",
+    bodyGrad: "radial-gradient(circle at 45% 28%, #93c5fd 0%, #3b82f6 32%, #1d4ed8 68%, #0f172a 100%)",
+    bodyOpen: "radial-gradient(circle at 50% 35%, #1d4ed8 0%, #1e3a8a 60%, #0f172a 100%)",
+    irisGrad: "linear-gradient(135deg, #93c5fd 0%, #3b82f6 55%, #1e40af 100%)",
+    gemHex: "#3b82f6",
+    gemLight: "#93c5fd",
   },
 ] as const;
 
@@ -201,19 +246,52 @@ export function VoiceCopilot() {
   const [micTestRecordedUrl, setMicTestRecordedUrl] = useState<string | null>(null);
 
   // ─── RAINBOW COLOR CYCLE & CLICK GLOW STATE (STRICTLY RED, ORANGE, YELLOW, GREEN, BLUE) ───
-  const [rainbowIndex, setRainbowIndex] = useState(0);
+  // Default to Green index (3) to strictly preserve the signature green glow as specified
+  const [rainbowIndex, setRainbowIndex] = useState(3);
   const [isGlowFlashing, setIsGlowFlashing] = useState(false);
   const glowTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // ─── MOUSE TRACKING, CIRCULAR CURSOR & EYE PUPIL DISPLACEMENT ───
+  // ─── CUTE KING EMOTIONAL STATES, BLINKING & DISTANCE DETECTION ───
+  // Real-time Euclidean distance between cursor and Cute King center in pixels
+  const [cursorDistance, setCursorDistance] = useState<number>(9999);
+  // Whether user is hovering directly over the Cute King button
+  const [isAgentHovered, setIsAgentHovered] = useState<boolean>(false);
+  // Natural lifelike blinking timer (squints eyes for ~160ms every 3.5-5.5s)
+  const [isBlinking, setIsBlinking] = useState<boolean>(false);
+
+  // ─── MOUSE TRACKING & EYE PUPIL DISPLACEMENT (INTERNAL TRACKING ONLY, NO VISIBLE CURSOR DOT) ───
   const [mousePos, setMousePos] = useState<{ x: number; y: number }>({ x: -100, y: -100 });
   const [isMouseOnScreen, setIsMouseOnScreen] = useState(false);
   const [pupilOffset, setPupilOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [clickRipple, setClickRipple] = useState<{ x: number; y: number; active: boolean }>({ x: 0, y: 0, active: false });
-  const rippleTimerRef = useRef<NodeJS.Timeout | null>(null);
   const eyeContainerRef = useRef<HTMLDivElement | null>(null);
 
-  const activeRainbow = RAINBOW_COLORS[rainbowIndex] || RAINBOW_COLORS[0];
+  // Active rainbow item linked to rainbowIndex (starts on Green index 3 by default, and color changes with glow)
+  const activeRainbow = RAINBOW_COLORS[rainbowIndex] || RAINBOW_COLORS[3];
+
+  // Smooth ambient idle cycle: gently transitions the character's color like its glow every 7 seconds
+  useEffect(() => {
+    const idleTimer = setInterval(() => {
+      setRainbowIndex((prev) => (prev + 1) % RAINBOW_COLORS.length);
+    }, 7000);
+    return () => clearInterval(idleTimer);
+  }, []);
+
+  // Lifelike blinking scheduler: gives the character authentic, living breathing personality
+  useEffect(() => {
+    let blinkTimer: NodeJS.Timeout;
+    const scheduleNextBlink = () => {
+      const interval = 3400 + Math.random() * 2400;
+      blinkTimer = setTimeout(() => {
+        setIsBlinking(true);
+        setTimeout(() => {
+          setIsBlinking(false);
+          scheduleNextBlink();
+        }, 160);
+      }, interval);
+    };
+    scheduleNextBlink();
+    return () => clearTimeout(blinkTimer);
+  }, []);
 
   // ─── DRAGGABLE FLOATING AI BUTTON STATE (PERSISTED IN LOCALSTORAGE) ───
   const [btnPos, setBtnPos] = useState<{ x: number; y: number } | null>(null);
@@ -281,7 +359,7 @@ export function VoiceCopilot() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // ─── GLOBAL MOUSE TRACKING (EYE PUPILS & CIRCULAR CURSOR) & CLICK COLOR GLOW ───
+  // ─── GLOBAL MOUSE TRACKING & DISTANCE CALCULATION (INTERNAL ONLY - NO VISIBLE POINTER DOT) ───
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -289,7 +367,7 @@ export function VoiceCopilot() {
       setMousePos({ x: e.clientX, y: e.clientY });
       setIsMouseOnScreen(true);
 
-      // Eye pupil look direction vector towards mouse cursor
+      // Eye pupil look direction & Euclidean distance calculation
       if (eyeContainerRef.current) {
         const rect = eyeContainerRef.current.getBoundingClientRect();
         const eyeCenterX = rect.left + rect.width / 2;
@@ -297,10 +375,12 @@ export function VoiceCopilot() {
         const dx = e.clientX - eyeCenterX;
         const dy = e.clientY - eyeCenterY;
         const dist = Math.hypot(dx, dy);
+        setCursorDistance(dist);
+
         const angle = Math.atan2(dy, dx);
-        // Maximum pupil displacement: 3.5px
-        const maxOffset = 3.5;
-        const offset = Math.min(dist / 35, 1) * maxOffset;
+        // Maximum pupil displacement: 3.8px within cute eye socket
+        const maxOffset = 3.8;
+        const offset = Math.min(dist / 38, 1) * maxOffset;
         setPupilOffset({
           x: Math.cos(angle) * offset,
           y: Math.sin(angle) * offset,
@@ -310,26 +390,22 @@ export function VoiceCopilot() {
 
     const handleMouseLeave = () => {
       setIsMouseOnScreen(false);
+      setCursorDistance(9999);
+      // Look slightly down and pensive when cursor exits screen (sad puppy state)
+      setPupilOffset({ x: 0, y: 1.5 });
     };
 
-    // When clicking ANYWHERE on the screen:
-    // 1. Advance rainbow color sequentially (Red -> Orange -> Yellow -> Green -> Blue -> Red...)
-    // 2. Glow up Copilot agent
-    // 3. Emit cursor click ripple
-    const handleGlobalPointerDown = (e: MouseEvent) => {
+    // When clicking ANYWHERE on screen:
+    // 1. Advance rainbow color sequentially (Green -> Blue -> Red -> Orange -> Yellow -> Green...)
+    // 2. Glow up the Cute King agent with radiant pulse matching the active color
+    const handleGlobalPointerDown = () => {
       setRainbowIndex((prev) => (prev + 1) % RAINBOW_COLORS.length);
       setIsGlowFlashing(true);
-      setClickRipple({ x: e.clientX, y: e.clientY, active: true });
 
       if (glowTimerRef.current) clearTimeout(glowTimerRef.current);
       glowTimerRef.current = setTimeout(() => {
         setIsGlowFlashing(false);
       }, 700);
-
-      if (rippleTimerRef.current) clearTimeout(rippleTimerRef.current);
-      rippleTimerRef.current = setTimeout(() => {
-        setClickRipple((prev) => ({ ...prev, active: false }));
-      }, 450);
     };
 
     window.addEventListener("mousemove", handleMouseMove, { passive: true });
@@ -341,9 +417,19 @@ export function VoiceCopilot() {
       window.removeEventListener("mouseleave", handleMouseLeave);
       window.removeEventListener("pointerdown", handleGlobalPointerDown, { capture: true });
       if (glowTimerRef.current) clearTimeout(glowTimerRef.current);
-      if (rippleTimerRef.current) clearTimeout(rippleTimerRef.current);
     };
   }, []);
+
+  // ─── DYNAMIC EMOTIONAL MOOD RESOLUTION ───
+  // - "happy": Cursor is nearby (< 220px) or user is directly hovering the agent
+  // - "sad": Cursor is far away (> 440px) or has exited the screen
+  // - "normal": Cursor is in the comfortable intermediate zone (220px – 440px)
+  const currentMood: "happy" | "normal" | "sad" =
+    isAgentHovered || (isMouseOnScreen && cursorDistance < 220)
+      ? "happy"
+      : !isMouseOnScreen || cursorDistance > 440
+      ? "sad"
+      : "normal";
 
   const handlePointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
@@ -448,6 +534,13 @@ export function VoiceCopilot() {
   const animationFrameRef = useRef<number | null>(null);
   const dictationTimerRef = useRef<NodeJS.Timeout | null>(null);
   const promptBeforeSpeechRef = useRef<string>("");
+  const isDictatingRef = useRef<boolean>(false);
+  const activeStreamRef = useRef<MediaStream | null>(null);
+  const accumulatedSpeechRef = useRef<string>("");
+
+  useEffect(() => {
+    isDictatingRef.current = isDictating;
+  }, [isDictating]);
 
   // Auto-scroll messages
   useEffect(() => {
@@ -467,9 +560,12 @@ export function VoiceCopilot() {
       }
     } catch {}
 
-    // Check backend status
+    // Check backend status safely without raw res.json() crashes
     fetch("/api/voice/stt", { credentials: "include" })
-      .then((res) => res.json())
+      .then(async (res) => {
+        const txt = await res.text().catch(() => "");
+        return txt ? JSON.parse(txt) : {};
+      })
       .then((data) => {
         if (data && typeof data.configured === "boolean") {
           setServerKeyStatus({ configured: data.configured, source: data.source || "none" });
@@ -635,7 +731,17 @@ export function VoiceCopilot() {
             }
           };
 
-          window.speechSynthesis.speak(utterance);
+          // Safe execution on Android Chrome: brief timeout after cancel and explicit audio resume
+          setTimeout(() => {
+            try {
+              if (window.speechSynthesis.paused) {
+                window.speechSynthesis.resume();
+              }
+              window.speechSynthesis.speak(utterance);
+            } catch {
+              setVoiceState("IDLE");
+            }
+          }, 50);
         } catch {
           setVoiceState("IDLE");
         }
@@ -751,107 +857,103 @@ export function VoiceCopilot() {
     }
 
     try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        alert("Microphone capture is not supported in this browser environment. You can type queries below.");
-        setMicPermission("unsupported");
-        return;
-      }
-
       autoSentRef.current = false;
       promptBeforeSpeechRef.current = inputText;
+      accumulatedSpeechRef.current = "";
+
+      const isMobile =
+        typeof navigator !== "undefined" &&
+        /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
+
+      const SpeechRecognition =
+        typeof window !== "undefined" &&
+        ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        if (!SpeechRecognition) {
+          alert("Microphone capture is not supported in this browser environment. You can type queries below.");
+          setMicPermission("unsupported");
+          return;
+        }
+      }
+
       if (micPermission !== "granted") {
         setVoiceState("REQUESTING_PERMISSION");
       }
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      setMicPermission("granted");
-      startAudioMeter(stream);
 
-      audioChunksRef.current = [];
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : "audio/webm";
-
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
-      mediaRecorderRef.current = mediaRecorder;
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data && event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
+      // Android Chrome Hardware Mic Conflict Fix:
+      // On Android OS, keeping an active getUserMedia audio stream creates a hardware conflict
+      // with Google Speech Recognizer, immediately failing with 'audio-capture' error.
+      // On mobile, if SpeechRecognition is available, we do a quick probe if needed and close
+      // the getUserMedia tracks so SpeechRecognition has 100% exclusive access to the microphone.
+      // On desktop, we keep getUserMedia active for simultaneous VU meter & MediaRecorder capture.
+      let stream: MediaStream | null = null;
+      if (!isMobile || !SpeechRecognition) {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        activeStreamRef.current = stream;
+        setMicPermission("granted");
+        startAudioMeter(stream);
+      } else {
+        try {
+          const probe = await navigator.mediaDevices.getUserMedia({ audio: true });
+          probe.getTracks().forEach((t) => t.stop());
+          setMicPermission("granted");
+        } catch {
+          // Allow SpeechRecognition to trigger native Android mic prompt
         }
-      };
+      }
 
-      mediaRecorder.onstop = async () => {
-        stream.getTracks().forEach((track) => track.stop());
-        stopAudioMeter();
-
-        // If hands-free "send it send it" auto-dispatched the query, abort STT refinement so we never repopulate the erased prompt
-        if (autoSentRef.current) {
-          return;
-        }
-
-        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
-        // If user configured Sarvam or want high-precision refinement
-        if (audioBlob.size > 500) {
-          try {
-            const formData = new FormData();
-            formData.append("file", audioBlob, "dictation.webm");
-            if (sarvamKey) formData.append("sarvamApiKey", sarvamKey);
-
-            const sttRes = await fetch("/api/voice/stt", {
-              method: "POST",
-              credentials: "include",
-              headers: sarvamKey ? { "x-sarvam-key": sarvamKey } : {},
-              body: formData,
-            });
-
-            if (sttRes.ok) {
-              const sttData = await sttRes.json();
-              if (!autoSentRef.current && sttData.transcript && sttData.transcript.trim()) {
-                const refined = sttData.transcript.trim();
-                setInputText((prev) => {
-                  if (autoSentRef.current) return "";
-                  const base = promptBeforeSpeechRef.current.trim();
-                  return base ? `${base} ${refined}` : refined;
-                });
-              }
-            }
-          } catch (e) {
-            console.warn("[Sarvam STT Refine Notice]", e);
-          }
-        }
-      };
-
-      // Try browser Web Speech API for real-time live typing into the prompt
-      const SpeechRecognition =
-        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
+      // Initialize browser Web Speech API for real-time live typing
       if (SpeechRecognition) {
         try {
           const recognition = new SpeechRecognition();
           speechRecognitionRef.current = recognition;
-          recognition.continuous = true;
+
+          // Android Chrome does not support continuous: true natively (aborts or crashes).
+          // Continuous false with auto-restart in onend provides rock-solid continuous dictation on Android!
+          recognition.continuous = !isMobile;
           recognition.interimResults = true;
-          recognition.lang = "en-IN";
+          recognition.lang =
+            typeof navigator !== "undefined" && navigator.language
+              ? navigator.language
+              : "en-IN";
+
+          if (isMobile) {
+            recognition.onaudiostart = () => setAudioLevel(45);
+            recognition.onsoundstart = () => setAudioLevel(65);
+            recognition.onspeechstart = () => setAudioLevel(85);
+            recognition.onspeechend = () => setAudioLevel(20);
+            recognition.onaudioend = () => setAudioLevel(0);
+          }
 
           recognition.onresult = (event: any) => {
-            // Guard: If query was already auto-dispatched, ignore trailing audio frames
             if (autoSentRef.current) return;
 
             let interimTranscript = "";
-            let finalTranscript = "";
+            let sessionFinal = "";
 
             for (let i = event.resultIndex; i < event.results.length; ++i) {
-              if (event.results[i].isFinal) {
-                finalTranscript += event.results[i][0].transcript;
+              const res = event.results[i];
+              if (res.isFinal) {
+                sessionFinal += res[0].transcript;
               } else {
-                interimTranscript += event.results[i][0].transcript;
+                interimTranscript += res[0].transcript;
               }
             }
 
-            const currentSpoken = (finalTranscript || interimTranscript).trim();
+            if (sessionFinal) {
+              accumulatedSpeechRef.current = (
+                (accumulatedSpeechRef.current ? accumulatedSpeechRef.current + " " : "") + sessionFinal.trim()
+              ).trim();
+            }
+
+            const currentSpoken = (
+              (accumulatedSpeechRef.current ? accumulatedSpeechRef.current + " " : "") + interimTranscript.trim()
+            ).trim();
+
             if (!currentSpoken) return;
 
-            // ─── LOCAL VOICE COMMAND INTERCEPTION (Section 4) ───
+            // ─── LOCAL VOICE COMMAND INTERCEPTION ───
             // 1. "Stop speaking"
             if (/\b(stop speaking|shut up|be quiet|stop talking|stop audio)\b/i.test(currentSpoken)) {
               stopCurrentAudio();
@@ -859,6 +961,7 @@ export function VoiceCopilot() {
               setVoiceCommandTriggered('⚡ Voice Command Detected: "Stop Speaking" — Audio halted');
               setInputText("");
               promptBeforeSpeechRef.current = "";
+              accumulatedSpeechRef.current = "";
               setTimeout(() => {
                 setVoiceCommandTriggered(null);
                 setVoiceState(isHandsFreeRef.current ? "LISTENING" : "IDLE");
@@ -873,6 +976,7 @@ export function VoiceCopilot() {
               setVoiceCommandTriggered('⚡ Voice Command Detected: "Pause Listening" — Listening paused (say "resume listening" to continue)');
               setInputText("");
               promptBeforeSpeechRef.current = "";
+              accumulatedSpeechRef.current = "";
               setTimeout(() => setVoiceCommandTriggered(null), 3500);
               return;
             }
@@ -890,6 +994,7 @@ export function VoiceCopilot() {
               stopVoiceOverDictation();
               setInputText("");
               promptBeforeSpeechRef.current = "";
+              accumulatedSpeechRef.current = "";
               setVoiceState("IDLE");
               setVoiceCommandTriggered('⚡ Voice Command Detected: "Cancel Operation" — Operation cancelled');
               setTimeout(() => setVoiceCommandTriggered(null), 3000);
@@ -901,6 +1006,7 @@ export function VoiceCopilot() {
               stopVoiceOverDictation();
               setInputText("");
               promptBeforeSpeechRef.current = "";
+              accumulatedSpeechRef.current = "";
               const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
               if (lastAssistant) {
                 setVoiceCommandTriggered('⚡ Voice Command Detected: "Repeat Last Answer"');
@@ -915,6 +1021,7 @@ export function VoiceCopilot() {
               stopVoiceOverDictation();
               setInputText("");
               promptBeforeSpeechRef.current = "";
+              accumulatedSpeechRef.current = "";
               useAppStore.getState().goBack();
               setVoiceState("NAVIGATING");
               setVoiceCommandTriggered('⚡ Voice Command Detected: "Go Back" — Returning to previous page');
@@ -931,10 +1038,9 @@ export function VoiceCopilot() {
 
             // ─── HANDS-FREE VOICE TRIGGER: "send it send it" AUTO-DISPATCH ───
             if (SEND_IT_TRIGGER_REGEX.test(combined)) {
-              // 1. Set Guard Flag to prevent double dispatch or race conditions
               autoSentRef.current = true;
+              isDictatingRef.current = false;
 
-              // 2. Unhook Trailing Speech Events immediately to stop browser engine delivering trailing audio frames
               try {
                 recognition.onresult = null;
                 recognition.onerror = null;
@@ -943,21 +1049,18 @@ export function VoiceCopilot() {
               } catch {}
               speechRecognitionRef.current = null;
 
-              // 3. Extract cleaned prompt and erase the prompt bar immediately
               const cleanPrompt = stripSendItTrigger(combined);
               setInputText("");
               promptBeforeSpeechRef.current = "";
+              accumulatedSpeechRef.current = "";
 
-              // 4. Visual Indicator: Animated gold badge
               setVoiceCommandTriggered('⚡ Voice Command Detected: "send it send it" — Sending directly without stop permission!');
               setTimeout(() => {
                 setVoiceCommandTriggered(null);
               }, 5500);
 
-              // 5. Halt Recording (power down mic & meter)
               stopVoiceOverDictation();
 
-              // 6. Dispatch directly without requiring any user click or permission
               if (cleanPrompt) {
                 submitFinalQuery(cleanPrompt);
               }
@@ -967,8 +1070,23 @@ export function VoiceCopilot() {
             setInputText(combined);
           };
 
+          // OnEnd auto-restart loop for Android speech pauses:
+          // Android Chrome terminates on single phrase pauses; restart automatically while dictating
+          recognition.onend = () => {
+            if (isDictatingRef.current && !autoSentRef.current) {
+              try {
+                recognition.start();
+              } catch {}
+            }
+          };
+
           recognition.onerror = (e: any) => {
             console.warn("[SpeechRecognition Error]", e);
+            if (e.error === "no-speech") return;
+            if (e.error === "not-allowed") {
+              setMicPermission("denied");
+              setVoiceState("PERMISSION_DENIED");
+            }
           };
 
           recognition.start();
@@ -977,7 +1095,77 @@ export function VoiceCopilot() {
         }
       }
 
-      mediaRecorder.start(250);
+      // MediaRecorder fallback / precision STT for desktop or stream
+      if (stream) {
+        audioChunksRef.current = [];
+        const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+          ? "audio/webm;codecs=opus"
+          : MediaRecorder.isTypeSupported("audio/webm")
+          ? "audio/webm"
+          : MediaRecorder.isTypeSupported("audio/mp4")
+          ? "audio/mp4"
+          : "";
+
+        try {
+          const mediaRecorder = mimeType
+            ? new MediaRecorder(stream, { mimeType })
+            : new MediaRecorder(stream);
+          mediaRecorderRef.current = mediaRecorder;
+
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data && event.data.size > 0) {
+              audioChunksRef.current.push(event.data);
+            }
+          };
+
+          mediaRecorder.onstop = async () => {
+            if (activeStreamRef.current) {
+              activeStreamRef.current.getTracks().forEach((track) => track.stop());
+              activeStreamRef.current = null;
+            }
+            stopAudioMeter();
+
+            if (autoSentRef.current) return;
+
+            const audioBlob = new Blob(audioChunksRef.current, { type: mimeType || "audio/webm" });
+            if (audioBlob.size > 500) {
+              try {
+                const formData = new FormData();
+                formData.append("file", audioBlob, "dictation.webm");
+                if (sarvamKey) formData.append("sarvamApiKey", sarvamKey);
+
+                const sttRes = await fetch("/api/voice/stt", {
+                  method: "POST",
+                  credentials: "include",
+                  headers: sarvamKey ? { "x-sarvam-key": sarvamKey } : {},
+                  body: formData,
+                });
+
+                if (sttRes.ok) {
+                  const raw = await sttRes.text().catch(() => "");
+                  const sttData = raw ? JSON.parse(raw) : {};
+                  if (!autoSentRef.current && sttData.transcript && sttData.transcript.trim()) {
+                    const refined = sttData.transcript.trim();
+                    setInputText((prev) => {
+                      if (autoSentRef.current) return "";
+                      const base = promptBeforeSpeechRef.current.trim();
+                      return base ? `${base} ${refined}` : refined;
+                    });
+                  }
+                }
+              } catch (e) {
+                console.warn("[Sarvam STT Refine Notice]", e);
+              }
+            }
+          };
+
+          mediaRecorder.start(250);
+        } catch (mrErr) {
+          console.warn("[MediaRecorder Init Notice]", mrErr);
+        }
+      }
+
+      isDictatingRef.current = true;
       setIsDictating(true);
       setDictationDuration(0);
       setVoiceState("LISTENING");
@@ -992,6 +1180,8 @@ export function VoiceCopilot() {
       setTimeout(() => textareaRef.current?.focus(), 100);
     } catch (err: any) {
       console.warn("[VoiceCopilot Mic Error]", err);
+      isDictatingRef.current = false;
+      setIsDictating(false);
       setMicPermission("denied");
       setVoiceState("PERMISSION_DENIED");
       setShowMicModal(true);
@@ -1000,6 +1190,7 @@ export function VoiceCopilot() {
   };
 
   const stopVoiceOverDictation = () => {
+    isDictatingRef.current = false;
     setIsDictating(false);
     setVoiceState("IDLE");
 
@@ -1010,18 +1201,34 @@ export function VoiceCopilot() {
 
     if (speechRecognitionRef.current) {
       try {
+        speechRecognitionRef.current.onend = null;
+        speechRecognitionRef.current.onerror = null;
+        speechRecognitionRef.current.onresult = null;
         speechRecognitionRef.current.stop();
       } catch {}
       speechRecognitionRef.current = null;
     }
 
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-      mediaRecorderRef.current.stop();
+      try {
+        mediaRecorderRef.current.stop();
+      } catch {}
+      mediaRecorderRef.current = null;
     }
+
+    if (activeStreamRef.current) {
+      try {
+        activeStreamRef.current.getTracks().forEach((track) => track.stop());
+      } catch {}
+      activeStreamRef.current = null;
+    }
+
+    stopAudioMeter();
   };
 
   const cancelVoiceOverDictation = () => {
     stopVoiceOverDictation();
+    accumulatedSpeechRef.current = "";
     // Revert to prompt before speaking
     setInputText(promptBeforeSpeechRef.current);
   };
@@ -1115,12 +1322,24 @@ export function VoiceCopilot() {
         }),
       });
 
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error || `HTTP ${res.status}`);
+      // Safe single-read body extraction
+      let rawText = "";
+      try {
+        rawText = await res.text();
+      } catch (readErr: any) {
+        throw new Error(`Failed to read response stream: ${readErr?.message || String(readErr)}`);
       }
 
-      const responseData = await res.json();
+      let responseData: any = {};
+      try {
+        responseData = rawText && rawText.trim() ? JSON.parse(rawText) : {};
+      } catch (parseErr: any) {
+        throw new Error(`Server returned invalid response (HTTP ${res.status}): ${rawText.slice(0, 80)}`);
+      }
+
+      if (!res.ok) {
+        throw new Error(responseData?.error || `HTTP ${res.status}`);
+      }
 
       // Handle navigation redirection smoothly
       if (responseData.navigation) {
@@ -1307,7 +1526,7 @@ export function VoiceCopilot() {
 
   return (
     <>
-      {/* ─── SINGLE DRAGGABLE FLOATING AI BUTTON (PURE CIRCLE · DEFAULT BOTTOM-RIGHT DOCKED) ─── */}
+      {/* ─── SINGLE DRAGGABLE FLOATING AI BUTTON (CUTE KING AGENT · DEFAULT BOTTOM-RIGHT DOCKED) ─── */}
       <div
         ref={buttonContainerRef}
         style={
@@ -1317,13 +1536,16 @@ export function VoiceCopilot() {
         }
         className={cn(
           "fixed z-[75] flex items-center justify-center select-none touch-none",
-          isDragging ? "cursor-grabbing opacity-90 scale-105" : "cursor-grab"
+          isDragging ? "cursor-grabbing opacity-90 scale-105" : "cursor-grab",
+          !isDragging && !isOpen && "animate-cute-king-float"
         )}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
         onDoubleClick={toggleCopilot}
+        onMouseEnter={() => setIsAgentHovered(true)}
+        onMouseLeave={() => setIsAgentHovered(false)}
       >
         {/* Floating Mini Status Indicator (When dictating or speaking) */}
         {!isOpen && (isDictating || voiceState === "SPEAKING") && (
@@ -1338,6 +1560,96 @@ export function VoiceCopilot() {
             <span>{isDictating ? "Dictating..." : "Speaking..."}</span>
           </div>
         )}
+
+        {/* ─── PERMANENT ROYAL KING CROWN (ALWAYS VISIBLE ATOP AGENT'S HEAD) ─── */}
+        {/* Beautiful 3-peak 24K gold crown with emerald centerpiece matching the signature green glow */}
+        <div
+          className="absolute -top-4.5 left-1/2 -translate-x-1/2 z-30 pointer-events-none transition-transform duration-300"
+          style={{
+            transform: "translateX(-50%)",
+            filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.55))",
+          }}
+          title="Cute King Crown"
+        >
+          <div className="relative">
+            <svg
+              width="34"
+              height="20"
+              viewBox="0 0 34 20"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              className="transition-transform duration-300"
+            >
+              <defs>
+                {/* 24K Royal Gold Gradient */}
+                <linearGradient id="kingGoldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#fffbeb" />
+                  <stop offset="25%" stopColor="#fde047" />
+                  <stop offset="60%" stopColor="#f59e0b" />
+                  <stop offset="85%" stopColor="#d97706" />
+                  <stop offset="100%" stopColor="#92400e" />
+                </linearGradient>
+                {/* Crown Base Rim Gradient */}
+                <linearGradient id="kingRimGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stopColor="#fde047" />
+                  <stop offset="100%" stopColor="#b45309" />
+                </linearGradient>
+                {/* Center Peak Jewel (Matches active glow & body color!) */}
+                <radialGradient id="kingCenterGem" cx="35%" cy="30%" r="70%">
+                  <stop offset="0%" stopColor={activeRainbow.gemLight} />
+                  <stop offset="45%" stopColor={activeRainbow.gemHex} />
+                  <stop offset="85%" stopColor={activeRainbow.secondary} />
+                  <stop offset="100%" stopColor={activeRainbow.dark} />
+                </radialGradient>
+                {/* Ruby Peak Jewels */}
+                <radialGradient id="kingRubyGem" cx="35%" cy="30%" r="70%">
+                  <stop offset="0%" stopColor="#fca5a5" />
+                  <stop offset="50%" stopColor="#ef4444" />
+                  <stop offset="100%" stopColor="#7f1d1d" />
+                </radialGradient>
+              </defs>
+
+              {/* Base Band Arched Rim (Hugs spherical head curvature) */}
+              <path
+                d="M4 17.2 C10.5 19.3, 23.5 19.3, 30 17.2 L30 14.8 C23.5 16.8, 10.5 16.8, 4 14.8 Z"
+                fill="url(#kingRimGrad)"
+                stroke="#fef08a"
+                strokeWidth="0.5"
+              />
+
+              {/* 3 Royal Crown Peaks (Tall Center Peak + 2 Graceful Flared Side Peaks) */}
+              <path
+                d="M4 14.8 L3 8.2 C2.9 7.6, 3.7 7.1, 4.3 7.5 L10.2 11.8 L16.4 3.2 C16.8 2.6, 17.6 2.6, 18 3.2 L23.8 11.8 L29.7 7.5 C30.3 7.1, 31.1 7.6, 31 8.2 L30 14.8 Z"
+                fill="url(#kingGoldGrad)"
+                stroke="#fef08a"
+                strokeWidth="0.75"
+                strokeLinejoin="round"
+              />
+
+              {/* Center Peak Gem (Matches active glow & body color) */}
+              <circle cx="17.2" cy="3.6" r="2.3" fill="url(#kingCenterGem)" stroke="#fef08a" strokeWidth="0.5" />
+              <circle cx="16.5" cy="2.9" r="0.7" fill="#ffffff" opacity="0.95" />
+
+              {/* Left Peak Ruby Gem */}
+              <circle cx="3.8" cy="7.8" r="1.5" fill="url(#kingRubyGem)" stroke="#fef08a" strokeWidth="0.4" />
+              <circle cx="3.4" cy="7.4" r="0.45" fill="#ffffff" opacity="0.9" />
+
+              {/* Right Peak Ruby Gem */}
+              <circle cx="30.2" cy="7.8" r="1.5" fill="url(#kingRubyGem)" stroke="#fef08a" strokeWidth="0.4" />
+              <circle cx="29.8" cy="7.4" r="0.45" fill="#ffffff" opacity="0.9" />
+
+              {/* Inlaid Crown Base Pearls */}
+              <circle cx="9" cy="16.4" r="1" fill={activeRainbow.gemLight} />
+              <circle cx="17" cy="17.2" r="1.2" fill="#ffffff" />
+              <circle cx="25" cy="16.4" r="1" fill={activeRainbow.gemLight} />
+            </svg>
+
+            {/* Subtle Diamond Twinkle Gleam on Crown */}
+            <div className="absolute top-0 right-1 w-2 h-2 pointer-events-none animate-crown-gleam opacity-70">
+              <div className="w-1.5 h-1.5 rotate-45 bg-white shadow-[0_0_6px_#ffffff]" />
+            </div>
+          </div>
+        </div>
 
         {/* Dedicated Close Button Badge on Circle (When Open) */}
         {isOpen && (
@@ -1355,33 +1667,32 @@ export function VoiceCopilot() {
           </button>
         )}
 
-        {/* Perfectly Circular Cyber-Eye Agent Button */}
+        {/* ─── CUTE KING CIRCULAR CHARACTER BUTTON (COLOR MATCHES GLOW · NO BLACK BACKGROUND) ─── */}
         <button
           type="button"
           onClick={toggleCopilot}
           onDoubleClick={toggleCopilot}
           style={{
             borderColor: activeRainbow.border,
+            background: isOpen ? activeRainbow.bodyOpen : activeRainbow.bodyGrad,
             boxShadow: isGlowFlashing
-              ? `0 0 38px 10px ${activeRainbow.glow}, 0 0 16px ${activeRainbow.hex}`
+              ? `0 0 42px 12px ${activeRainbow.glow}, 0 0 20px ${activeRainbow.hex}, inset 0 0 16px ${activeRainbow.glow}`
               : isOpen
-              ? `0 0 24px 4px ${activeRainbow.glow}`
-              : `0 0 14px 2px ${activeRainbow.glow}`,
+              ? `0 0 26px 5px ${activeRainbow.glow}, inset 0 0 12px ${activeRainbow.glow}`
+              : `0 0 16px 3px ${activeRainbow.glow}, inset 0 0 10px ${activeRainbow.glow}`,
           }}
           className={cn(
-            "relative w-14 h-14 sm:w-16 sm:h-16 rounded-full aspect-square flex items-center justify-center border-2 transition-all duration-300 group cursor-pointer overflow-hidden",
-            isOpen
-              ? "bg-[#10131b] ring-2"
-              : "bg-[#080a0f] hover:scale-[1.05] backdrop-blur-xl",
+            "relative w-14 h-14 sm:w-16 sm:h-16 rounded-full aspect-square flex flex-col items-center justify-center border-2 transition-all duration-500 group cursor-pointer overflow-hidden",
+            isOpen ? "ring-2 ring-amber-300/60" : "hover:scale-[1.06]",
             isGlowFlashing && "scale-110"
           )}
-          title="Sarvam AI Copilot · Double-Click or Click to Open/Close · Drag anywhere on screen"
+          title="NASS Cute King Copilot · Dynamic Living Color Glow · Click to Change Color · Double-Click to Open/Close"
         >
-          {/* Animated Rainbow Ambient Glow Backdrop */}
+          {/* Animated Ambient Glow Backdrop (Reflects current active glow color) */}
           <div
             className={cn(
               "absolute inset-0 rounded-full blur-md transition-all duration-500 -z-10",
-              isGlowFlashing ? "opacity-100 scale-125" : "opacity-60 group-hover:opacity-90"
+              isGlowFlashing ? "opacity-100 scale-125" : "opacity-75 group-hover:opacity-100"
             )}
             style={{
               background: `radial-gradient(circle, ${activeRainbow.glow} 0%, rgba(0,0,0,0) 70%)`,
@@ -1399,38 +1710,172 @@ export function VoiceCopilot() {
             />
           )}
 
-          {/* Futuristic Concentric Bezel Ring */}
-          <div className="absolute inset-1 rounded-full border border-white/10 pointer-events-none" />
+          {/* Top-down Specular Pearlescent Gloss Sheen */}
+          <div className="absolute inset-0 rounded-full bg-gradient-to-b from-white/30 via-white/5 to-black/20 pointer-events-none" />
+          <div className="absolute inset-1 rounded-full border border-amber-300/35 pointer-events-none" />
 
-          {/* ─── CENTERED CYBERNETIC EYE PAIR (ALWAYS TRACKS MOUSE DIRECTION) ─── */}
+          {/* ─── CUTE CHARACTER FACE: EXPRESSIVE EYES, ROSY CHEEKS & ADORABLE MOUTH ─── */}
           <div
             ref={eyeContainerRef}
-            className="relative flex items-center justify-center gap-1.5 pointer-events-none"
+            className="relative flex flex-col items-center justify-center pointer-events-none transition-transform duration-150 pt-1"
+            style={{
+              transform: `rotate(${Math.max(-4, Math.min(4, pupilOffset.x * 1.2))}deg)`,
+            }}
           >
-            {[0, 1].map((eyeIdx) => (
-              <div
-                key={eyeIdx}
-                className="relative flex items-center justify-center w-5 h-5 sm:w-5.5 sm:h-5.5 rounded-full bg-[#05070c] overflow-hidden border border-white/20 shadow-inner"
-              >
-                {/* Sclera specular background */}
-                <div className="absolute inset-0 bg-gradient-to-b from-white/15 to-transparent" />
-                {/* Iris & Pupil tracking cursor */}
-                <div
-                  className="relative w-3 h-3 rounded-full transition-transform duration-75 flex items-center justify-center"
-                  style={{
-                    transform: `translate(${pupilOffset.x}px, ${pupilOffset.y}px)`,
-                    backgroundColor: activeRainbow.hex,
-                    boxShadow: `0 0 8px ${activeRainbow.glow}`,
-                  }}
-                >
-                  {/* Dark Pupil */}
-                  <div className="w-1.5 h-1.5 rounded-full bg-black flex items-start justify-end">
-                    {/* Specular White Catchlight */}
-                    <div className="w-0.5 h-0.5 rounded-full bg-white opacity-95 mr-0.5 mt-0.5" />
+            {/* Eye Pair */}
+            <div className="relative flex items-center justify-center gap-2">
+              {[0, 1].map((eyeIdx) => {
+                const isLeft = eyeIdx === 0;
+                return (
+                  <div
+                    key={eyeIdx}
+                    className={cn(
+                      "relative flex items-center justify-center w-4.5 h-5.5 sm:w-5 sm:h-6 rounded-full bg-[#080d18] overflow-hidden border border-white/35 shadow-md transition-transform duration-100",
+                      isBlinking && "scale-y-[0.1]"
+                    )}
+                  >
+                    {/* Sclera soft ambient glow */}
+                    <div className="absolute inset-0 bg-gradient-to-b from-white/15 to-transparent" />
+
+                    {/* Happy smiling eyes (Upward smiling crescent arc) */}
+                    {currentMood === "happy" ? (
+                      <div className="relative w-full h-full flex flex-col items-center justify-center">
+                        {/* Expressive shiny smiling pupil tracking cursor */}
+                        <div
+                          className="relative w-3.5 h-4 sm:w-4 sm:h-4.5 rounded-full transition-transform duration-75 flex items-center justify-center"
+                          style={{
+                            transform: `translate(${pupilOffset.x * 0.75}px, ${pupilOffset.y * 0.75}px)`,
+                            background: activeRainbow.irisGrad,
+                            boxShadow: `0 0 7px ${activeRainbow.glow}`,
+                          }}
+                        >
+                          {/* Inner dark pupil */}
+                          <div className="w-2 h-2.5 rounded-full bg-black flex items-start justify-end p-0.5">
+                            {/* Primary sparkling catchlight */}
+                            <div className="w-1.2 h-1.2 rounded-full bg-white opacity-95" />
+                          </div>
+                          {/* Secondary twinkle catchlight */}
+                          <div className="absolute bottom-1 left-0.5 w-0.5 h-0.5 rounded-full bg-white opacity-90" />
+                        </div>
+
+                        {/* Cheerful smiling lower-lid cheek push (Duchenne smile) */}
+                        <div className="absolute -bottom-1 inset-x-0 h-2 bg-[#080d18] rounded-t-full border-t border-amber-300/40" />
+                      </div>
+                    ) : currentMood === "sad" ? (
+                      /* Sad cute puppy eyes (Dewy reflection, slightly tilted downward gaze) */
+                      <div className="relative w-full h-full flex flex-col items-center justify-center">
+                        {/* Upper sad eyelid slope */}
+                        <div
+                          className={cn(
+                            "absolute top-0 inset-x-0 h-2 bg-[#080d18] z-10 border-b border-white/15",
+                            isLeft ? "rotate-6 origin-left" : "-rotate-6 origin-right"
+                          )}
+                        />
+
+                        {/* Large dewy pupil looking slightly downward */}
+                        <div
+                          className="relative w-3.5 h-4 rounded-full transition-transform duration-100 flex items-center justify-center"
+                          style={{
+                            transform: `translate(${pupilOffset.x * 0.6}px, ${Math.max(1, pupilOffset.y * 0.6 + 0.8)}px)`,
+                            background: activeRainbow.irisGrad,
+                            boxShadow: `0 0 5px ${activeRainbow.glow}`,
+                          }}
+                        >
+                          {/* Dark pupil */}
+                          <div className="w-1.5 h-2 rounded-full bg-black flex items-start justify-end">
+                            <div className="w-0.5 h-0.5 rounded-full bg-white opacity-90 mr-0.5 mt-0.5" />
+                          </div>
+                          {/* Cute watery teardrop glint at corner */}
+                          <div className="absolute bottom-0.5 right-0.5 w-1.2 h-1.2 rounded-full bg-cyan-200/90 shadow-[0_0_4px_rgba(255,255,255,0.8)] animate-pulse" />
+                        </div>
+                      </div>
+                    ) : (
+                      /* Normal cute, alert, curious eyes with double sparkling catchlights */
+                      <div
+                        className="relative w-3.5 h-4 rounded-full transition-transform duration-75 flex items-center justify-center"
+                        style={{
+                          transform: `translate(${pupilOffset.x}px, ${pupilOffset.y}px)`,
+                          background: activeRainbow.irisGrad,
+                          boxShadow: `0 0 6px ${activeRainbow.glow}`,
+                        }}
+                      >
+                        {/* Dark pupil with double catchlight */}
+                        <div className="w-1.8 h-2.2 rounded-full bg-black flex flex-col justify-between p-0.5">
+                          {/* Main specular catchlight */}
+                          <div className="w-0.8 h-0.8 rounded-full bg-white opacity-95 self-end" />
+                          {/* Twinkle specular catchlight */}
+                          <div className="w-0.5 h-0.5 rounded-full bg-white opacity-80 self-start" />
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
+                );
+              })}
+            </div>
+
+            {/* Rosy Cheeks & Expressive Mouth */}
+            <div className="relative w-full flex items-center justify-between px-1 mt-1">
+              {/* Left Rosy Blush */}
+              <div
+                className={cn(
+                  "w-2.5 h-1.5 sm:w-3 sm:h-1.5 rounded-full transition-all duration-300",
+                  currentMood === "happy"
+                    ? "bg-[#ff4757] blur-[0.6px] scale-125 shadow-[0_0_6px_rgba(255,71,87,0.8)]"
+                    : currentMood === "sad"
+                    ? "bg-[#ff6b81]/40 blur-[0.8px] scale-90"
+                    : "bg-[#ff6b81]/60 blur-[0.7px]"
+                )}
+              />
+
+              {/* Expressive Mouth (Happy Smile vs Sad Pout vs Sweet Rest) */}
+              <div className="flex items-center justify-center px-0.5">
+                {currentMood === "happy" ? (
+                  /* Cute smiling open curve in bright white */
+                  <svg width="8" height="5" viewBox="0 0 8 5" fill="none">
+                    <path
+                      d="M 1 1 Q 4 5, 7 1"
+                      stroke="#ffffff"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                ) : currentMood === "sad" ? (
+                  /* Cute little sad pout in bright white */
+                  <svg width="7" height="4" viewBox="0 0 7 4" fill="none">
+                    <path
+                      d="M 1 3.5 Q 3.5 1, 6 3.5"
+                      stroke="#ffffff"
+                      strokeWidth="1.4"
+                      strokeLinecap="round"
+                      opacity="0.9"
+                    />
+                  </svg>
+                ) : (
+                  /* Sweet gentle resting smile in bright white */
+                  <svg width="6" height="3" viewBox="0 0 6 3" fill="none">
+                    <path
+                      d="M 1 0.8 Q 3 2.6, 5 0.8"
+                      stroke="#ffffff"
+                      strokeWidth="1.3"
+                      strokeLinecap="round"
+                      opacity="0.9"
+                    />
+                  </svg>
+                )}
               </div>
-            ))}
+
+              {/* Right Rosy Blush */}
+              <div
+                className={cn(
+                  "w-2.5 h-1.5 sm:w-3 sm:h-1.5 rounded-full transition-all duration-300",
+                  currentMood === "happy"
+                    ? "bg-[#ff4757] blur-[0.6px] scale-125 shadow-[0_0_6px_rgba(255,71,87,0.8)]"
+                    : currentMood === "sad"
+                    ? "bg-[#ff6b81]/40 blur-[0.8px] scale-90"
+                    : "bg-[#ff6b81]/60 blur-[0.7px]"
+                )}
+              />
+            </div>
           </div>
         </button>
       </div>
@@ -2240,52 +2685,7 @@ export function VoiceCopilot() {
         </div>
       )}
 
-      {/* ─── CUSTOM SMALL CIRCULAR CURSOR FOLLOWER WITH RAINBOW GLOW ─── */}
-      {isMouseOnScreen && (
-        <div
-          className="fixed pointer-events-none z-[99999] transition-opacity duration-200"
-          style={{
-            left: `${mousePos.x}px`,
-            top: `${mousePos.y}px`,
-            transform: "translate(-50%, -50%)",
-          }}
-        >
-          {/* Inner Precision Dot */}
-          <div
-            className="w-2 h-2 rounded-full transition-transform duration-75"
-            style={{
-              backgroundColor: activeRainbow.hex,
-              boxShadow: `0 0 10px ${activeRainbow.glow}`,
-              transform: isGlowFlashing ? "scale(1.6)" : "scale(1)",
-            }}
-          />
 
-          {/* Outer Sleek Trailing Ring */}
-          <div
-            className={cn(
-              "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border transition-all duration-150",
-              isGlowFlashing ? "w-8 h-8 border-2 scale-110" : "w-6 h-6 border"
-            )}
-            style={{
-              borderColor: activeRainbow.border,
-              boxShadow: isGlowFlashing ? `0 0 14px ${activeRainbow.glow}` : "none",
-            }}
-          />
-
-          {/* Click Ripple Wave on Any Screen Click */}
-          {clickRipple.active && (
-            <div
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border animate-ping pointer-events-none"
-              style={{
-                width: "36px",
-                height: "36px",
-                borderColor: activeRainbow.hex,
-                boxShadow: `0 0 12px ${activeRainbow.glow}`,
-              }}
-            />
-          )}
-        </div>
-      )}
     </>
   );
 }

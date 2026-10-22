@@ -225,6 +225,92 @@ export async function generateMultiFormatReport(options: {
         ],
       },
     ];
+  } else if (type === "procurement") {
+    title = "NASS Procurement & Purchase Order Register";
+    headers = ["PO Number", "Project", "Supplier", "Material Description", "Ordered Qty", "UOM", "Unit Price", "Currency", "Status"];
+    rows = [
+      {
+        "PO Number": "PO-3001",
+        Project: "PRJ-2201 Bahrain Marina",
+        Supplier: "Atlas Steel / Emirates Steel Arkan",
+        "Material Description": "BS4449 Grade 500B Deformed Steel Rebar",
+        "Ordered Qty": 120,
+        UOM: "MT",
+        "Unit Price": 4400,
+        Currency: "AED",
+        Status: "PARTIALLY_DELIVERED (72 MT Received, 48 MT Open)",
+      },
+      {
+        "PO Number": "PO-3002",
+        Project: "PRJ-2201 Bahrain Marina",
+        Supplier: "Rheinwerk Kälte- und Klimatechnik GmbH",
+        "Material Description": "Centrifugal Industrial Chiller 800 kW",
+        "Ordered Qty": 1,
+        UOM: "EA",
+        "Unit Price": 96000,
+        Currency: "USD",
+        Status: "IN_TRANSIT (Vessel: CMA CGM LHAYNE)",
+      },
+      {
+        "PO Number": "PO-3003",
+        Project: "PRJ-BIA-01 Falcon Flyover",
+        Supplier: "Al-Ahli Precast Concrete W.L.L.",
+        "Material Description": "Precast Bridge Girders Type IV",
+        "Ordered Qty": 24,
+        UOM: "EA",
+        "Unit Price": 8500,
+        Currency: "BHD",
+        Status: "ON_SITE_VERIFIED",
+      },
+    ];
+
+    docxSections = [
+      {
+        heading: "Procurement Register",
+        lines: [
+          "Authoritative NASS Purchase Orders and Supplier Commitments",
+          "Includes active capital commitments for Bahrain Marina, Falcon Flyover, and KAMC.",
+        ],
+      },
+      {
+        heading: "Open Order Balances",
+        lines: rows.map((r) => `${r["PO Number"]}: ${r["Material Description"]} (${r["Ordered Qty"]} ${r["UOM"]}) from ${r["Supplier"]} - Status: ${r["Status"]}`),
+      },
+    ];
+  } else if (type === "quality") {
+    const grn = await qualityAndGoodsReceipt(targetRef || "GRN-5002");
+    title = "NASS Quality Assurance & Goods Receipt Inspection Report";
+    headers = ["GRN Reference", "PO Ref", "Material", "Qty Received", "QC Status", "Mill Test Cert", "Inspector"];
+    rows = [
+      {
+        "GRN Reference": "GRN-5002",
+        "PO Ref": "PO-3001",
+        Material: "Rebar B500B 16mm/20mm",
+        "Qty Received": "72 MT",
+        "QC Status": "PASSED",
+        "Mill Test Cert": "MTC-ES-2026-9912 (Approved)",
+        Inspector: "NASS QA/QC Materials Lab",
+      },
+      {
+        "GRN Reference": "GRN-5004",
+        "PO Ref": "PO-3005",
+        Material: "Bulk OPC Cement",
+        "Qty Received": "0 MT (Deduplicated Webhook)",
+        "QC Status": "NOT_APPLICABLE (Rejected at Gate)",
+        "Mill Test Cert": "N/A",
+        Inspector: "Intake Automation Gateway",
+      },
+    ];
+
+    docxSections = [
+      {
+        heading: "Quality & Receiving Summary",
+        lines: [
+          "Inspection and Goods Receipt Register across NASS yards and project stores.",
+          "Enforces Rule M13: Deduplicated events excluded from physical pass rate.",
+        ],
+      },
+    ];
   } else {
     // Default: CEO Executive Decision Brief
     const ceo = await nassCeoDecisionBrief();
