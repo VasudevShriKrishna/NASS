@@ -25,7 +25,7 @@ import {
   nassPartnerAndTradeRoutes,
   nassCeoDecisionBrief,
 } from "../operational-tools";
-import type { PageContext, NavigationAction, ReportAction, SidebarAction } from "./copilot-types";
+import type { PageContext, NavigationAction, ReportAction, SidebarAction, UiAction } from "./copilot-types";
 import {
   resolveCompoundInquiry,
 } from "../search/web-search";
@@ -229,6 +229,87 @@ export function resolveNavigationIntent(
   return undefined;
 }
 
+export interface HandsFreeUiIntent {
+  navigation?: NavigationAction;
+  uiActions: UiAction[];
+  spokenConfirmation: string;
+}
+
+/**
+ * Resolves compound hands-free operational commands across the entire platform:
+ * - "open shipment tracking and in it click on SHP-8802"
+ * - "open live traceability and click on CMA CGM PUCCINI"
+ * - "open ceo tower and in it click on export"
+ * - "in exceptions click on Critical"
+ * - "click on Milestones tab"
+ * - "open procurement and click on PO-3001 and then click on Reconcile"
+ */
+export function resolveHandsFreeUiIntent(
+  userMessage: string,
+  pageContext?: PageContext
+): HandsFreeUiIntent | null {
+  const q = userMessage.trim();
+
+  // Pattern A: "open <module> and (in it)? (click on|select|filter by|switch to) <target>"
+  const compoundMatch = q.match(/^(?:open|go\s+to|take\s+me\s+to|navigate\s+to)\s+(.+?)\s+(?:and(?:\s+in\s+it)?|then)\s+(?:click\s+(?:on\s+)?|select\s+|switch\s+to\s+|press\s+|filter\s+by\s+)(.+)$/i);
+
+  // Pattern B: "in <module> (click on|select|filter by|switch to) <target>"
+  const inModuleMatch = !compoundMatch ? q.match(/^in\s+(.+?)(?:,\s*|\s+)(?:click\s+(?:on\s+)?|select\s+|switch\s+to\s+|press\s+|filter\s+by\s+)(.+)$/i) : null;
+
+  // Pattern C: direct "(click on|select|press|tap|switch to tab) <target>"
+  const directClickMatch = (!compoundMatch && !inModuleMatch) ? q.match(/^(?:click\s+(?:on\s+)?|select\s+|press\s+|tap\s+|switch\s+to\s+(?:tab\s+)?)(.+)$/i) : null;
+
+  if (compoundMatch || inModuleMatch) {
+    const rawModule = (compoundMatch ? compoundMatch[1] : inModuleMatch![1]).trim();
+    const rawTarget = (compoundMatch ? compoundMatch[2] : inModuleMatch![2]).trim().replace(/[.,!?;]+$/, "");
+
+    const resolvedNav = resolveViewFromInput(rawModule) || resolveNavigationIntent("open " + rawModule, pageContext);
+    const targetLabel = resolvedNav ? resolvedNav.label : rawModule;
+    const viewId = resolvedNav ? resolvedNav.view : "ceo-tower";
+
+    // Sub-clicks joined by "and then click" or "and click"
+    const subClicks = rawTarget.split(/\s+(?:and\s+then|then|and)\s+(?:click\s+(?:on\s+)?|select\s+)/i).map((s) => s.trim()).filter(Boolean);
+
+    const uiActions: UiAction[] = subClicks.map((target, idx) => ({
+      type: /tab/i.test(target) ? "switch_tab" : /filter/i.test(target) ? "filter" : "click",
+      target: target.replace(/\b(?:the\s+)?(?:tab|button|card|row|filter)\b/gi, "").trim() || target,
+      delayMs: idx * 450,
+      description: `Automated hands-free click on "${target}"`,
+    }));
+
+    return {
+      navigation: {
+        view: viewId,
+        recordRef: /^SHP-|^PO-|^PRJ-|^GRN-|^EXC-/i.test(rawTarget) ? rawTarget.match(/^(SHP-\d+|PO-\d+|PRJ-[A-Z0-9-]+|GRN-\d+|EXC-\d+)/i)?.[0] : undefined,
+        label: targetLabel,
+        reason: `Opening ${targetLabel} and clicking on ${rawTarget}`,
+        autoExecute: true,
+      },
+      uiActions,
+      spokenConfirmation: `Opening ${targetLabel} and clicking on ${rawTarget}.`,
+    };
+  }
+
+  if (directClickMatch) {
+    const rawTarget = directClickMatch[1].trim().replace(/[.,!?;]+$/, "");
+    const subClicks = rawTarget.split(/\s+(?:and\s+then|then|and)\s+(?:click\s+(?:on\s+)?|select\s+)/i).map((s) => s.trim()).filter(Boolean);
+
+    const uiActions: UiAction[] = subClicks.map((target, idx) => ({
+      type: /tab/i.test(target) ? "switch_tab" : /filter/i.test(target) ? "filter" : "click",
+      target: target.replace(/\b(?:the\s+)?(?:tab|button|card|row|filter)\b/gi, "").trim() || target,
+      delayMs: idx * 450,
+      description: `Automated hands-free click on "${target}"`,
+    }));
+
+    return {
+      uiActions,
+      spokenConfirmation: `Clicking on ${rawTarget}.`,
+    };
+  }
+
+  return null;
+}
+
 /** Resolves explicit report generation requests */
 export function resolveReportIntent(
   userMessage: string,
@@ -315,11 +396,27 @@ export async function runDeterministicFallback(
   navigation?: NavigationAction;
   report?: ReportAction;
   sidebarAction?: SidebarAction;
+  uiActions?: UiAction[];
 }> {
   const q = userMessage.toLowerCase();
   const toolsUsed: string[] = [];
   const sources: string[] = [];
   const plan = analyzePromptTasks(userMessage);
+
+  // Hands-free automated UI commands
+  const handsFreeIntent = resolveHandsFreeUiIntent(userMessage, pageContext);
+  if (handsFreeIntent) {
+    return {
+      answer: handsFreeIntent.spokenConfirmation,
+      answerText: handsFreeIntent.spokenConfirmation,
+      spokenText: handsFreeIntent.spokenConfirmation,
+      sources: handsFreeIntent.navigation ? [`navigation:${handsFreeIntent.navigation.view}`, "ui:hands_free"] : ["ui:hands_free"],
+      toolsUsed: handsFreeIntent.navigation ? ["navigate_to_module", "interact_with_ui"] : ["interact_with_ui"],
+      navigation: handsFreeIntent.navigation,
+      uiActions: handsFreeIntent.uiActions,
+      providerNotice: "Direct hands-free UI automation executed.",
+    };
+  }
 
   // Sidebar commands
   const sidebarAction = resolveSidebarIntent(userMessage);
@@ -515,6 +612,7 @@ export async function runCopilotReasoning(
   navigation?: NavigationAction;
   report?: ReportAction;
   sidebarAction?: SidebarAction;
+  uiActions?: UiAction[];
 }> {
   const userMessage = typeof input === "string" ? input : input.userMessage;
   const history = typeof input === "object" && input.history ? input.history : historyInput;
@@ -560,7 +658,24 @@ export async function runCopilotReasoning(
     };
   }
 
-  // 3. Deterministic fast-path for exact navigation commands (e.g. "open shipment tracking", "open https://mycorps.vercel.app/import-tracking")
+  // 3. Deterministic fast-path for compound hands-free UI actions (e.g. "open shipment tracking and click on SHP-8802")
+  const handsFreeIntent = resolveHandsFreeUiIntent(userMessage, pageContext);
+  if (handsFreeIntent) {
+    return {
+      answer: handsFreeIntent.spokenConfirmation,
+      answerText: handsFreeIntent.spokenConfirmation,
+      spokenText: handsFreeIntent.spokenConfirmation,
+      sources: handsFreeIntent.navigation ? [`navigation:${handsFreeIntent.navigation.view}`, "ui:hands_free"] : ["ui:hands_free"],
+      toolsUsed: handsFreeIntent.navigation ? ["navigate_to_module", "interact_with_ui"] : ["interact_with_ui"],
+      navigation: handsFreeIntent.navigation,
+      uiActions: handsFreeIntent.uiActions,
+      provider: "Sarvam AI",
+      model: "sarvam-105b",
+      providerNotice: "Hands-free automated UI interaction dispatched.",
+    };
+  }
+
+  // 3b. Deterministic fast-path for exact navigation commands (e.g. "open shipment tracking")
   const pureNavMatch = resolveNavigationIntent(userMessage, pageContext, history);
   const isPureNavCommand = pureNavMatch && /^(open|go to|take me to|navigate to|switch to)\b/i.test(userMessage.trim()) && userMessage.trim().split(" ").length <= 8;
   if (isPureNavCommand) {

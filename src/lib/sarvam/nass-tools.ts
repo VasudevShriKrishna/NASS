@@ -25,7 +25,7 @@ import {
 import { webSearch, searchNews, fetchWebpage } from "../search/web-search";
 import { ROUTE_REGISTRY, VALID_VIEWS, resolveViewFromInput, type ViewId } from "../route-registry";
 import { db } from "../db";
-import type { NavigationAction, SidebarAction, ReportAction } from "../voice/copilot-types";
+import type { NavigationAction, SidebarAction, ReportAction, UiAction } from "../voice/copilot-types";
 
 export interface NassToolDefinition {
   type: "function";
@@ -234,6 +234,41 @@ export const NASS_APPLICATION_TOOLS: NassToolDefinition[] = [
   {
     type: "function",
     function: {
+      name: "interact_with_ui",
+      description: "Perform hands-free clicks, tab switches, filters, and record selections in any NASS Control Tower view. Enables 100% voice/prompt automated UI operation without touching a mouse or keyboard.",
+      parameters: {
+        type: "object",
+        properties: {
+          targetView: {
+            type: "string",
+            description: "Target module/view to open if not already there, e.g. 'import-tracking', 'live', 'ceo-tower', 'projects', 'procurement', 'inventory', 'receiving', 'exceptions', 'actions'.",
+          },
+          actionType: {
+            type: "string",
+            enum: ["click", "switch_tab", "filter", "select_record", "search", "open_modal", "scroll_to"],
+            description: "Type of UI interaction to perform (default: 'click').",
+          },
+          target: {
+            type: "string",
+            description: "The text, button name, tab label, filter option, or record identifier to click (e.g. 'SHP-8802', 'CMA CGM PUCCINI', 'Export PDF', 'Milestones', 'Critical', 'Bahrain Marina', 'Approve').",
+          },
+          additionalClicks: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional sequential list of additional UI elements to click in order.",
+          },
+          reason: {
+            type: "string",
+            description: "Human-readable explanation of the automated click interaction.",
+          },
+        },
+        required: ["target"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "control_sidebar",
       description: "Control the navigation sidebar: open it, close it, or scroll it up or down to reveal modules.",
       parameters: {
@@ -367,6 +402,7 @@ export async function executeNassTool(
   navigation?: NavigationAction;
   sidebarAction?: SidebarAction;
   report?: ReportAction;
+  uiActions?: UiAction[];
 }> {
   switch (toolName) {
     case "get_project_details": {
@@ -500,6 +536,57 @@ export async function executeNassTool(
           recordRef: args.recordRef,
           reason,
         },
+      };
+    }
+
+    case "interact_with_ui": {
+      const target = (args.target || "").trim();
+      const rawTargetView = args.targetView ? String(args.targetView).trim() : undefined;
+      const targetView = rawTargetView ? resolveViewFromInput(rawTargetView)?.view || rawTargetView : undefined;
+      const actionType = (args.actionType || "click") as UiAction["type"];
+      const additionalClicks: string[] = Array.isArray(args.additionalClicks) ? args.additionalClicks : [];
+
+      const uiActions: UiAction[] = [
+        {
+          type: actionType,
+          target,
+          delayMs: 0,
+          description: args.reason || `Automated click on ${target}`,
+        },
+        ...additionalClicks.map((c, i) => ({
+          type: "click" as const,
+          target: c,
+          delayMs: (i + 1) * 450,
+          description: `Chained click on ${c}`,
+        })),
+      ];
+
+      let navigation: NavigationAction | undefined = undefined;
+      if (targetView) {
+        const meta = ROUTE_REGISTRY[targetView as ViewId];
+        navigation = {
+          view: targetView,
+          recordRef: /^SHP-|^PO-|^PRJ-|^GRN-|^EXC-/i.test(target)
+            ? target.match(/^(SHP-\d+|PO-\d+|PRJ-[A-Z0-9-]+|GRN-\d+|EXC-\d+)/i)?.[0]
+            : undefined,
+          label: meta ? meta.label : targetView,
+          reason: args.reason || `Opening ${meta ? meta.label : targetView} and clicking on ${target}`,
+          autoExecute: true,
+        };
+      }
+
+      return {
+        data: {
+          status: "UI_INTERACTION_DISPATCHED",
+          targetView,
+          target,
+          actionType,
+          totalActions: uiActions.length,
+          reason: args.reason || `Automated click on ${target}`,
+        },
+        sources: ["ui:hands_free_automation"],
+        navigation,
+        uiActions,
       };
     }
 

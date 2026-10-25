@@ -76,6 +76,15 @@ export interface SidebarAction {
   label?: string;
 }
 
+export interface UiAction {
+  type: "click" | "switch_tab" | "filter" | "select_record" | "search" | "open_modal" | "close_modal" | "scroll_to";
+  target: string;
+  targetType?: "text" | "button" | "tab" | "row" | "card" | "selector" | "input";
+  value?: string;
+  delayMs?: number;
+  description?: string;
+}
+
 export interface CopilotMessage {
   id: string;
   role: "user" | "assistant" | "system";
@@ -98,6 +107,7 @@ export interface CopilotMessage {
   degraded?: boolean;
   media?: MediaAttachment;
   navigation?: NavigationAction;
+  uiActions?: UiAction[];
   report?: ReportAction;
   sidebarAction?: SidebarAction;
   executionStatus?: "SUCCESS" | "FAILED" | "RETRYABLE";

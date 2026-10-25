@@ -303,6 +303,7 @@ export async function POST(req: NextRequest) {
       providerNotice: reasoning.providerNotice,
       navigation: reasoning.navigation,
       sidebarAction: (reasoning as any).sidebarAction,
+      uiActions: (reasoning as any).uiActions,
       report: reasoning.report,
       executionStatus: (reasoning as any).executionStatus || "SUCCESS",
       stt: sttResult,

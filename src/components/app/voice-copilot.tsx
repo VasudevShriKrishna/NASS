@@ -58,13 +58,117 @@ export function stripSendItTrigger(text: string): string {
     .trim();
 }
 
+/**
+ * Hands-Free Automated UI Action Executor
+ * Performs automatic clicks, tab switches, and filter selections in the DOM
+ * with visual amber/gold pulse feedback without requiring manual mouse input.
+ */
+export function executeAutomatedUiActions(actions: any[], targetView?: string) {
+  if (typeof window === "undefined" || !actions || !Array.isArray(actions) || actions.length === 0) return;
+
+  const initialDelay = targetView ? 700 : 150;
+
+  setTimeout(() => {
+    actions.forEach((act, idx) => {
+      setTimeout(() => {
+        const rawTarget = (act.target || "").trim();
+        const targetLower = rawTarget.toLowerCase();
+        if (!targetLower) return;
+
+        // Collect all potential interactive elements in active view / main content
+        const searchScope = document.querySelector("main") || document.body;
+        const candidates = Array.from(
+          searchScope.querySelectorAll<HTMLElement>(
+            'button, [role="button"], [role="tab"], a, input, [data-record-ref], tr, .clickable, div[onClick], span[onClick], [role="row"]'
+          )
+        );
+
+        let match: HTMLElement | null = null;
+
+        // 1. Exact match on visible text, aria-label, or title
+        for (const el of candidates) {
+          const text = (el.textContent || "").trim().toLowerCase();
+          const aria = (el.getAttribute("aria-label") || "").toLowerCase();
+          const title = (el.getAttribute("title") || "").toLowerCase();
+          if (text === targetLower || aria === targetLower || title === targetLower) {
+            match = el;
+            break;
+          }
+        }
+
+        // 2. Partial contains match
+        if (!match) {
+          for (const el of candidates) {
+            const text = (el.textContent || "").trim().toLowerCase();
+            const aria = (el.getAttribute("aria-label") || "").toLowerCase();
+            if (text.includes(targetLower) || aria.includes(targetLower)) {
+              match = el;
+              break;
+            }
+          }
+        }
+
+        // 3. Fallback: inspect any text element and walk up to closest clickable container
+        if (!match) {
+          const allEls = Array.from(searchScope.querySelectorAll<HTMLElement>("*"));
+          for (const el of allEls) {
+            if (el.children.length <= 1) {
+              const text = (el.textContent || "").trim().toLowerCase();
+              if (text === targetLower || text.includes(targetLower)) {
+                match = el.closest<HTMLElement>('button, [role="button"], [role="tab"], a, tr, li') || el;
+                break;
+              }
+            }
+          }
+        }
+
+        if (match) {
+          // Smooth scroll to element
+          match.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+          // Visual gold glow pulse highlight so the user sees the automated click happen
+          const prevOutline = match.style.outline;
+          const prevBoxShadow = match.style.boxShadow;
+          const prevTransition = match.style.transition;
+          match.style.transition = "all 0.25s ease";
+          match.style.outline = "2px solid #eab308";
+          match.style.boxShadow = "0 0 18px rgba(234, 179, 8, 0.75)";
+
+          setTimeout(() => {
+            try {
+              match!.click();
+              match!.focus();
+            } catch (err) {
+              console.warn("[HandsFree] Click execution error:", err);
+            }
+          }, 200);
+
+          setTimeout(() => {
+            if (match) {
+              match.style.outline = prevOutline;
+              match.style.boxShadow = prevBoxShadow;
+              match.style.transition = prevTransition;
+            }
+          }, 900);
+
+          console.log(`[HandsFree] Automated click executed on target "${rawTarget}"`);
+        } else {
+          console.warn(`[HandsFree] Target element "${rawTarget}" not found in current DOM.`);
+        }
+      }, idx * 500);
+    });
+  }, initialDelay);
+}
+
 const INITIAL_SUGGESTIONS = [
-  "Open shipment SHP-8803 and show live status",
-  "Take me to Project A's materials and generate a PDF report",
-  "Download CEO executive summary report for all projects",
+  "Open shipment tracking and click on SHP-8802",
+  "Open live traceability and click on CMA CGM PUCCINI",
+  "Open exceptions and in it click on Critical",
+  "Open CEO control tower and click on export PDF",
+  "Open projects and click on Bahrain Marina",
+  "Open procurement and click on PO-3001",
   "Why does PO-3001 show 0 linked shipments while 120t is in transit?",
   "Check connector health vs data freshness for Customs Broker",
-  "Generate a material and backup-stock report for S355 steel",
 ];
 
 // Rainbow color spectrum (strictly Red, Orange, Yellow, Green, Blue - EXCLUDES Indigo & Violet)
@@ -1416,6 +1520,11 @@ export function VoiceCopilot() {
         } else if (nav.recordRef?.startsWith("PRJ-")) {
           setActiveContext((prev) => ({ ...prev, selectedProject: nav.recordRef! }));
         }
+      }
+
+      // Hands-Free Automated UI Action Execution (clicks, tabs, filters)
+      if (responseData.uiActions && responseData.uiActions.length > 0) {
+        executeAutomatedUiActions(responseData.uiActions, responseData.navigation?.view);
       }
 
       if (responseData.report) {
