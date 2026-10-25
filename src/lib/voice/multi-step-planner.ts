@@ -15,7 +15,7 @@ import { fmtBahrainDateTime } from "../bahrain-time";
 export interface ParsedTaskStep {
   stepNumber: number;
   rawText: string;
-  category: "navigation" | "report" | "query" | "calculation" | "formatting" | "general";
+  category: "navigation" | "report" | "query" | "calculation" | "formatting" | "general" | "ui_action";
   entityRef?: string;
   targetView?: ViewId;
   status: "PENDING" | "COMPLETED" | "FAILED" | "PARTIAL";
@@ -85,6 +85,11 @@ export function analyzePromptTasks(prompt: string): MultiTaskPlan {
     // Detect reports
     if (/\b(generate|download|export|pdf|report|dossier)\b/i.test(text)) {
       category = "report";
+    }
+
+    // Detect hands-free UI actions & clicks
+    if (/\b(click|select|press|tap|filter\s+by|switch\s+to\s+tab)\b/i.test(text)) {
+      category = "ui_action";
     }
 
     // Detect queries

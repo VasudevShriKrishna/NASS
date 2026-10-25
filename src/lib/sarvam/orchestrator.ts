@@ -11,7 +11,7 @@
 
 import { SarvamModelRouter } from "./model-router";
 import { NASS_APPLICATION_TOOLS, executeNassTool } from "./nass-tools";
-import type { PageContext, NavigationAction, ReportAction, SidebarAction } from "../voice/copilot-types";
+import type { PageContext, NavigationAction, ReportAction, SidebarAction, UiAction } from "../voice/copilot-types";
 import { resolveNavigationIntent, resolveReportIntent, resolveSidebarIntent, isGreeting, formatGreeting } from "../voice/copilot-engine";
 import { formatWebSearchResultsAsText, resolveCompoundInquiry } from "../search/web-search";
 import { resolveSarvamApiKey } from "./api-key";
@@ -30,6 +30,7 @@ export interface OrchestrationResult {
   navigation?: NavigationAction;
   report?: ReportAction;
   sidebarAction?: SidebarAction;
+  uiActions?: UiAction[];
   providerNotice: string;
   followUpSuggestions: string[];
   executionStatus: "SUCCESS" | "FAILED" | "RETRYABLE";
@@ -306,6 +307,7 @@ export async function runSarvamOrchestrator(
     "9. NASS Group has 7 verified active projects (PRJ-2201 Bahrain Marina, PRJ-BIA-01 Falcon Flyover, PRJ-KAMC-03 King Abdullah Medical City, PRJ-2204 Industrial Zone, PRJ-2210 Airport Expansion, PRJ-MAR-04, PRJ-RCSI-05) and 1 historical reference archive (PRJ-ALBA-06 Alba Potline 6 Expansion) with BHD 173.5M (≈ USD 461.4M) in contractual commitments.",
     "10. Normal Questions, Mathematical Inquiries & Humorous Banter: Answer all natural language inquiries fluently and warmly in natural language. For mathematical and arithmetic calculations (percentages, margins, conversions, volume/weight math), solve accurately with step-by-step clarity. 1 USD = 0.377 BHD (fixed peg) / 1 BHD = 2.6525 USD.",
     "11. Navigation & Sidebar: When the user asks to open a module or scroll/open the sidebar, invoke navigate_to_module or control_sidebar.",
+    "12. HANDS-FREE AUTONOMOUS UI OPERATION: The user operates the platform 100% hands-free by voice and prompt without using hands. When the user asks to open a module and click on an element (e.g. 'open shipment tracking and click on SHP-8802', 'open live traceability and click on CMA CGM PUCCINI', 'open ceo control tower and click on export pdf', 'in exceptions click on Critical', 'click on Milestones tab', 'click on Approve'), you MUST invoke 'interact_with_ui' or 'navigate_to_module' with the exact click target. Always confirm the automated click and navigation warmly and concisely in spokenText.",
     pageContext ? `Current operator active view is ${pageContext.activeView}${pageContext.selectedRef ? `, focused record is ${pageContext.selectedRef}` : ""}.` : "",
     multiTaskGuidance,
   ].filter(Boolean).join("\n\n");
@@ -318,6 +320,7 @@ export async function runSarvamOrchestrator(
 
   const toolsUsed: string[] = [];
   const sources: string[] = [];
+  const resolvedUiActions: UiAction[] = [];
   const toolDataMap: Map<string, any> = new Map();
   let iterations = 0;
   const MAX_ITERATIONS = plan.isMultiTask ? 8 : 5;
@@ -389,13 +392,16 @@ export async function runSarvamOrchestrator(
             parsedArgs = {};
           }
 
-          const { data, sources: toolSources, navigation: toolNav, report: toolRep, sidebarAction: toolSidebar } = await executeNassTool(fnName, parsedArgs);
+          const { data, sources: toolSources, navigation: toolNav, report: toolRep, sidebarAction: toolSidebar, uiActions: toolUiActions } = await executeNassTool(fnName, parsedArgs);
           toolDataMap.set(fnName, data);
 
           sources.push(...toolSources);
           if (toolNav) resolvedNav = toolNav;
           if (toolRep) resolvedRep = toolRep;
           if (toolSidebar) resolvedSidebar = toolSidebar;
+          if (toolUiActions && toolUiActions.length > 0) {
+            resolvedUiActions.push(...toolUiActions);
+          }
 
           messages.push({
             role: "tool",
@@ -446,6 +452,7 @@ export async function runSarvamOrchestrator(
           navigation: resolvedNav,
           sidebarAction: resolvedSidebar,
           report: resolvedRep,
+          uiActions: resolvedUiActions.length > 0 ? resolvedUiActions : undefined,
           providerNotice: `Processed with Sarvam AI (${route.selectedModel}) with authoritative NASS tool execution.`,
           followUpSuggestions: [
             "Open Shipment Tracking",
@@ -474,6 +481,7 @@ export async function runSarvamOrchestrator(
           navigation: resolvedNav,
           sidebarAction: resolvedSidebar,
           report: resolvedRep,
+          uiActions: resolvedUiActions.length > 0 ? resolvedUiActions : undefined,
           providerNotice: `Authoritative NASS operational data synthesized across ${toolsUsed.length} executed tools.`,
           followUpSuggestions: [
             "Open Shipment Tracking",
