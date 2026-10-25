@@ -337,9 +337,13 @@ export default function Home() {
     openTrace,
     isVoiceCopilotOpen,
     toggleVoiceCopilot,
+    isSidebarOpen,
+    setSidebarOpen,
+    toggleSidebar,
+    sidebarScrollTarget,
+    clearSidebarScroll,
   } = useAppStore();
   const [navOpen, setNavOpen] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [sidebarWidth, setSidebarWidth] = useState(260);
   const [isResizing, setIsResizing] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -349,6 +353,20 @@ export default function Home() {
   useEffect(() => {
     widthRef.current = sidebarWidth;
   }, [sidebarWidth]);
+
+  // Handle external sidebar scroll commands from AI Copilot
+  useEffect(() => {
+    if (!sidebarScrollTarget) return;
+    const el = document.getElementById("sidebar-nav-scroll");
+    if (el) {
+      if (sidebarScrollTarget === "down" || sidebarScrollTarget === "bottom") {
+        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      } else if (sidebarScrollTarget === "up" || sidebarScrollTarget === "top") {
+        el.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    }
+    clearSidebarScroll();
+  }, [sidebarScrollTarget, clearSidebarScroll]);
 
   // Synchronize URL path on initial mount and when user clicks browser back/forward buttons
   useEffect(() => {
@@ -394,7 +412,7 @@ export default function Home() {
     try {
       const savedOpen = localStorage.getItem("nass_sidebar_open");
       if (savedOpen !== null) {
-        setIsSidebarOpen(savedOpen === "true");
+        setSidebarOpen(savedOpen === "true");
       }
       const savedWidth = localStorage.getItem("nass_sidebar_width");
       if (savedWidth) {
@@ -404,18 +422,7 @@ export default function Home() {
         }
       }
     } catch { }
-  }, []);
-
-  // Persist sidebar open state
-  const toggleSidebar = useCallback(() => {
-    setIsSidebarOpen((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem("nass_sidebar_open", String(next));
-      } catch { }
-      return next;
-    });
-  }, []);
+  }, [setSidebarOpen]);
 
   // Keyboard shortcut listeners: Ctrl+B (sidebar) or Ctrl+J (voice copilot)
   useEffect(() => {
@@ -593,7 +600,7 @@ export default function Home() {
               onSearchChange={setSearchQuery}
             />
             <Separator className="mt-2.5" />
-            <ScrollArea className="flex-1 overflow-y-auto">
+            <ScrollArea id="sidebar-nav-scroll" className="flex-1 overflow-y-auto">
               <NavItems searchQuery={searchQuery} onSearchClear={() => setSearchQuery("")} />
             </ScrollArea>
           </div>

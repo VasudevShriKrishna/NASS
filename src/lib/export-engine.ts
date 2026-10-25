@@ -98,7 +98,7 @@ function buildDocx(title: string, sections: Array<{ heading: string; lines: stri
  * Generate multi-format export for any requested report type
  */
 export async function generateMultiFormatReport(options: {
-  type: ReportOptions["type"];
+  type: ReportType;
   format: ExportFormat;
   targetRef?: string;
 }): Promise<MultiFormatExportResult> {
@@ -125,7 +125,7 @@ export async function generateMultiFormatReport(options: {
   let docxSections: Array<{ heading: string; lines: string[] }> = [];
 
   if (type === "project") {
-    const proj = await projectOverview(targetRef || "PRJ-2201");
+    const proj = (await projectOverview(targetRef || "PRJ-2201")) as any;
     title = `NASS Project Dossier - ${proj.projectCode}`;
     headers = ["Project Code", "Project Name", "Site", "Project Value", "Currency", "PO Count", "Materials Count"];
     rows = [
@@ -152,15 +152,15 @@ export async function generateMultiFormatReport(options: {
       },
       {
         heading: "Linked Purchase Orders",
-        lines: proj.purchaseOrders.map((po) => `PO: ${po.ref} | Supplier: ${po.supplier} | Status: ${po.status} | Value: ${po.currency} ${po.totalAmount}`),
+        lines: proj.purchaseOrders.map((po: any) => `PO: ${po.ref} | Supplier: ${po.supplier} | Status: ${po.status} | Value: ${po.currency} ${po.totalAmount}`),
       },
       {
         heading: "Required Materials & BOQ",
-        lines: proj.materialsRequired.map((m) => `Material: ${m.sku} - ${m.description} | Quantity: ${m.requiredQty} ${m.unit} | On Hand: ${m.onHandQty} | Buffer: ${m.bufferQty}`),
+        lines: proj.materialsRequired.map((m: any) => `Material: ${m.sku} - ${m.description} | Quantity: ${m.requiredQty} ${m.unit} | On Hand: ${m.onHandQty} | Buffer: ${m.bufferQty}`),
       },
     ];
   } else if (type === "shipment") {
-    const shp = await shipmentDetails(targetRef || "SHP-8801");
+    const shp = (await shipmentDetails(targetRef || "SHP-8801")) as any;
     title = `NASS Maritime Shipment Trace - ${shp.shipmentRef}`;
     headers = ["Shipment Ref", "Carrier", "Vessel", "Origin Port", "Discharge Port", "ETA", "Status", "Landed Cost USD"];
     rows = [

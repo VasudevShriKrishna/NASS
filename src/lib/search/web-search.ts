@@ -17,7 +17,7 @@
  * Timezone: Bahrain Local Time (AST, UTC+3) & Riyadh (AST, UTC+3)
  */
 
-import { fmtBahrainTime } from "@/lib/bahrain-time";
+import { fmtBahrainTime } from "../bahrain-time";
 
 export interface WebSearchFilter {
   recency?: string;

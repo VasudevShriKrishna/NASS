@@ -15,7 +15,7 @@ import { db } from "@/lib/db";
 import { buildTraceSnapshot } from "@/lib/trace";
 import { renderLiveReport } from "@/lib/pdf-report";
 import { fmtBahrainDateTime } from "@/lib/bahrain-time";
-// import { ceoDecisionFacts, priceIntelligenceFacts } from "@/lib/assistant-tools";
+import { nassCeoDecisionBrief, nassPriceBenchmarkComparison } from "@/lib/operational-tools";
 
 const GOLD = "#d4af37";
 const GOLD_LIGHT = "#f3dc8e";
@@ -333,7 +333,7 @@ async function generateProjectPdf(refOrCode?: string): Promise<GeneratedReport> 
       doc.font("Helvetica-Bold").fontSize(7.8).fillColor(BODY);
       doc.text(fit(doc, `${s.ref} — ${s.mode} · Status: ${s.status}`, 170), M + 8, y + 5, { width: 170, lineBreak: false });
       doc.font("Helvetica").fontSize(7.5).fillColor(MUTED);
-      doc.text(fit(doc, `Origin: ${s.originPort ?? "—"} › Destination: ${s.destPort ?? "Bahrain"} · ETA: ${fmtDT(s.eta?.toISOString())}`, CONTENT_W - 185), M + 180, y + 5, { width: CONTENT_W - 185, lineBreak: false });
+      doc.text(fit(doc, `Origin: ${s.originPort ?? "—"} › Destination: ${(s as any).destinationPort ?? "Bahrain"} · ETA: ${fmtDT(((s as any).displayEta ?? (s as any).carrierEta ?? (s as any).actualArrival)?.toISOString())}`, CONTENT_W - 185), M + 180, y + 5, { width: CONTENT_W - 185, lineBreak: false });
       y += 24;
     }
   }
@@ -350,8 +350,8 @@ async function generateProjectPdf(refOrCode?: string): Promise<GeneratedReport> 
 /** Generate High-Level CEO Decision & Control Tower Executive PDF */
 async function generateCeoSummaryPdf(): Promise<GeneratedReport> {
   const [ceoDecisions, pricing, projects] = await Promise.all([
-    ceoDecisionFacts(),
-    priceIntelligenceFacts(),
+    nassCeoDecisionBrief() as any,
+    nassPriceBenchmarkComparison() as any,
     db.project.findMany({
       include: {
         materialRequirements: true,
@@ -454,7 +454,7 @@ async function generateCeoSummaryPdf(): Promise<GeneratedReport> {
 
   for (const p of projects) {
     ensureSpace(22);
-    const shortages = p.materialRequirements.filter((r) => Number(r.shortfall) > 0).length;
+    const shortages = p.materialRequirements.filter((r: any) => Number(r.shortfall) > 0).length;
     doc.rect(M, y - 2, CONTENT_W, 18).fill(TINT);
 
     // Project Code & Name (strictly bounded)
