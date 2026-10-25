@@ -193,7 +193,7 @@ export interface MapCameraAction {
   ref?: string;
   coords?: [number, number];
   zoom?: number;
-  ts: number;
+  ts?: number;
 }
 
 export function OperationMap({

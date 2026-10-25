@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { useAppStore } from "@/lib/app-state";
+import { useAppStore, resolveViewFromInput, VALID_VIEWS, ROUTE_REGISTRY } from "@/lib/app-state";
 import { cn } from "@/lib/utils";
 import { fmtBahrainTime } from "@/lib/bahrain-time";
 import type { VoiceState, CopilotMessage, MediaAttachment } from "@/lib/voice/copilot-types";
@@ -633,6 +633,7 @@ export function VoiceCopilot() {
   }, [isHandsFreeMode]);
 
   const startVoiceOverDictationRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const lastFailedRequestRef = useRef<{ userQuery: string; mediaSnapshot: any } | null>(null);
 
   const stopCurrentAudio = useCallback(() => {
     if (currentAudioRef.current) {
@@ -1272,6 +1273,25 @@ export function VoiceCopilot() {
     stopCurrentAudio();
     setVoiceState("INTERPRETING");
 
+    // Check for intelligent action retry
+    if (textToSend && textToSend.trim().toLowerCase() === "retry") {
+      if (lastFailedRequestRef.current) {
+        const failed = lastFailedRequestRef.current;
+        lastFailedRequestRef.current = null;
+        submitFinalQuery(failed.userQuery);
+        return;
+      } else {
+        const noRetryMsg: CopilotMessage = {
+          id: `asst-${Date.now()}`,
+          role: "assistant",
+          content: "No failed or incomplete operations to retry. All prior commands executed successfully.",
+          timestamp: fmtBahrainTime(new Date()),
+        };
+        setMessages((prev) => [...prev, noRetryMsg]);
+        return;
+      }
+    }
+
     const pageContext = {
       activeView: view,
       selectedRef: drill?.ref,
@@ -1344,6 +1364,23 @@ export function VoiceCopilot() {
         throw new Error(responseData?.error || `HTTP ${res.status}`);
       }
 
+      // Clear last failed request on successful API roundtrip
+      lastFailedRequestRef.current = null;
+
+      // Handle sidebar manipulation actions
+      if (responseData.sidebarAction) {
+        const sa = responseData.sidebarAction;
+        if (sa.type === "open") {
+          useAppStore.getState().setSidebarOpen(true);
+        } else if (sa.type === "close") {
+          useAppStore.getState().setSidebarOpen(false);
+        } else if (sa.type === "toggle") {
+          useAppStore.getState().toggleSidebar();
+        } else if (sa.type === "scroll") {
+          useAppStore.getState().scrollSidebar(sa.direction || "down");
+        }
+      }
+
       // Handle navigation redirection smoothly
       if (responseData.navigation) {
         setVoiceState("NAVIGATING");
@@ -1351,12 +1388,15 @@ export function VoiceCopilot() {
         if (nav.view === "__back__") {
           useAppStore.getState().goBack();
         } else {
+          const resolved = resolveViewFromInput(nav.view);
+          const targetView = resolved ? resolved.view : (VALID_VIEWS.includes(nav.view as any) ? nav.view : null);
           const target = nav.targetRef || nav.recordRef;
+
           const doNavigation = () => {
-            if (nav.view === "live" && target && /^SHP-/i.test(target)) {
+            if (targetView === "live" && target && /^SHP-/i.test(target)) {
               openTrace(target);
-            } else if (nav.view) {
-              drillTo(nav.view as any, target);
+            } else if (targetView) {
+              drillTo(targetView as any, target);
             }
           };
 
@@ -1421,6 +1461,7 @@ export function VoiceCopilot() {
       }
     } catch (err: any) {
       console.error("[VoiceCopilot Query Error]", err);
+      lastFailedRequestRef.current = { userQuery, mediaSnapshot };
       setVoiceState("RECOVERING");
       setTimeout(() => setVoiceState("ERROR"), 800);
       setMessages((prev) => [
@@ -1479,19 +1520,65 @@ export function VoiceCopilot() {
     }
   };
 
-  // Render text with clickable badges for entities
+  // Render text with clean Markdown support, clickable badges, headings, and links
   const renderFormattedText = (content: string) => {
-    const lines = content.split("\n");
-    return lines.map((line, lineIdx) => {
-      const parts = line.split(/(\b(?:SHP|PO|GRN|AST|PRJ|EXC)-[A-Za-z0-9_-]+\b)/g);
+    // Strip raw template headers if returned by model
+    const cleanContent = content
+      .replace(/^### Answer\s*\n?/i, "")
+      .replace(/\n### Key Details\s*\n?/gi, "\n\n")
+      .replace(/\n### Evidence\s*\n?/gi, "\n\n**Evidence:**\n")
+      .replace(/\n### Verification Notes\s*\n?/gi, "\n\n**Verification Notes:**\n");
 
-      return (
-        <p key={lineIdx} className={cn(lineIdx > 0 && "mt-1.5", "leading-relaxed text-xs sm:text-sm")}>
-          {parts.map((part, partIdx) => {
+    const lines = cleanContent.split("\n");
+    return lines.map((line, lineIdx) => {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        return <div key={lineIdx} className="h-1.5" />;
+      }
+
+      // Headings
+      let isH3 = false;
+      let isH4 = false;
+      let processedLine = line;
+
+      if (trimmed.startsWith("### ")) {
+        isH4 = true;
+        processedLine = trimmed.replace(/^###\s+/, "");
+      } else if (trimmed.startsWith("## ")) {
+        isH3 = true;
+        processedLine = trimmed.replace(/^##\s+/, "");
+      }
+
+      // Markdown links: [Title](URL)
+      const renderLineContent = (text: string) => {
+        // First match markdown links [Title](URL)
+        const linkParts = text.split(/(\[[^\]]+\]\([^)]+\))/g);
+
+        return linkParts.map((lpart, lidx) => {
+          const linkMatch = lpart.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+          if (linkMatch) {
+            const [, linkTitle, linkUrl] = linkMatch;
+            return (
+              <a
+                key={lidx}
+                href={linkUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline text-amber-300 hover:text-amber-200 inline-flex items-center gap-0.5 mx-0.5 font-medium"
+              >
+                <span>{linkTitle}</span>
+                <ExternalLink className="h-2.5 w-2.5 opacity-80" />
+              </a>
+            );
+          }
+
+          // Then match entity badges
+          const entityParts = lpart.split(/(\b(?:SHP|PO|GRN|AST|PRJ|EXC)-[A-Za-z0-9_-]+\b)/g);
+          return entityParts.map((part, partIdx) => {
             if (/^(?:SHP|PO|GRN|AST|PRJ|EXC)-[A-Za-z0-9_-]+$/i.test(part)) {
               return (
                 <button
-                  key={partIdx}
+                  key={`${lidx}-${partIdx}`}
                   onClick={() => handleEntityClick(part)}
                   title={`Click to inspect ${part} in Control Tower`}
                   className="mx-0.5 inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 transition-all hover:scale-[1.03]"
@@ -1502,10 +1589,11 @@ export function VoiceCopilot() {
               );
             }
 
+            // Bold text **text**
             if (part.includes("**")) {
               const boldParts = part.split(/(\*\*.*?\*\*)/g);
               return (
-                <span key={partIdx}>
+                <span key={`${lidx}-${partIdx}`}>
                   {boldParts.map((bp, bpi) => {
                     if (bp.startsWith("**") && bp.endsWith("**")) {
                       return (
@@ -1520,8 +1608,41 @@ export function VoiceCopilot() {
               );
             }
 
-            return <span key={partIdx}>{part}</span>;
-          })}
+            return <span key={`${lidx}-${partIdx}`}>{part}</span>;
+          });
+        });
+      };
+
+      if (isH3) {
+        return (
+          <h3 key={lineIdx} className="font-bold text-amber-400 text-sm sm:text-base mt-2.5 mb-1 tracking-wide">
+            {renderLineContent(processedLine)}
+          </h3>
+        );
+      }
+
+      if (isH4) {
+        return (
+          <h4 key={lineIdx} className="font-semibold text-amber-300 text-xs sm:text-sm mt-2 mb-0.5 tracking-wide">
+            {renderLineContent(processedLine)}
+          </h4>
+        );
+      }
+
+      const isBullet = trimmed.startsWith("• ") || trimmed.startsWith("- ") || trimmed.startsWith("* ");
+      if (isBullet) {
+        const bulletText = trimmed.replace(/^[•\-*]\s+/, "");
+        return (
+          <div key={lineIdx} className="flex items-start gap-2 ml-2 my-0.5 text-xs sm:text-sm leading-relaxed">
+            <span className="text-amber-400 font-bold shrink-0 mt-0.5">•</span>
+            <div className="flex-1">{renderLineContent(bulletText)}</div>
+          </div>
+        );
+      }
+
+      return (
+        <p key={lineIdx} className={cn(lineIdx > 0 && "mt-1", "leading-relaxed text-xs sm:text-sm")}>
+          {renderLineContent(line)}
         </p>
       );
     });

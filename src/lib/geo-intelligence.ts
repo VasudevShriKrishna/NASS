@@ -28,6 +28,7 @@ export interface PortIntelligence {
   securityLevel: string;
   keyCommodities: string[];
   notes: string;
+  coordinates?: [number, number];
 }
 
 export interface RegionDivision {
@@ -46,6 +47,7 @@ export interface CountryIntelligence {
   economicRole: string;
   customsAuthority: string;
   logisticsCorridors: string[];
+  coordinates?: [number, number];
 }
 
 export const VERIFIED_PORTS: Record<string, PortIntelligence> = {

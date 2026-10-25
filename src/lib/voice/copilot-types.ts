@@ -70,6 +70,12 @@ export interface ReportAction {
   summary?: string;
 }
 
+export interface SidebarAction {
+  type: "open" | "close" | "scroll" | "toggle";
+  direction?: "top" | "bottom" | "down" | "up";
+  label?: string;
+}
+
 export interface CopilotMessage {
   id: string;
   role: "user" | "assistant" | "system";
@@ -93,6 +99,8 @@ export interface CopilotMessage {
   media?: MediaAttachment;
   navigation?: NavigationAction;
   report?: ReportAction;
+  sidebarAction?: SidebarAction;
+  executionStatus?: "SUCCESS" | "FAILED" | "RETRYABLE";
 }
 
 export interface ConversationContext {
@@ -113,6 +121,11 @@ export interface ConversationContext {
     id: string;
     type: string;
     status: "pending" | "completed" | "failed";
+  };
+  lastFailedAction?: {
+    actionType: "navigate" | "report" | "tool" | "query" | "sidebar";
+    params: any;
+    error: string;
   };
 }
 
@@ -171,5 +184,8 @@ export interface CopilotResponse {
   providerNotice?: string;
   navigation?: NavigationAction;
   report?: ReportAction;
+  sidebarAction?: SidebarAction;
   followUpSuggestions?: string[];
+  executionStatus?: "SUCCESS" | "FAILED" | "RETRYABLE";
+  lastActionId?: string;
 }

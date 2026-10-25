@@ -654,7 +654,7 @@ function Dossier({
                     {comp.exceptions.map((ex, i) => (
                       <p key={i} className="text-rose-300 flex items-start gap-1">
                         <span className="shrink-0">•</span>
-                        <span>{ex.rule} — {ex.fact}</span>
+                        <span>{(ex as any).rule || ex.title} — {(ex as any).fact || ex.category}</span>
                       </p>
                     ))}
                   </div>
@@ -1193,8 +1193,8 @@ function PortPanel({
     (s) =>
       s.originPort === port.code ||
       s.destPort === port.code ||
-      s.from?.code === port.code ||
-      s.to?.code === port.code ||
+      (s.from as any)?.code === port.code ||
+      (s.to as any)?.code === port.code ||
       (s.milestones && s.milestones.some((m) => m.location?.includes(port.name) || m.location?.includes(port.code)))
   );
 
@@ -1262,7 +1262,7 @@ function PortPanel({
           variant="outline"
           size="sm"
           className="h-7 text-[10px] font-semibold border-primary/35 bg-primary/10 text-primary hover:bg-primary/20 gap-1"
-          onClick={() => onFocusMap(port.coordinates)}
+          onClick={() => onFocusMap(port.coordinates || [port.lng, port.lat])}
           title="Zoom and focus map camera on this port"
         >
           <Crosshair className="h-3 w-3" /> Focus on Map
@@ -1460,7 +1460,7 @@ function CountryPanel({
           variant="outline"
           size="sm"
           className="h-7 text-[10px] font-semibold border-primary/35 bg-primary/10 text-primary hover:bg-primary/20 gap-1"
-          onClick={() => onFocusMap(country.coordinates)}
+          onClick={() => (country.coordinates ? onFocusMap(country.coordinates) : onFocusMap([50.55, 26.0]))}
           title="Zoom and focus map on country territory"
         >
           <Crosshair className="h-3 w-3" /> Focus on Map
@@ -1596,7 +1596,7 @@ export function LiveTraceabilityView({ drillRef }: { drillRef?: string | null })
     const vPort = Object.values(VERIFIED_PORTS).find(
       (vp) => vp.name.toLowerCase().includes(key) || vp.code.toLowerCase() === key || key.includes(vp.code.toLowerCase())
     );
-    if (vPort) return vPort.coordinates;
+    if (vPort) return vPort.coordinates || [vPort.lng, vPort.lat];
     const reg = lookupPort(nameOrCode);
     if (reg) return [reg.lng, reg.lat];
     return null;
@@ -2319,23 +2319,24 @@ export function LiveTraceabilityView({ drillRef }: { drillRef?: string | null })
                                   key={r.id}
                                   type="button"
                                   onClick={() => {
+                                    const d: any = r.refData;
                                     if (r.kind === "shipment") {
-                                      setPicked(r.refData.ref);
+                                      setPicked(d?.ref);
                                       setPickedPort(null);
                                       setPickedCountry(null);
                                       setPickedSite(null);
                                     } else if (r.kind === "port") {
-                                      setPickedPort(r.refData);
+                                      setPickedPort(d);
                                       setPicked(null);
                                       setPickedCountry(null);
                                       setPickedSite(null);
                                     } else if (r.kind === "country") {
-                                      setPickedCountry(r.refData);
+                                      setPickedCountry(d);
                                       setPicked(null);
                                       setPickedPort(null);
                                       setPickedSite(null);
                                     } else if (r.kind === "region") {
-                                      setPickedCountry(r.refData.country);
+                                      setPickedCountry(d?.country);
                                       setPicked(null);
                                       setPickedPort(null);
                                       setPickedSite(null);
