@@ -31,7 +31,7 @@ import {
 } from "../search/web-search";
 import { runSarvamOrchestrator } from "../sarvam/orchestrator";
 import { NASS_APPLICATION_TOOLS, executeNassTool } from "../sarvam/nass-tools";
-import { ROUTE_REGISTRY, VALID_VIEWS, resolveViewFromInput, type ViewId } from "../app-state";
+import { ROUTE_REGISTRY, VALID_VIEWS, resolveViewFromInput, type ViewId } from "../route-registry";
 
 /**
  * Controlled Tool definitions for Sarvam function calling (Single source of truth)

@@ -23,7 +23,7 @@ import {
   nassCeoDecisionBrief,
 } from "../operational-tools";
 import { webSearch, searchNews, fetchWebpage } from "../search/web-search";
-import { ROUTE_REGISTRY, VALID_VIEWS, resolveViewFromInput, type ViewId } from "../app-state";
+import { ROUTE_REGISTRY, VALID_VIEWS, resolveViewFromInput, type ViewId } from "../route-registry";
 import type { NavigationAction, SidebarAction, ReportAction } from "../voice/copilot-types";
 
 export interface NassToolDefinition {

@@ -12,7 +12,7 @@
  * 8. Stateful retry idempotency and executionStatus contracts
  */
 
-import { resolveViewFromInput, VALID_VIEWS, ROUTE_REGISTRY } from "../src/lib/app-state";
+import { resolveViewFromInput, VALID_VIEWS, ROUTE_REGISTRY } from "../src/lib/route-registry";
 import { resolveNavigationIntent, resolveSidebarIntent, OPERATIONAL_TOOLS } from "../src/lib/voice/copilot-engine";
 import { executeNassTool } from "../src/lib/sarvam/nass-tools";
 import { SarvamModelRouter, SARVAM_MODEL_REGISTRY } from "../src/lib/sarvam/model-router";
