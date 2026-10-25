@@ -98,7 +98,22 @@ export const ROUTE_REGISTRY: Record<ViewId, RouteMetadata> = {
     id: "import-tracking",
     label: "Shipment Tracking",
     path: "/import-tracking",
-    aliases: ["import tracking", "import-tracking", "shipment tracking", "shipments tracking", "cargo tracking", "container tracking"],
+    aliases: [
+      "import tracking",
+      "import-tracking",
+      "shipment tracking",
+      "shipments tracking",
+      "cargo tracking",
+      "container tracking",
+      "shipment ranking",
+      "shipments ranking",
+      "shipment rank",
+      "rank shipments",
+      "shipment rankings",
+      "ranking shipments",
+      "shipment register",
+      "import register",
+    ],
     group: "Import (M08–M11)",
     description: "Shipment tracking register, customs clearance, port arrival milestones",
   },
@@ -211,8 +226,16 @@ export function resolveViewFromInput(input: string): { view: ViewId; label: stri
     return { view: v, label: meta.label, path: meta.path };
   }
 
-  // Explicit negative check: "Shipment Tracking. Not Shipment."
-  if (clean.includes("shipment tracking") || clean.includes("import tracking")) {
+  // Explicit negative check & direct mapping: "Shipment Tracking", "Shipment Ranking"
+  if (
+    clean.includes("shipment tracking") ||
+    clean.includes("import tracking") ||
+    clean.includes("shipment ranking") ||
+    clean.includes("shipments ranking") ||
+    clean.includes("shipment rank") ||
+    clean.includes("cargo ranking") ||
+    clean.includes("rank shipments")
+  ) {
     return { view: "import-tracking", label: ROUTE_REGISTRY["import-tracking"].label, path: ROUTE_REGISTRY["import-tracking"].path };
   }
 

@@ -9,8 +9,8 @@
  */
 
 import type { SttResult, TtsResult } from "./copilot-types";
+import { resolveSarvamApiKey } from "../sarvam/api-key";
 
-const SARVAM_API_KEY = process.env.SARVAM_API_KEY || "";
 const SARVAM_STT_ENDPOINT = process.env.SARVAM_STT_ENDPOINT || "https://api.sarvam.ai/speech-to-text";
 const SARVAM_TTS_ENDPOINT = process.env.SARVAM_TTS_ENDPOINT || "https://api.sarvam.ai/text-to-speech";
 
@@ -24,7 +24,7 @@ export async function transcribeAudio(
   customApiKey?: string
 ): Promise<SttResult> {
   const startTime = Date.now();
-  const effectiveKey = (customApiKey || process.env.SARVAM_API_KEY || SARVAM_API_KEY || "").trim();
+  const effectiveKey = resolveSarvamApiKey(customApiKey);
 
   if (!effectiveKey) {
     return {
@@ -95,7 +95,7 @@ export async function synthesizeSpeech(
   customApiKey?: string
 ): Promise<TtsResult> {
   const startTime = Date.now();
-  const effectiveKey = (customApiKey || process.env.SARVAM_API_KEY || SARVAM_API_KEY || "").trim();
+  const effectiveKey = resolveSarvamApiKey(customApiKey);
 
   if (!effectiveKey || !text.trim()) {
     return {

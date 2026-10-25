@@ -7,6 +7,8 @@ import { synthesizeSpeech, transcribeAudio } from "@/lib/voice/sarvam";
 import { logAgentPrompt, updateAgentPromptLog, extractClientIp } from "@/lib/audit/prompt-logger";
 import { parseExcelNative, parseWordNative } from "@/lib/services/python-bridge";
 import { processTradeDocument } from "@/lib/sarvam/document-intelligence";
+import { logDiagnostic, getSafeUserNotice, getServerRuntimeInfo } from "@/lib/diagnostics";
+import { inspectSarvamKey } from "@/lib/sarvam/api-key";
 import type { PageContext, SttResult, TtsResult } from "@/lib/voice/copilot-types";
 
 export const runtime = "nodejs";
@@ -209,6 +211,25 @@ export async function POST(req: NextRequest) {
       .filter(Boolean)
       .join("\n");
 
+    // Diagnostic logging for prompt intake
+    const runtimeInfo = getServerRuntimeInfo();
+    const keyDiag = inspectSarvamKey(customKey);
+    logDiagnostic({
+      requestId,
+      timestamp: new Date().toISOString(),
+      runtime: runtimeInfo.runtime,
+      environment: runtimeInfo.environment,
+      stage: "route_entry",
+      details: {
+        promptLength: fullPrompt.length,
+        lineCount: fullPrompt.split("\n").length,
+        hasKey: keyDiag.isConfigured,
+        keySource: keyDiag.source,
+        keyPreview: keyDiag.redactedPreview,
+        clientIp,
+      },
+    });
+
     // ─── PERSISTENT AUDIT LOGGING (Sections 15 & 16) ───
     try {
       const logRecord = await logAgentPrompt({
@@ -255,6 +276,21 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    logDiagnostic({
+      requestId,
+      timestamp: new Date().toISOString(),
+      runtime: runtimeInfo.runtime,
+      environment: runtimeInfo.environment,
+      stage: "response_delivery",
+      durationMs: totalLatencyMs,
+      details: {
+        toolsCount: reasoning.toolsUsed?.length || 0,
+        hasNavigation: Boolean(reasoning.navigation),
+        hasReport: Boolean(reasoning.report),
+        model: reasoning.model,
+      },
+    });
+
     return NextResponse.json({
       userMessage,
       answerText: reasoning.answerText,
@@ -277,19 +313,32 @@ export async function POST(req: NextRequest) {
       ipCaptured: clientIp,
     });
   } catch (err: any) {
-    console.error("[Voice Copilot Route Exception]", err);
+    const errMessage = err?.message || String(err);
+    logDiagnostic({
+      requestId,
+      timestamp: new Date().toISOString(),
+      runtime: getServerRuntimeInfo().runtime,
+      environment: getServerRuntimeInfo().environment,
+      stage: "response_delivery",
+      category: "UNEXPECTED_ERROR",
+      details: {
+        error: errMessage,
+      },
+    });
 
     if (logRecordId) {
       await updateAgentPromptLog(logRecordId, {
         status: "FAILED",
-        error: err?.message || String(err),
+        error: errMessage,
       });
     }
 
+    const safeNotice = getSafeUserNotice("UNEXPECTED_ERROR");
+
     return NextResponse.json(
       {
-        error: "Voice copilot execution encountered an error",
-        details: err?.message || String(err),
+        error: safeNotice.userFacingMessage,
+        details: errMessage,
         requestId,
       },
       { status: 500 }

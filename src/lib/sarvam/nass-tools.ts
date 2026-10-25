@@ -24,6 +24,7 @@ import {
 } from "../operational-tools";
 import { webSearch, searchNews, fetchWebpage } from "../search/web-search";
 import { ROUTE_REGISTRY, VALID_VIEWS, resolveViewFromInput, type ViewId } from "../route-registry";
+import { db } from "../db";
 import type { NavigationAction, SidebarAction, ReportAction } from "../voice/copilot-types";
 
 export interface NassToolDefinition {
@@ -331,6 +332,27 @@ export const NASS_APPLICATION_TOOLS: NassToolDefinition[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "rank_shipments",
+      description: "Rank, sort, and list all active shipments across the NASS supply chain by arrival urgency (ETA), risk/delay status, landed value, or weighbridge variance.",
+      parameters: {
+        type: "object",
+        properties: {
+          sortBy: {
+            type: "string",
+            enum: ["eta", "risk", "value", "weight_variance"],
+            description: "Criterion to rank shipments by (default: 'eta')",
+          },
+          statusFilter: {
+            type: "string",
+            description: "Optional filter by status, e.g. 'IN_TRANSIT', 'ARRIVED', 'PLANNED'",
+          },
+        },
+      },
+    },
+  },
 ];
 
 /**
@@ -355,6 +377,55 @@ export async function executeNassTool(
     case "get_shipment_details": {
       const data = await shipmentDetails(args.shipmentRef || "SHP-8802");
       return { data, sources: ["db:shipments", "db:bills_of_lading", "ais:maritime"] };
+    }
+
+    case "rank_shipments": {
+      const shipments = await db.shipment.findMany({
+        where: args.statusFilter ? { status: args.statusFilter } : undefined,
+        include: {
+          poLines: true,
+          exceptionCases: true,
+        },
+        orderBy: { ref: "asc" },
+      });
+
+      const sortBy = args.sortBy || "eta";
+      const ranked = shipments.map((s) => {
+        const totalVal = s.poLines.reduce((sum, l) => sum + ((l.quantity || 0) * (l.unitPrice || 0)), 0);
+        const etaDate = s.displayEta || s.carrierEta || s.supplierPromisedEta;
+        return {
+          ref: s.ref,
+          status: s.status,
+          carrier: s.carrier || "Unknown",
+          vessel: s.vesselName || "Unknown",
+          origin: s.originPort,
+          destination: s.destinationPort,
+          eta: etaDate ? etaDate.toISOString() : "Unknown",
+          totalValueUsd: totalVal,
+          totalValueBhd: Math.round(totalVal * 0.377 * 100) / 100,
+          weightVariancePct: s.weightDiscrepancyPct || 0,
+          openExceptions: s.exceptionCases.length,
+        };
+      });
+
+      if (sortBy === "value") {
+        ranked.sort((a, b) => b.totalValueUsd - a.totalValueUsd);
+      } else if (sortBy === "weight_variance") {
+        ranked.sort((a, b) => Math.abs(b.weightVariancePct) - Math.abs(a.weightVariancePct));
+      } else if (sortBy === "risk") {
+        ranked.sort((a, b) => b.openExceptions - a.openExceptions);
+      } else {
+        ranked.sort((a, b) => new Date(a.eta).getTime() - new Date(b.eta).getTime());
+      }
+
+      return {
+        data: {
+          rankedShipments: ranked,
+          totalCount: ranked.length,
+          rankingCriterion: sortBy,
+        },
+        sources: ["db:shipments", "db:bills_of_lading"],
+      };
     }
 
     case "get_purchase_order_reconciliation": {
