@@ -78,8 +78,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(result);
   } catch (err: any) {
     console.error("[Voice STT Route Error]", err);
+    // SECURITY FIX: Suppress internal error details in response
     return NextResponse.json(
-      { error: "STT processing failure", details: err?.message || String(err) },
+      { error: "STT processing failure" },
       { status: 500 }
     );
   }

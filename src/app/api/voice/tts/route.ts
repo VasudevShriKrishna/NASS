@@ -25,8 +25,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(result);
   } catch (err: any) {
     console.error("[Voice TTS Route Error]", err);
+    // SECURITY FIX: Suppress internal error details in response
     return NextResponse.json(
-      { error: "TTS synthesis failure", details: err?.message || String(err) },
+      { error: "TTS synthesis failure" },
       { status: 500 }
     );
   }
