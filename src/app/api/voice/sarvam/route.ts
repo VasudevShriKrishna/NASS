@@ -18,7 +18,8 @@ export async function GET(req: NextRequest) {
   return ok({
     configured: Boolean(key),
     source,
-    maskedKey: key ? `${key.slice(0, 4)}...${key.slice(-4)}` : null,
+    // SECURITY FIX: Never leak partial API key fragments to unauthenticated callers
+    // maskedKey: key ? `${key.slice(0, 4)}...${key.slice(-4)}` : null,
     provider: "Sarvam AI (saaras:v2)",
   });
 }
@@ -83,6 +84,8 @@ export async function POST(req: NextRequest) {
       provider: "Sarvam AI",
     });
   } catch (e) {
-    return err("INTERNAL_ERROR", `Failed to process audio with Sarvam: ${String(e)}`, 500);
+    console.error("[Sarvam STT Route Error]", e);
+    // SECURITY FIX: Return generic safe error message to client rather than raw system error strings
+    return err("INTERNAL_ERROR", "Failed to process audio with Sarvam AI", 500);
   }
 }

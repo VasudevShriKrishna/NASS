@@ -59,12 +59,18 @@ export function stripSendItTrigger(text: string): string {
 }
 
 /**
- * Hands-Free Automated UI Action Executor
- * Performs automatic clicks, tab switches, and filter selections in the DOM
- * with visual amber/gold pulse feedback without requiring manual mouse input.
+ * Automated UI Action Executor (Guarded)
+ * Performs automatic tab switches, navigation, and safe selections in the DOM.
+ * 
+ * SECURITY AUDIT FIX:
+ * - Strictly prevents automated clicks on destructive actions (e.g. "delete", "remove", "drop", "purge")
+ * - Removed wildcard querySelectorAll("*") DOM walk which posed performance and injection risks
  */
 export function executeAutomatedUiActions(actions: any[], targetView?: string) {
   if (typeof window === "undefined" || !actions || !Array.isArray(actions) || actions.length === 0) return;
+
+  // Block destructive keywords from automated execution
+  const DANGEROUS_TARGET_REGEX = /\b(delete|remove|destroy|drop|purge|truncate|wipe|kill|format)\b/i;
 
   const initialDelay = targetView ? 700 : 150;
 
@@ -75,11 +81,17 @@ export function executeAutomatedUiActions(actions: any[], targetView?: string) {
         const targetLower = rawTarget.toLowerCase();
         if (!targetLower) return;
 
-        // Collect all potential interactive elements in active view / main content
+        // Security check: reject potentially destructive actions from automated click execution
+        if (DANGEROUS_TARGET_REGEX.test(targetLower)) {
+          console.warn(`[Security Guard] Blocked automated click on sensitive/destructive target: "${rawTarget}"`);
+          return;
+        }
+
+        // Collect legitimate interactive elements in active view only
         const searchScope = document.querySelector("main") || document.body;
         const candidates = Array.from(
           searchScope.querySelectorAll<HTMLElement>(
-            'button, [role="button"], [role="tab"], a, input, [data-record-ref], tr, .clickable, div[onClick], span[onClick], [role="row"]'
+            'button, [role="button"], [role="tab"], a, [data-record-ref], tr[data-record-ref]'
           )
         );
 
@@ -96,7 +108,7 @@ export function executeAutomatedUiActions(actions: any[], targetView?: string) {
           }
         }
 
-        // 2. Partial contains match
+        // 2. Partial contains match on tabs/navigation
         if (!match) {
           for (const el of candidates) {
             const text = (el.textContent || "").trim().toLowerCase();
@@ -104,20 +116,6 @@ export function executeAutomatedUiActions(actions: any[], targetView?: string) {
             if (text.includes(targetLower) || aria.includes(targetLower)) {
               match = el;
               break;
-            }
-          }
-        }
-
-        // 3. Fallback: inspect any text element and walk up to closest clickable container
-        if (!match) {
-          const allEls = Array.from(searchScope.querySelectorAll<HTMLElement>("*"));
-          for (const el of allEls) {
-            if (el.children.length <= 1) {
-              const text = (el.textContent || "").trim().toLowerCase();
-              if (text === targetLower || text.includes(targetLower)) {
-                match = el.closest<HTMLElement>('button, [role="button"], [role="tab"], a, tr, li') || el;
-                break;
-              }
             }
           }
         }
@@ -349,53 +347,22 @@ export function VoiceCopilot() {
   const [isTestingMic, setIsTestingMic] = useState(false);
   const [micTestRecordedUrl, setMicTestRecordedUrl] = useState<string | null>(null);
 
-  // ─── RAINBOW COLOR CYCLE & CLICK GLOW STATE (STRICTLY RED, ORANGE, YELLOW, GREEN, BLUE) ───
-  // Default to Green index (3) to strictly preserve the signature green glow as specified
+  // =============================================================================
+  // COMMENTED OUT: Rainbow color cycling, cartoon emotional states & crying/sad eyes
+  // Reason: Unprofessional UI feature-bloat that caused constant background CPU usage,
+  // timer churn, and full-screen color flashes on every mouse click.
+  // =============================================================================
+  /*
   const [rainbowIndex, setRainbowIndex] = useState(3);
   const [isGlowFlashing, setIsGlowFlashing] = useState(false);
-  const glowTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // ─── CUTE KING EMOTIONAL STATES, BLINKING & DISTANCE DETECTION ───
-  // Real-time Euclidean distance between cursor and Cute King center in pixels
   const [cursorDistance, setCursorDistance] = useState<number>(9999);
-  // Whether user is hovering directly over the Cute King button
   const [isAgentHovered, setIsAgentHovered] = useState<boolean>(false);
-  // Natural lifelike blinking timer (squints eyes for ~160ms every 3.5-5.5s)
   const [isBlinking, setIsBlinking] = useState<boolean>(false);
-
-  // ─── MOUSE TRACKING & EYE PUPIL DISPLACEMENT (INTERNAL TRACKING ONLY, NO VISIBLE CURSOR DOT) ───
   const [mousePos, setMousePos] = useState<{ x: number; y: number }>({ x: -100, y: -100 });
   const [isMouseOnScreen, setIsMouseOnScreen] = useState(false);
   const [pupilOffset, setPupilOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const eyeContainerRef = useRef<HTMLDivElement | null>(null);
-
-  // Active rainbow item linked to rainbowIndex (starts on Green index 3 by default, and color changes with glow)
-  const activeRainbow = RAINBOW_COLORS[rainbowIndex] || RAINBOW_COLORS[3];
-
-  // Smooth ambient idle cycle: gently transitions the character's color like its glow every 7 seconds
-  useEffect(() => {
-    const idleTimer = setInterval(() => {
-      setRainbowIndex((prev) => (prev + 1) % RAINBOW_COLORS.length);
-    }, 7000);
-    return () => clearInterval(idleTimer);
-  }, []);
-
-  // Lifelike blinking scheduler: gives the character authentic, living breathing personality
-  useEffect(() => {
-    let blinkTimer: NodeJS.Timeout;
-    const scheduleNextBlink = () => {
-      const interval = 3400 + Math.random() * 2400;
-      blinkTimer = setTimeout(() => {
-        setIsBlinking(true);
-        setTimeout(() => {
-          setIsBlinking(false);
-          scheduleNextBlink();
-        }, 160);
-      }, interval);
-    };
-    scheduleNextBlink();
-    return () => clearTimeout(blinkTimer);
-  }, []);
+  */
 
   // ─── DRAGGABLE FLOATING AI BUTTON STATE (PERSISTED IN LOCALSTORAGE) ───
   const [btnPos, setBtnPos] = useState<{ x: number; y: number } | null>(null);
@@ -463,73 +430,11 @@ export function VoiceCopilot() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // ─── GLOBAL MOUSE TRACKING & DISTANCE CALCULATION (INTERNAL ONLY - NO VISIBLE POINTER DOT) ───
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      setMousePos({ x: e.clientX, y: e.clientY });
-      setIsMouseOnScreen(true);
-
-      // Eye pupil look direction & Euclidean distance calculation
-      if (eyeContainerRef.current) {
-        const rect = eyeContainerRef.current.getBoundingClientRect();
-        const eyeCenterX = rect.left + rect.width / 2;
-        const eyeCenterY = rect.top + rect.height / 2;
-        const dx = e.clientX - eyeCenterX;
-        const dy = e.clientY - eyeCenterY;
-        const dist = Math.hypot(dx, dy);
-        setCursorDistance(dist);
-
-        const angle = Math.atan2(dy, dx);
-        // Maximum pupil displacement: 3.8px within cute eye socket
-        const maxOffset = 3.8;
-        const offset = Math.min(dist / 38, 1) * maxOffset;
-        setPupilOffset({
-          x: Math.cos(angle) * offset,
-          y: Math.sin(angle) * offset,
-        });
-      }
-    };
-
-    const handleMouseLeave = () => {
-      setIsMouseOnScreen(false);
-      setCursorDistance(9999);
-      // Look slightly down and pensive when cursor exits screen (sad puppy state)
-      setPupilOffset({ x: 0, y: 1.5 });
-    };
-
-    // When clicking ANYWHERE on screen:
-    // 1. Advance rainbow color sequentially (Green -> Blue -> Red -> Orange -> Yellow -> Green...)
-    // 2. Glow up the Cute King agent with radiant pulse matching the active color
-    const handleGlobalPointerDown = () => {
-      setRainbowIndex((prev) => (prev + 1) % RAINBOW_COLORS.length);
-      setIsGlowFlashing(true);
-
-      if (glowTimerRef.current) clearTimeout(glowTimerRef.current);
-      glowTimerRef.current = setTimeout(() => {
-        setIsGlowFlashing(false);
-      }, 700);
-    };
-
-    window.addEventListener("mousemove", handleMouseMove, { passive: true });
-    window.addEventListener("mouseleave", handleMouseLeave);
-    window.addEventListener("pointerdown", handleGlobalPointerDown, { capture: true });
-
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseleave", handleMouseLeave);
-      window.removeEventListener("pointerdown", handleGlobalPointerDown, { capture: true });
-      if (glowTimerRef.current) clearTimeout(glowTimerRef.current);
-    };
-  }, []);
-
-  // ─── DYNAMIC DISTANCE & NATURAL EMOTIONAL RESOLUTION ───
-  // - "normal": When cursor is hovered, near, or medium distance (<= 750px) -> Natural, alert, curious, alive eyes
-  // - "sad": ONLY when cursor is truly too far away (> 750px) or has exited the screen
-  const isNear = isAgentHovered || (isMouseOnScreen && cursorDistance < 320);
-  const isMedium = isMouseOnScreen && cursorDistance >= 320 && cursorDistance <= 750;
-  const currentMood: "normal" | "sad" = !isMouseOnScreen || cursorDistance > 750 ? "sad" : "normal";
+  // =============================================================================
+  // COMMENTED OUT: Global mousemove and global click listeners
+  // Reason: Performance disaster and UX defect — caused continuous re-renders on
+  // mouse movements and triggered random glow flashes across the entire screen.
+  // =============================================================================
 
   const handlePointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
@@ -1769,121 +1674,31 @@ export function VoiceCopilot() {
         }
         className={cn(
           "fixed z-[75] flex items-center justify-center select-none touch-none",
-          isDragging ? "cursor-grabbing opacity-90 scale-105" : "cursor-grab",
-          !isDragging && !isOpen && "animate-cute-king-float"
+          isDragging ? "cursor-grabbing opacity-90 scale-105" : "cursor-grab"
         )}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
         onDoubleClick={toggleCopilot}
-        onMouseEnter={() => setIsAgentHovered(true)}
-        onMouseLeave={() => setIsAgentHovered(false)}
       >
         {/* Floating Mini Status Indicator (When dictating or speaking) */}
         {!isOpen && (isDictating || voiceState === "SPEAKING") && (
           <div
-            className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap flex items-center gap-1.5 rounded-full border bg-black/95 px-2.5 py-0.5 text-[10px] font-semibold shadow-xl backdrop-blur-md animate-pulse pointer-events-none"
-            style={{
-              borderColor: activeRainbow.border,
-              color: activeRainbow.hex,
-            }}
+            className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-black/95 px-2.5 py-0.5 text-[10px] font-semibold text-amber-300 shadow-xl backdrop-blur-md animate-pulse pointer-events-none"
           >
             <Radio className="h-2.5 w-2.5 animate-spin" />
             <span>{isDictating ? "Dictating..." : "Speaking..."}</span>
           </div>
         )}
 
-        {/* ─── PERMANENT ROYAL KING CROWN (ALWAYS VISIBLE ATOP AGENT'S HEAD) ─── */}
-        {/* Beautiful 3-peak 24K gold crown with emerald centerpiece matching the signature green glow */}
-        <div
-          className="absolute -top-4.5 left-1/2 -translate-x-1/2 z-30 pointer-events-none transition-transform duration-300"
-          style={{
-            transform: "translateX(-50%)",
-            filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.55))",
-          }}
-          title="Cute King Crown"
-        >
-          <div className="relative">
-            <svg
-              width="34"
-              height="20"
-              viewBox="0 0 34 20"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              className="transition-transform duration-300"
-            >
-              <defs>
-                {/* 24K Royal Gold Gradient */}
-                <linearGradient id="kingGoldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#fffbeb" />
-                  <stop offset="25%" stopColor="#fde047" />
-                  <stop offset="60%" stopColor="#f59e0b" />
-                  <stop offset="85%" stopColor="#d97706" />
-                  <stop offset="100%" stopColor="#92400e" />
-                </linearGradient>
-                {/* Crown Base Rim Gradient */}
-                <linearGradient id="kingRimGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                  <stop offset="0%" stopColor="#fde047" />
-                  <stop offset="100%" stopColor="#b45309" />
-                </linearGradient>
-                {/* Center Peak Jewel (Matches active glow & body color!) */}
-                <radialGradient id="kingCenterGem" cx="35%" cy="30%" r="70%">
-                  <stop offset="0%" stopColor={activeRainbow.gemLight} />
-                  <stop offset="45%" stopColor={activeRainbow.gemHex} />
-                  <stop offset="85%" stopColor={activeRainbow.secondary} />
-                  <stop offset="100%" stopColor={activeRainbow.dark} />
-                </radialGradient>
-                {/* Ruby Peak Jewels */}
-                <radialGradient id="kingRubyGem" cx="35%" cy="30%" r="70%">
-                  <stop offset="0%" stopColor="#fca5a5" />
-                  <stop offset="50%" stopColor="#ef4444" />
-                  <stop offset="100%" stopColor="#7f1d1d" />
-                </radialGradient>
-              </defs>
-
-              {/* Base Band Arched Rim (Hugs spherical head curvature) */}
-              <path
-                d="M4 17.2 C10.5 19.3, 23.5 19.3, 30 17.2 L30 14.8 C23.5 16.8, 10.5 16.8, 4 14.8 Z"
-                fill="url(#kingRimGrad)"
-                stroke="#fef08a"
-                strokeWidth="0.5"
-              />
-
-              {/* 3 Royal Crown Peaks (Tall Center Peak + 2 Graceful Flared Side Peaks) */}
-              <path
-                d="M4 14.8 L3 8.2 C2.9 7.6, 3.7 7.1, 4.3 7.5 L10.2 11.8 L16.4 3.2 C16.8 2.6, 17.6 2.6, 18 3.2 L23.8 11.8 L29.7 7.5 C30.3 7.1, 31.1 7.6, 31 8.2 L30 14.8 Z"
-                fill="url(#kingGoldGrad)"
-                stroke="#fef08a"
-                strokeWidth="0.75"
-                strokeLinejoin="round"
-              />
-
-              {/* Center Peak Gem (Matches active glow & body color) */}
-              <circle cx="17.2" cy="3.6" r="2.3" fill="url(#kingCenterGem)" stroke="#fef08a" strokeWidth="0.5" />
-              <circle cx="16.5" cy="2.9" r="0.7" fill="#ffffff" opacity="0.95" />
-
-              {/* Left Peak Ruby Gem */}
-              <circle cx="3.8" cy="7.8" r="1.5" fill="url(#kingRubyGem)" stroke="#fef08a" strokeWidth="0.4" />
-              <circle cx="3.4" cy="7.4" r="0.45" fill="#ffffff" opacity="0.9" />
-
-              {/* Right Peak Ruby Gem */}
-              <circle cx="30.2" cy="7.8" r="1.5" fill="url(#kingRubyGem)" stroke="#fef08a" strokeWidth="0.4" />
-              <circle cx="29.8" cy="7.4" r="0.45" fill="#ffffff" opacity="0.9" />
-
-              {/* Inlaid Crown Base Pearls */}
-              <circle cx="9" cy="16.4" r="1" fill={activeRainbow.gemLight} />
-              <circle cx="17" cy="17.2" r="1.2" fill="#ffffff" />
-              <circle cx="25" cy="16.4" r="1" fill={activeRainbow.gemLight} />
-            </svg>
-
-            {/* Subtle Diamond Twinkle Gleam on Crown */}
-            <div className="absolute top-0 right-1 w-2 h-2 pointer-events-none animate-crown-gleam opacity-70">
-              <div className="w-1.5 h-1.5 rotate-45 bg-white shadow-[0_0_6px_#ffffff]" />
-            </div>
-          </div>
-        </div>
-
+        {/*
+          =============================================================================
+          REPLACED: "Cute King" crown SVG, sad crying eyes, and rainbow color cycling.
+          Reason: Unprofessional for an enterprise logistics control tower.
+          Replaced with a sleek, clean, modern AI Copilot floating launcher.
+          =============================================================================
+        */}
         {/* Dedicated Close Button Badge on Circle (When Open) */}
         {isOpen && (
           <button
@@ -1893,144 +1708,46 @@ export function VoiceCopilot() {
               setIsOpen(false);
               if (voiceState === "SPEAKING") stopCurrentAudio();
             }}
-            className="absolute -top-1.5 -right-1.5 z-30 flex h-6 w-6 items-center justify-center rounded-full bg-red-600 hover:bg-red-500 text-white border-2 border-[#090b10] shadow-lg transition-transform hover:scale-115 active:scale-90 cursor-pointer"
+            className="absolute -top-1.5 -right-1.5 z-30 flex h-6 w-6 items-center justify-center rounded-full bg-red-600 hover:bg-red-500 text-white border-2 border-[#090b10] shadow-lg transition-transform hover:scale-110 active:scale-90 cursor-pointer"
             title="Close Copilot"
           >
             <X className="h-3.5 w-3.5 stroke-[3]" />
           </button>
         )}
 
-        {/* ─── CUTE KING CIRCULAR CHARACTER BUTTON (COLOR MATCHES GLOW · NO BLACK BACKGROUND) ─── */}
+        {/* ─── PROFESSIONAL ENTERPRISE AI COPILOT LAUNCHER BUTTON ─── */}
         <button
           type="button"
           onClick={toggleCopilot}
           onDoubleClick={toggleCopilot}
-          style={{
-            borderColor: activeRainbow.border,
-            background: isOpen ? activeRainbow.bodyOpen : activeRainbow.bodyGrad,
-            boxShadow: isGlowFlashing
-              ? `0 0 28px 6px ${activeRainbow.glow}, 0 0 14px ${activeRainbow.hex}, inset 0 0 12px ${activeRainbow.glow}`
-              : isOpen
-              ? `0 0 20px 3px ${activeRainbow.glow}, inset 0 0 10px ${activeRainbow.glow}`
-              : isNear
-              ? `0 0 16px 3px ${activeRainbow.glow}, inset 0 0 8px ${activeRainbow.glow}`
-              : isMedium
-              ? `0 0 12px 2px ${activeRainbow.glow}, inset 0 0 6px ${activeRainbow.glow}`
-              : `0 0 7px 1px ${activeRainbow.glow}, inset 0 0 3px ${activeRainbow.glow}`,
-          }}
           className={cn(
-            "relative w-14 h-14 sm:w-16 sm:h-16 rounded-full aspect-square flex flex-col items-center justify-center border-2 transition-all duration-500 group cursor-pointer overflow-hidden",
-            isOpen ? "ring-2 ring-amber-300/60" : "hover:scale-[1.05]",
-            isGlowFlashing && "scale-108"
+            "relative w-14 h-14 sm:w-16 sm:h-16 rounded-full aspect-square flex flex-col items-center justify-center",
+            "border-2 border-amber-500/60 bg-gradient-to-br from-[#1b170c] via-[#141208] to-[#0c0e14]",
+            "shadow-[0_0_18px_rgba(245,158,11,0.35)] transition-all duration-300 group cursor-pointer overflow-hidden",
+            isOpen ? "ring-2 ring-amber-400/80 shadow-[0_0_24px_rgba(245,158,11,0.55)] scale-105" : "hover:scale-105 hover:border-amber-400"
           )}
-          title="NASS Cute King Copilot · Dynamic Living Color Glow · Click to Change Color · Double-Click to Open/Close"
+          title="NASS Voice AI Copilot (Click to open/close)"
         >
-          {/* Animated Ambient Glow Backdrop (Refined natural glow) */}
-          <div
-            className={cn(
-              "absolute inset-0 rounded-full blur-md transition-all duration-500 -z-10",
-              isGlowFlashing
-                ? "opacity-90 scale-120"
-                : isNear
-                ? "opacity-65 scale-108"
-                : isMedium
-                ? "opacity-45 scale-102"
-                : "opacity-25 scale-95"
-            )}
-            style={{
-              background: `radial-gradient(circle, ${activeRainbow.glow} 0%, rgba(0,0,0,0) 70%)`,
-            }}
-          />
+          {/* Subtle Ambient Glow */}
+          <div className="absolute inset-0 rounded-full bg-amber-500/10 blur-sm pointer-events-none" />
 
           {/* Audio / Dictation Active Pulse Ring */}
           {isDictating && (
             <div className="absolute inset-0 rounded-full border-2 border-red-500 animate-ping opacity-75 pointer-events-none" />
           )}
           {voiceState === "SPEAKING" && (
-            <div
-              className="absolute inset-0.5 rounded-full border border-dashed animate-spin pointer-events-none opacity-80"
-              style={{ borderColor: activeRainbow.hex }}
-            />
+            <div className="absolute inset-0.5 rounded-full border border-dashed border-amber-400 animate-spin pointer-events-none opacity-80" />
           )}
 
-          {/* Top-down Specular Pearlescent Gloss Sheen */}
-          <div className="absolute inset-0 rounded-full bg-gradient-to-b from-white/30 via-white/5 to-black/20 pointer-events-none" />
-          <div className="absolute inset-1 rounded-full border border-amber-300/35 pointer-events-none" />
-
-          {/* ─── PROPER EXPRESSIVE EYE PAIR (CLEAN, CHARMING & NATURAL · NO OVER-THE-TOP MOUTH/CHEEKS) ─── */}
-          <div
-            ref={eyeContainerRef}
-            className="relative flex items-center justify-center pointer-events-none transition-transform duration-150"
-            style={{
-              transform: `rotate(${Math.max(-3, Math.min(3, pupilOffset.x * 1.1))}deg)`,
-            }}
-          >
-            {/* Eye Pair */}
-            <div className="relative flex items-center justify-center gap-2.5">
-              {[0, 1].map((eyeIdx) => {
-                const isLeft = eyeIdx === 0;
-                return (
-                  <div
-                    key={eyeIdx}
-                    className={cn(
-                      "relative flex items-center justify-center w-5 h-6 sm:w-5.5 sm:h-7 rounded-full bg-[#070b14] overflow-hidden border border-white/35 shadow-[0_2px_5px_rgba(0,0,0,0.6)] transition-transform duration-100",
-                      isBlinking && "scale-y-[0.1]"
-                    )}
-                  >
-                    {/* Sclera soft ambient specular sheen */}
-                    <div className="absolute inset-0 bg-gradient-to-b from-white/20 via-transparent to-transparent pointer-events-none" />
-
-                    {currentMood === "sad" ? (
-                      /* Sad/Pensive cute eyes (ONLY when cursor is too far away > 750px or off-screen) */
-                      <div className="relative w-full h-full flex flex-col items-center justify-center">
-                        {/* Upper sad eyelid slope */}
-                        <div
-                          className={cn(
-                            "absolute top-0 inset-x-0 h-2.5 bg-[#070b14] z-10 border-b border-white/15",
-                            isLeft ? "rotate-8 origin-left" : "-rotate-8 origin-right"
-                          )}
-                        />
-
-                        {/* Large dewy pupil looking slightly downward */}
-                        <div
-                          className="relative w-4 h-4.5 rounded-full transition-transform duration-100 flex items-center justify-center"
-                          style={{
-                            transform: `translate(${pupilOffset.x * 0.6}px, ${Math.max(1, pupilOffset.y * 0.6 + 0.8)}px)`,
-                            background: activeRainbow.irisGrad,
-                            boxShadow: `0 0 5px ${activeRainbow.glow}`,
-                          }}
-                        >
-                          {/* Dark pupil */}
-                          <div className="w-2 h-2.5 rounded-full bg-black flex items-start justify-end p-0.5">
-                            <div className="w-0.8 h-0.8 rounded-full bg-white opacity-90 mr-0.5 mt-0.5" />
-                          </div>
-                          {/* Soft watery teardrop reflection glint at corner */}
-                          <div className="absolute bottom-0.5 right-0.5 w-1 h-1 rounded-full bg-cyan-200/90 shadow-[0_0_3px_rgba(255,255,255,0.8)] animate-pulse" />
-                        </div>
-                      </div>
-                    ) : (
-                      /* Natural, alert, curious, alive eye tracking cursor smoothly */
-                      <div
-                        className="relative w-4 h-4.5 rounded-full transition-transform duration-75 flex items-center justify-center"
-                        style={{
-                          transform: `translate(${pupilOffset.x}px, ${pupilOffset.y}px)`,
-                          background: activeRainbow.irisGrad,
-                          boxShadow: `0 0 7px ${activeRainbow.glow}`,
-                        }}
-                      >
-                        {/* Dark center pupil with authentic twin catchlights */}
-                        <div className="w-2.2 h-2.6 rounded-full bg-black flex flex-col justify-between p-0.5">
-                          {/* Main glossy specular reflection */}
-                          <div className="w-1 h-1 rounded-full bg-white opacity-95 self-end" />
-                          {/* Secondary twinkle reflection */}
-                          <div className="w-0.6 h-0.6 rounded-full bg-white opacity-85 self-start" />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+          {/* Clean AI Copilot Icon */}
+          <div className="relative flex items-center justify-center text-amber-400 group-hover:text-amber-300 transition-colors">
+            {isDictating ? (
+              <Mic className="h-6 w-6 text-red-400 animate-pulse" />
+            ) : voiceState === "SPEAKING" ? (
+              <Radio className="h-6 w-6 text-amber-300 animate-pulse" />
+            ) : (
+              <Sparkles className="h-6 w-6 group-hover:scale-110 transition-transform duration-200" />
+            )}
           </div>
         </button>
       </div>
@@ -2070,69 +1787,21 @@ export function VoiceCopilot() {
             </div>
 
             <div className="flex items-center gap-1.5">
-              {/* Hands-Free Voice Mode Toggle (Section 4) */}
-              <button
-                onClick={() => {
-                  const next = !isHandsFreeMode;
-                  setIsHandsFreeMode(next);
-                  if (typeof window !== "undefined") {
-                    localStorage.setItem("nass_handsfree_mode", String(next));
-                  }
-                  if (next && voiceState === "IDLE") {
-                    setTimeout(() => startVoiceOverDictation(), 200);
-                  }
-                }}
-                className={cn(
-                  "flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-semibold tracking-wide transition-all",
-                  isHandsFreeMode
-                    ? "border-amber-400 bg-gradient-to-r from-amber-500/25 via-yellow-500/20 to-amber-500/25 text-amber-200 shadow-sm shadow-amber-500/30"
-                    : "border-border/40 bg-muted/20 text-muted-foreground hover:text-foreground"
-                )}
-                title="Hands-Free Voice Mode: Operates continuously without repeated clicks"
-              >
-                <Zap className={cn("h-3 w-3", isHandsFreeMode ? "text-amber-300 animate-pulse" : "text-muted-foreground")} />
-                <span>{isHandsFreeMode ? "Hands-Free: ON" : "Hands-Free: OFF"}</span>
-              </button>
+              {/*
+                =============================================================================
+                REMOVED UNNECESSARY UI CLUTTER / VULNERABILITIES:
+                1. [Hands-Free: ON/OFF] — Cluttered the header. Advanced voice features should
+                   not occupy primary toolbar real estate in a production enterprise dashboard.
+                2. [+ Set Key / Sarvam: Ready] — SECURITY VULNERABILITY: Prompting operators to
+                   paste API keys into client-side UI and storing them in unencrypted cookies/
+                   localStorage is an anti-pattern. API keys must reside safely on the server
+                   in process.env.SARVAM_API_KEY.
+                3. [Mic: Blocked / OK] — Permanent status badge caused visual noise. Browser mic
+                   permissions are handled naturally when clicking "Speak Voice-Over".
+                =============================================================================
+              */}
 
-              {/* Sarvam Key Status Button */}
-              <button
-                onClick={() => setShowKeyModal(!showKeyModal)}
-                className={cn(
-                  "flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium transition-colors",
-                  serverKeyStatus.configured || sarvamKey
-                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
-                    : "border-amber-500/40 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 animate-pulse"
-                )}
-                title="Configure Sarvam API Key (Cookie / .env / Header)"
-              >
-                <Key className="h-3 w-3" />
-                <span>{serverKeyStatus.configured || sarvamKey ? "Sarvam: Ready" : "+ Set Key"}</span>
-              </button>
-
-              {/* Microphone Verification Button */}
-              <button
-                onClick={() => setShowMicModal(!showMicModal)}
-                className={cn(
-                  "flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium transition-colors",
-                  micPermission === "granted"
-                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
-                    : micPermission === "denied"
-                    ? "border-red-500/40 bg-red-500/20 text-red-300 hover:bg-red-500/30"
-                    : "border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
-                )}
-                title="Verify Microphone Access & Audio Levels"
-              >
-                <Mic className="h-3 w-3" />
-                <span>
-                  {micPermission === "granted"
-                    ? "Mic: OK"
-                    : micPermission === "denied"
-                    ? "Mic: Blocked"
-                    : "Check Mic"}
-                </span>
-              </button>
-
-              {/* Audio Mute/Unmute toggle */}
+              {/* Audio Mute/Unmute toggle (ESSENTIAL) */}
               <button
                 onClick={() => {
                   if (voiceState === "SPEAKING") stopCurrentAudio();
@@ -2149,7 +1818,7 @@ export function VoiceCopilot() {
                 {isAudioMuted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
               </button>
 
-              {/* Close Drawer Button */}
+              {/* Close Drawer Button (ESSENTIAL) */}
               <button
                 onClick={() => {
                   stopCurrentAudio();
@@ -2164,192 +1833,38 @@ export function VoiceCopilot() {
             </div>
           </div>
 
-          {/* ─── POPUP: SARVAM API KEY CONFIGURATION ─── */}
+          {/*
+            =============================================================================
+            COMMENTED OUT: INLINE API KEY CONFIGURATION MODAL
+            Reason: Security risk — API keys belong in server environment variables (.env),
+            not entered by dashboard users into client cookies or local storage.
+            =============================================================================
+          */}
+          {/*
           {showKeyModal && (
-            <div className="border-b border-amber-500/20 bg-[#10131b] p-3 text-xs animate-in fade-in slide-in-from-top-2">
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-semibold text-amber-300 flex items-center gap-1.5">
-                  <Key className="h-3.5 w-3.5" /> Sarvam API Key Configuration
-                </span>
-                <button
-                  onClick={() => setShowKeyModal(false)}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                  <span>Current Source:</span>
-                  <span className="font-mono text-amber-400">
-                    {sarvamKey
-                      ? "Browser Cookie (sarvam_api_key)"
-                      : serverKeyStatus.configured
-                      ? `Server (${serverKeyStatus.source})`
-                      : "Not Configured"}
-                  </span>
-                </div>
-
-                <div className="relative flex items-center">
-                  <input
-                    type={showKeyPassword ? "text" : "password"}
-                    value={sarvamKey}
-                    onChange={(e) => setSarvamKey(e.target.value)}
-                    placeholder="Paste Sarvam api-subscription-key..."
-                    className="w-full rounded-md border border-border/70 bg-[#0b0c10] px-3 py-1.5 pr-8 text-xs font-mono text-foreground placeholder:text-muted-foreground/50 focus:border-amber-500/60 focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowKeyPassword(!showKeyPassword)}
-                    className="absolute right-2 text-muted-foreground hover:text-foreground"
-                    title={showKeyPassword ? "Hide key" : "Show key"}
-                  >
-                    {showKeyPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
-
-                <div className="flex items-center justify-between gap-2 pt-1">
-                  <span className="text-[10px] text-muted-foreground/80 leading-tight">
-                    Stored in cookie &amp; sent via <code className="font-mono text-[9px]">credentials: &apos;include&apos;</code>
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    {sarvamKey && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSarvamKey("");
-                          deleteCookie("sarvam_api_key");
-                          localStorage.removeItem("nass_sarvam_api_key");
-                          setServerKeyStatus({ configured: false, source: "none" });
-                        }}
-                        className="rounded border border-red-500/30 px-2 py-1 text-[10px] text-red-400 hover:bg-red-500/10"
-                      >
-                        Clear
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={handleSaveSarvamKey}
-                      className="inline-flex items-center gap-1 rounded bg-amber-500/20 border border-amber-500/40 px-2.5 py-1 text-[11px] font-semibold text-amber-300 hover:bg-amber-500/30 transition-colors"
-                    >
-                      {keySavedFeedback ? (
-                        <>
-                          <Check className="h-3 w-3 text-emerald-400" /> Saved!
-                        </>
-                      ) : (
-                        "Save to Cookie"
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-2 text-[10px] text-muted-foreground">
-                  <p className="font-semibold text-amber-300/90 mb-0.5">Manual Setup Options:</p>
-                  <ul className="list-disc pl-3.5 space-y-0.5">
-                    <li><strong>In Web App (Cookie):</strong> Paste key above &amp; click &ldquo;Save to Cookie&rdquo;.</li>
-                    <li><strong>In Server (.env):</strong> Add <code className="font-mono text-[9px] text-amber-300">SARVAM_API_KEY=&quot;your_key&quot;</code> to your <code className="font-mono text-[9px]">.env</code> or Vercel Environment Variables.</li>
-                  </ul>
-                </div>
-              </div>
+            <div className="border-b border-amber-500/20 bg-[#10131b] p-3 text-xs ...">
+               ...
             </div>
           )}
+          */}
 
-          {/* ─── POPUP: MICROPHONE VERIFICATION & TEST ─── */}
+          {/*
+            =============================================================================
+            COMMENTED OUT: PERMANENT MICROPHONE VERIFICATION MODAL
+            Reason: Redundant popups that distract users. Standard getUserMedia prompt
+            is triggered cleanly when the user clicks "Speak Voice-Over".
+            =============================================================================
+          */}
+          {/*
           {showMicModal && (
-            <div className="border-b border-amber-500/20 bg-[#10131b] p-3 text-xs animate-in fade-in slide-in-from-top-2">
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-semibold text-amber-300 flex items-center gap-1.5">
-                  <Mic className="h-3.5 w-3.5" /> Microphone Access &amp; Audio Level Verification
-                </span>
-                <button
-                  onClick={() => setShowMicModal(false)}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="text-muted-foreground">Browser Permission:</span>
-                  <span
-                    className={cn(
-                      "font-semibold uppercase tracking-wider text-[10px] px-1.5 py-0.5 rounded border",
-                      micPermission === "granted"
-                        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-                        : micPermission === "denied"
-                        ? "border-red-500/40 bg-red-500/20 text-red-300"
-                        : "border-amber-500/40 bg-amber-500/10 text-amber-300"
-                    )}
-                  >
-                    {micPermission === "granted"
-                      ? "● Granted & Verified"
-                      : micPermission === "denied"
-                      ? "● Blocked"
-                      : "● Needs Verification"}
-                  </span>
-                </div>
-
-                {/* Live VU Meter Bars */}
-                <div className="rounded-md border border-border/60 bg-[#0a0c10] p-2.5">
-                  <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1.5">
-                    <span>Live Input Volume Level:</span>
-                    <span className="font-mono text-amber-400">{audioLevel}%</span>
-                  </div>
-                  <div className="h-2 w-full rounded-full bg-muted/30 overflow-hidden flex">
-                    <div
-                      className={cn(
-                        "h-full transition-all duration-75 rounded-full",
-                        audioLevel > 65
-                          ? "bg-gradient-to-r from-emerald-500 via-amber-400 to-red-500"
-                          : "bg-gradient-to-r from-emerald-500 to-amber-400"
-                      )}
-                      style={{ width: `${Math.max(4, audioLevel)}%` }}
-                    />
-                  </div>
-                </div>
-
-                {/* Actions: Test Mic button */}
-                <div className="flex items-center justify-between pt-1">
-                  <button
-                    type="button"
-                    onClick={runMicrophoneTest}
-                    disabled={isTestingMic}
-                    className="inline-flex items-center gap-1.5 rounded bg-amber-500/15 border border-amber-500/40 px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/25 transition-colors disabled:opacity-50"
-                  >
-                    {isTestingMic ? (
-                      <>
-                        <Radio className="h-3 w-3 animate-spin text-red-400" />
-                        <span>Recording 2.5s test... Speak now</span>
-                      </>
-                    ) : (
-                      <>
-                        <Play className="h-3 w-3" />
-                        <span>Test Microphone &amp; Playback</span>
-                      </>
-                    )}
-                  </button>
-
-                  {micTestRecordedUrl && (
-                    <span className="text-[10px] text-emerald-400 flex items-center gap-1">
-                      <CheckCircle2 className="h-3 w-3" /> Audio playback verified
-                    </span>
-                  )}
-                </div>
-
-                {micPermission === "denied" && (
-                  <div className="rounded-md border border-red-500/30 bg-red-950/40 p-2 text-[10px] text-red-200">
-                    <p className="font-bold mb-0.5">How to unblock microphone:</p>
-                    <p>Click the Lock 🔒 or Site Settings icon in your browser URL bar, set Microphone to <strong>Allow</strong>, and click &ldquo;Test Microphone&rdquo; above.</p>
-                  </div>
-                )}
-              </div>
+            <div className="border-b border-amber-500/20 bg-[#10131b] p-3 text-xs ...">
+               ...
             </div>
           )}
+          */}
 
-          {/* ─── STATUS INDICATOR BANNER (14-STATE MACHINE) ─── */}
-          {(isDictating || voiceState !== "IDLE" || isHandsFreeMode) && (
+          {/* ─── STATUS INDICATOR BANNER (ACTIVE STATE ONLY) ─── */}
+          {(isDictating || voiceState !== "IDLE") && (
             <div
               className={cn(
                 "flex items-center justify-between border-b px-4 py-1.5 text-[11px] font-mono transition-all",
