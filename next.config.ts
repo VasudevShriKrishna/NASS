@@ -5,9 +5,6 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/**": ["./db/**/*", "./prisma/**/*"],
   },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
   reactStrictMode: false,
   async rewrites() {
     return [
