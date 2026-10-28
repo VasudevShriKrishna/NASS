@@ -1962,6 +1962,45 @@ export function LiveTraceabilityView({ drillRef }: { drillRef?: string | null })
         <div className="hairline-gold h-px w-full" aria-hidden />
       </header>
 
+      {/* ── Live vs Simulation Persistent State Banner (UX-04 Fix) ── */}
+      {simSnapshotOffsetHours !== 0 || factor > 1 ? (
+        <div className="relative z-20 flex flex-wrap items-center justify-between gap-2 px-4 py-1.5 bg-amber-500/15 border-b border-amber-500/30 text-amber-300 text-xs font-medium shrink-0 animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+            <span>
+              <strong className="text-amber-200">SCENARIO SIMULATION ACTIVE:</strong> Time-Lapse Speed: <span className="font-mono font-bold text-amber-100">{factor}×</span> · Virtual Offset: <span className="font-mono font-bold text-amber-100">{simSnapshotOffsetHours > 0 ? `+${simSnapshotOffsetHours}h` : `${simSnapshotOffsetHours}h`}</span> · Real AIS feed paused
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setIsSimPaused(false);
+              setFactor(1);
+              setSimSnapshotOffsetHours(0);
+              if (snap) {
+                baseRef.current = { server: +new Date(snap.serverTime), wall: Date.now() };
+                setSimBase(baseRef.current);
+              }
+            }}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-amber-500/25 border border-amber-500/40 text-[11px] font-bold text-amber-200 hover:bg-amber-500/35 transition-colors cursor-pointer"
+          >
+            <RotateCcw className="h-3 w-3" /> Return to Live Feed
+          </button>
+        </div>
+      ) : (
+        <div className="relative z-20 flex flex-wrap items-center justify-between gap-2 px-4 py-1 bg-emerald-500/10 border-b border-emerald-500/20 text-emerald-300 text-[11px] font-medium shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+            <span>
+              <strong className="text-emerald-200">LIVE SNAPSHOT:</strong> Authoritative AIS Feed · Synced Hourly · Next update in <span className="font-mono text-emerald-200 font-bold">{countdown !== null ? fmtCountdown(countdown) : "scheduled"}</span>
+            </span>
+          </div>
+          <span className="hidden sm:inline text-[10px] text-emerald-400/80">
+            Verified Satellite &amp; Terrestrial Transponder Feed · Port of Bahrain
+          </span>
+        </div>
+      )}
+
       {/* ── map ── */}
       <div className="relative min-h-0 flex-1">
         {!snap ? (

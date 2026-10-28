@@ -167,28 +167,23 @@ export function ShipmentDetailsModal({
             </div>
           </div>
 
-          {/* Quick Sub-Navigation Bar */}
-          <div className="flex items-center gap-1.5 px-5 py-2 border-b border-border/40 bg-card/40 overflow-x-auto text-[11px] font-medium shrink-0">
+          {/* Quick Sub-Navigation Bar (Grouped & Fully Responsive) */}
+          <div className="flex flex-wrap items-center gap-1.5 px-5 py-2.5 border-b border-border/40 bg-card/40 text-[11px] font-medium shrink-0">
             {[
-              { id: "overview", label: "1. Overview" },
-              { id: "manifest", label: "2. Cargo Manifest" },
-              { id: "valuation", label: "3. Valuation & Cost" },
-              { id: "packaging", label: "4. Packaging & Weight" },
-              { id: "companies", label: "5. Companies" },
-              { id: "route", label: "6. Route & Ports" },
-              { id: "customs", label: "7. Customs" },
-              { id: "documents", label: "8. Documents" },
-              { id: "timeline", label: "9. History" },
-              { id: "charges", label: "10. Charges & Risks" },
+              { id: "overview", label: "1. Overview & Cargo", target: "section-overview" },
+              { id: "valuation", label: "2. Valuation & Packaging", target: "section-valuation" },
+              { id: "companies", label: "3. Stakeholders & Route", target: "section-companies" },
+              { id: "customs", label: "4. Customs & Documents", target: "section-customs" },
+              { id: "timeline", label: "5. History & Demurrage", target: "section-timeline" },
             ].map((tab) => (
               <button
                 key={tab.id}
                 type="button"
                 onClick={() => {
-                  const el = document.getElementById(`section-${tab.id}`);
+                  const el = document.getElementById(tab.target);
                   el?.scrollIntoView({ behavior: "smooth" });
                 }}
-                className="px-2.5 py-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors whitespace-nowrap cursor-pointer"
+                className="px-3 py-1 rounded-md bg-muted/40 border border-border/60 text-muted-foreground hover:text-foreground hover:bg-primary/10 hover:border-primary/40 transition-all cursor-pointer whitespace-nowrap"
               >
                 {tab.label}
               </button>

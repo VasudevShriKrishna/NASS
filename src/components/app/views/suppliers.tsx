@@ -500,9 +500,11 @@ export function SuppliersView() {
           </div>
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-2xl font-bold tracking-tight text-foreground">{suppliers.length}</span>
-            <span className="text-[11px] text-emerald-400 font-medium">100% Verified</span>
+            <span className="text-[11px] text-emerald-400 font-medium" title="Corporate registry records independently verified. Procurement awards require commercial approval.">
+              Data Verified: 100% (Corporate Records)
+            </span>
           </div>
-          <p className="mt-1 text-[11px] text-muted-foreground">Covering GCC, Europe & East Asia</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">Legal identity verified · Award requires procurement sign-off</p>
         </Card>
 
         <Card className="p-3.5 border-amber-500/20 bg-amber-500/5">
