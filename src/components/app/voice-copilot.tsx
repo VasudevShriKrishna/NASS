@@ -1772,14 +1772,14 @@ export function VoiceCopilot() {
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-xs font-bold tracking-wide text-foreground">
+                  <h3 className="text-xs font-bold tracking-wide text-zinc-100">
                     NASS Closed-Loop Copilot
                   </h3>
                   <span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-mono text-emerald-400 flex items-center gap-1">
                     <ShieldCheck className="h-2.5 w-2.5" /> Read-Only
                   </span>
                 </div>
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-[10px] text-zinc-400">
                   Context: <span className="font-mono text-amber-300/80">{view}</span>
                   {drill?.ref ? ` · Ref: ${drill.ref}` : ""}
                 </p>
@@ -2198,7 +2198,7 @@ export function VoiceCopilot() {
                   )}
                   <div className="min-w-0 truncate">
                     <p className="truncate font-medium text-amber-200">{attachedMedia.name}</p>
-                    <p className="text-[10px] text-muted-foreground">
+                    <p className="text-[10px] text-zinc-400">
                       {attachedMedia.type.toUpperCase()} · {formatFileSize(attachedMedia.size)}
                     </p>
                   </div>
