@@ -7,6 +7,7 @@ import { fmtBahrainTime } from "@/lib/bahrain-time";
 import type { VoiceState, CopilotMessage, MediaAttachment } from "@/lib/voice/copilot-types";
 import {
   Mic,
+  Pin,
   MicOff,
   Volume2,
   VolumeX,
@@ -289,6 +290,24 @@ export function VoiceCopilot() {
   const { view, drill, drillTo, openTrace, isVoiceCopilotOpen, setVoiceCopilotOpen } = useAppStore();
   const isOpen = isVoiceCopilotOpen;
   const setIsOpen = setVoiceCopilotOpen;
+  const [isPinned, setIsPinned] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        return localStorage.getItem("nass_copilot_pinned") === "true";
+      } catch {}
+    }
+    return false;
+  });
+
+  const togglePinned = useCallback(() => {
+    setIsPinned((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("nass_copilot_pinned", String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
   const [voiceState, setVoiceState] = useState<VoiceState>("IDLE");
   const [messages, setMessages] = useState<CopilotMessage[]>([
     {
@@ -2039,12 +2058,13 @@ export function VoiceCopilot() {
       {isOpen && (
         <div
           className={cn(
-            "fixed right-4 sm:right-6 z-[70] flex flex-col w-[94vw] sm:w-[500px] h-[660px] max-h-[calc(100vh-6.5rem)]",
-            "rounded-2xl border border-amber-500/30 bg-[#0c0e14]/98 shadow-2xl shadow-black/90 backdrop-blur-xl",
-            "transition-all duration-300 animate-in fade-in",
-            btnPos && btnPos.y < 350
-              ? "top-20 slide-in-from-top-4"
-              : "bottom-24 slide-in-from-bottom-4"
+            "fixed z-[70] flex flex-col transition-all duration-300 animate-in fade-in bg-[#0c0e14]/98 backdrop-blur-xl shadow-2xl shadow-black/90",
+            isPinned
+              ? "top-14 bottom-0 right-0 w-[94vw] sm:w-[460px] lg:w-[480px] h-[calc(100vh-3.5rem)] rounded-none rounded-l-2xl border-l border-y-0 border-r-0 border-amber-500/30"
+              : cn(
+                  "right-4 sm:right-6 w-[94vw] sm:w-[500px] h-[660px] max-h-[calc(100vh-6.5rem)] rounded-2xl border border-amber-500/30",
+                  btnPos && btnPos.y < 350 ? "top-20 slide-in-from-top-4" : "bottom-24 slide-in-from-bottom-4"
+                )
           )}
         >
           {/* Top Header Bar */}
@@ -2070,6 +2090,21 @@ export function VoiceCopilot() {
             </div>
 
             <div className="flex items-center gap-1.5">
+              {/* Pin / Dock Toggle Button (UX-02 Fix) */}
+              <button
+                type="button"
+                onClick={togglePinned}
+                className={cn(
+                  "flex h-7 w-7 items-center justify-center rounded-lg border transition-colors cursor-pointer",
+                  isPinned
+                    ? "border-amber-500/50 bg-amber-500/20 text-amber-300"
+                    : "border-border/40 bg-muted/20 text-muted-foreground hover:text-foreground"
+                )}
+                title={isPinned ? "Unpin (Float over screen)" : "Pin to right (Dock as side panel)"}
+              >
+                <Pin className={cn("h-3.5 w-3.5 transition-transform", isPinned && "rotate-45 text-amber-400")} />
+              </button>
+
               {/* Audio Mute/Unmute toggle */}
               <button
                 onClick={() => {
