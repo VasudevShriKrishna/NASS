@@ -9,10 +9,19 @@ const nextConfig: NextConfig = {
     "/**": ["./db/**/*", "./prisma/**/*"],
   },
   reactStrictMode: false,
+  async redirects() {
+    return [
+      {
+        source: "/",
+        destination: "/customer-tracking",
+        permanent: false,
+      },
+    ];
+  },
   async rewrites() {
     return [
       {
-        source: "/:view(live|ceo-tower|control-tower|procurement|suppliers|import-tracking|bol-intelligence|inventory|receiving|projects|assets|exceptions|actions|assistant|governance|architecture)",
+        source: "/:view(customer-tracking|live|ceo-tower|control-tower|procurement|suppliers|import-tracking|bol-intelligence|inventory|receiving|projects|assets|exceptions|actions|assistant|governance|architecture)",
         destination: "/",
       },
     ];
