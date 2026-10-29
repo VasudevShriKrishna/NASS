@@ -1012,3 +1012,78 @@ model AgentPromptLog {
   @@index([promptSha256])
   @@index([requestId])
 }
+
+// ─── Customer Shipment Tracking Flow Models (Additive Only - Steps 1-6) ────────
+model BlContainerLink {
+  id              String   @id @default(cuid())
+  blNumber        String
+  containerNumber String?
+  shipmentRef     String?
+  createdAt       DateTime @default(now())
+
+  @@index([blNumber])
+  @@index([containerNumber])
+}
+
+model ContainerPosition {
+  id              String   @id @default(cuid())
+  containerNumber String
+  location        String   // port/terminal or coordinates
+  source          String   // which adapter reported it (e.g. MAERSK, MSC, CMA_CGM, ONE, HAPAG_LLOYD)
+  timestamp       DateTime
+  state           String   // movement_state: gate-in | loaded | in-transit | discharged | gate-out | delivered
+  createdAt       DateTime @default(now())
+
+  @@index([containerNumber])
+}
+
+model CarrierFetchLog {
+  id              String   @id @default(cuid())
+  containerNumber String
+  carrier         String   // MAERSK | MSC | CMA_CGM | ONE | HAPAG_LLOYD
+  status          String   // OK | FAILED | TIMEOUT | AUTH_ERROR | NOT_FOUND
+  fetchedAt       DateTime @default(now())
+  error           String?
+
+  @@index([containerNumber])
+  @@index([carrier])
+}
+
+model ShipmentAlert {
+  id              String   @id @default(cuid())
+  containerNumber String
+  type            String   // ETA slip past threshold | no location update within X hours | container unresolved | repeated carrier fetch failure | location conflict between carriers
+  severity        String   // LOW | MEDIUM | HIGH | CRITICAL
+  message         String
+  state           String   @default("DETECTED") // DETECTED -> TRIAGED -> ASSIGNED -> ACTION_PROPOSED -> AWAITING_APPROVAL -> OUTCOME_PENDING_VERIFICATION -> RESOLVED
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([containerNumber])
+  @@index([state])
+}
+
+model AlertStateAudit {
+  id        String   @id @default(cuid())
+  alertId   String
+  fromState String
+  toState   String
+  actorId   String
+  note      String?
+  timestamp DateTime @default(now())
+
+  @@index([alertId])
+}
+
+model CustomerNotificationQueue {
+  id         String    @id @default(cuid())
+  alertId    String
+  recipient  String
+  message    String
+  status     String    @default("QUEUED") // QUEUED | APPROVED | SENT | REJECTED
+  approvedBy String?
+  approvedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([alertId])
+}

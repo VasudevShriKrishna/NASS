@@ -55,9 +55,16 @@ import { ActionsView } from "@/components/app/views/actions";
 import { GovernanceView } from "@/components/app/views/governance";
 import { ArchitectureView } from "@/components/app/views/architecture";
 import { CeoTowerView } from "@/components/app/views/ceo-tower";
+import { CustomerShipmentTrackingView } from "@/components/app/views/customer-tracking";
 import { VoiceCopilot } from "@/components/app/voice-copilot";
 
 const NAV: { group: string; items: { id: ViewId; label: string; icon: React.ReactNode }[] }[] = [
+  {
+    group: "Customer Tracking",
+    items: [
+      { id: "customer-tracking", label: "Shipment Tracking (B/L)", icon: <Container className="h-4 w-4 text-amber-400" /> },
+    ],
+  },
   {
     group: "Command",
     items: [
@@ -374,7 +381,7 @@ export default function Home() {
       if (typeof window === "undefined") return;
       if (window.location.pathname === "/" || window.location.pathname === "") {
         try {
-          window.history.replaceState({ view: "ceo-tower" }, "", `/ceo-tower${window.location.search}`);
+          window.history.replaceState({ view: "customer-tracking" }, "", `/customer-tracking${window.location.search}`);
         } catch {}
       }
       const detectedView = parseViewFromPath(window.location.pathname);
@@ -638,6 +645,7 @@ export default function Home() {
                 <XCircle className="h-3.5 w-3.5" /> Focused on <span className="font-mono font-semibold">{drillRef}</span> — click to clear
               </button>
             ) : null}
+            {view === "customer-tracking" && <CustomerShipmentTrackingView />}
             {view === "ceo-tower" && <CeoTowerView drillRef={drillRef ?? undefined} />}
             {view === "control-tower" && <ControlTowerView drillRef={drillRef} />}
             {view === "procurement" && <ProcurementView />}

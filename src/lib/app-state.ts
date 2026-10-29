@@ -43,8 +43,8 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
-  view: "ceo-tower",
-  viewHistory: ["ceo-tower"],
+  view: "customer-tracking",
+  viewHistory: ["customer-tracking"],
   setView: (v) => {
     syncUrlPath(v);
     set((state) => ({

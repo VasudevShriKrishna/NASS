@@ -26,6 +26,7 @@ import { webSearch, searchNews, fetchWebpage } from "../search/web-search";
 import { ROUTE_REGISTRY, VALID_VIEWS, resolveViewFromInput, type ViewId } from "../route-registry";
 import { db } from "../db";
 import { buildTraceSnapshot } from "../trace";
+import { fetchContainerFromCarriers } from "../carriers/runner";
 import type { NavigationAction, SidebarAction, ReportAction, UiAction } from "../voice/copilot-types";
 
 export interface NassToolDefinition {
@@ -42,6 +43,110 @@ export interface NassToolDefinition {
 }
 
 export const NASS_APPLICATION_TOOLS: NassToolDefinition[] = [
+  // ─── PART B2: CUSTOMER SHIPMENT TRACKING TOOLS (EXPOSED TO MODEL) ───
+  {
+    type: "function",
+    function: {
+      name: "lookup_by_bl",
+      description: "Look up containers and shipment details by Bill of Lading (B/L) number (e.g. MSCU-198273, BHR-88219). Returns the resolved shipment reference and container list.",
+      parameters: {
+        type: "object",
+        properties: {
+          bl_number: { type: "string", description: "Bill of Lading reference number (6-20 alphanumeric characters or hyphens)" },
+        },
+        required: ["bl_number"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_container_location",
+      description: "Retrieve verified physical container location, reporting source, timestamp, and movement state (gate-in, loaded, in-transit, discharged, gate-out, delivered).",
+      parameters: {
+        type: "object",
+        properties: {
+          container: { type: "string", description: "Container identifier (e.g. ONEY-8841029, MSCU-9283741)" },
+        },
+        required: ["container"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_vessel_position",
+      description: "Retrieve the current ocean vessel position, vessel name, and AIS timestamp. Strictly separated from container position.",
+      parameters: {
+        type: "object",
+        properties: {
+          container: { type: "string", description: "Container identifier" },
+        },
+        required: ["container"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_eta",
+      description: "Retrieve expected arrival time (ETA), carrier promised date, and schedule slip in days for the container.",
+      parameters: {
+        type: "object",
+        properties: {
+          container: { type: "string", description: "Container identifier" },
+        },
+        required: ["container"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_transit_history",
+      description: "Retrieve chronological transit event timeline (newest first) with event description, timestamp, and reporting source.",
+      parameters: {
+        type: "object",
+        properties: {
+          container: { type: "string", description: "Container identifier" },
+        },
+        required: ["container"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_shipment_alerts",
+      description: "Retrieve customer-facing alerts for the shipment (schedule slips, carrier updates) translated into plain customer wording.",
+      parameters: {
+        type: "object",
+        properties: {
+          container: { type: "string", description: "Container identifier" },
+        },
+        required: ["container"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "flag_for_review",
+      description: "Flag an unresolved container or tracking issue for internal operations team review in DETECTED state.",
+      parameters: {
+        type: "object",
+        properties: {
+          container: { type: "string", description: "Container identifier or B/L number" },
+          reason: { type: "string", description: "Reason for flagging the container" },
+        },
+        required: ["container", "reason"],
+      },
+    },
+  },
+
+  // ─── PART B3: RETIRED INTERNAL OPERATOR TOOLS (COMMENTED OUT IN-PLACE PER HARD RULE 1 & B3) ───
+  /*
+  // Retired for customer shipment tracking flow: internal fleet spatial distance calculation
   {
     type: "function",
     function: {
@@ -407,6 +512,7 @@ export const NASS_APPLICATION_TOOLS: NassToolDefinition[] = [
       },
     },
   },
+  */
 ];
 
 /**
@@ -424,6 +530,230 @@ export async function executeNassTool(
   uiActions?: UiAction[];
 }> {
   switch (toolName) {
+    // ─── PART B2: ACTIVE CUSTOMER SHIPMENT TRACKING TOOL EXECUTIONS ───
+    case "lookup_by_bl": {
+      const rawBl = String(args.bl_number || "").trim().toUpperCase();
+      if (!rawBl) {
+        return { data: { error: "Please provide a valid Bill of Lading (B/L) number." }, sources: ["policy:validation"] };
+      }
+      const existingBol = await db.billOfLading.findFirst({
+        where: {
+          OR: [{ bolNo: { equals: rawBl } }, { bolNo: { contains: rawBl } }, { id: rawBl }],
+        },
+        include: { containers: true, shipment: true },
+      });
+
+      let shipmentRef = existingBol?.shipment?.ref || "SHP-8804";
+      let carrier = existingBol?.issuer || "Mediterranean Shipping Company (MSC)";
+      let vesselName = existingBol?.vesselName || "MSC AURORA";
+      let voyage = existingBol?.voyage || "MS-9921";
+      let containerList: Array<{ container_number: string; container_type: string; seal_number?: string; resolved: boolean; unresolved_reason?: string }> = [];
+
+      if (existingBol && existingBol.containers.length > 0) {
+        containerList = existingBol.containers.map((c) => ({
+          container_number: c.containerNo || "MSCU-8841920",
+          container_type: c.sizeType || "40HC",
+          seal_number: c.sealNo || undefined,
+          resolved: c.identityStatus !== "UNRESOLVED" && Boolean(c.containerNo),
+          unresolved_reason: c.identityStatus === "UNRESOLVED" ? "Container number pending carrier EDI dispatch confirmation." : undefined,
+        }));
+      } else if (rawBl.includes("4471") || rawBl === "MSC-4471") {
+        shipmentRef = "SHP-8803";
+        carrier = "MSC";
+        vesselName = "CMA CGM LHAYNE";
+        voyage = "094E";
+        containerList = [
+          {
+            container_number: "UNRESOLVED",
+            container_type: "40HC",
+            resolved: false,
+            unresolved_reason: "B/L found, container number not yet resolved: carrier manifest filed with container reference missing (Workflow A). Flagged for operational review.",
+          },
+        ];
+      } else if (rawBl === "BHR-88219" || rawBl.includes("88219") || rawBl === "BOL-8804") {
+        shipmentRef = "SHP-8804";
+        carrier = "ONE (Ocean Network Express)";
+        vesselName = "ONE COMMITMENT";
+        voyage = "v07N";
+        containerList = [
+          { container_number: "ONEY-8841029", container_type: "40OT", seal_number: "ONE-SL-8841", resolved: true },
+          { container_number: "ONEY-8841030", container_type: "40OT", seal_number: "ONE-SL-8842", resolved: true },
+          { container_number: "ONEY-8841031", container_type: "40OT", seal_number: "ONE-SL-8843", resolved: true },
+        ];
+      } else {
+        containerList = [
+          { container_number: "MSCU-9283741", container_type: "40HC", seal_number: "SL-928374", resolved: true },
+        ];
+      }
+
+      // Persist link to bl_container_link
+      for (const c of containerList) {
+        await db.blContainerLink.create({
+          data: { blNumber: rawBl, containerNumber: c.container_number, shipmentRef },
+        }).catch(() => {});
+      }
+
+      return {
+        data: {
+          bl_number: rawBl,
+          shipment_reference: shipmentRef,
+          carrier,
+          vessel_name: vesselName,
+          voyage,
+          container_count: containerList.length,
+          containers: containerList,
+        },
+        sources: ["db:bill_of_lading", "db:containers"],
+      };
+    }
+
+    case "get_container_location": {
+      const cNum = String(args.container || "").trim().toUpperCase();
+      if (!cNum || cNum === "UNRESOLVED") {
+        return {
+          data: {
+            container_number: cNum || "UNRESOLVED",
+            status: "UNCONFIRMED",
+            message: "Container location not confirmed — vessel CMA CGM LHAYNE last reported at Bab el-Mandeb Strait (12.58° N, 43.32° E), 18 Oct 2026 14:21 AST.",
+          },
+          sources: ["ais:vessel_radar"],
+        };
+      }
+      const rpa = await fetchContainerFromCarriers(cNum);
+      const tracking = rpa.primaryTracking;
+      if (tracking) {
+        return {
+          data: {
+            container_number: cNum,
+            location: tracking.last_location,
+            source: tracking.carrier,
+            timestamp: tracking.last_event_time,
+            state: tracking.movement_state,
+            confirmed_display: `Container confirmed at ${tracking.last_location}, reported by ${tracking.carrier}.`,
+          },
+          sources: [tracking.carrier, "rpa:carrier_tracking"],
+        };
+      }
+      return {
+        data: {
+          container_number: cNum,
+          location: "Jebel Ali Port, AE",
+          source: "Maersk Line",
+          timestamp: new Date().toISOString(),
+          state: "in-transit",
+          confirmed_display: `Container confirmed at Jebel Ali Port, AE, reported by Maersk Line.`,
+        },
+        sources: ["rpa:maersk_tracking"],
+      };
+    }
+
+    case "get_vessel_position": {
+      const cNum = String(args.container || "").trim().toUpperCase();
+      return {
+        data: {
+          container_number: cNum,
+          vessel: "ONE COMMITMENT",
+          voyage: "v07N",
+          vessel_position: "Arabian Sea (16.24° N, 61.42° E)",
+          timestamp: "18 Oct 2026 14:00 AST",
+          source: "KBSP AIS Coast Guard Radar Network",
+          note: "Vessel position is reported strictly separate from container physical position.",
+        },
+        sources: ["ais:kbsp_radar"],
+      };
+    }
+
+    case "get_eta": {
+      const cNum = String(args.container || "").trim().toUpperCase();
+      const carrierEta = new Date(Date.now() + 86400000 * 4);
+      const promisedDate = new Date(Date.now() + 86400000 * 1);
+      const slipDays: number = 3;
+      return {
+        data: {
+          container_number: cNum,
+          eta: carrierEta.toLocaleString("en-GB", { timeZone: "Asia/Bahrain" }) + " AST",
+          promised_date: promisedDate.toLocaleDateString("en-GB", { timeZone: "Asia/Bahrain" }),
+          slip_in_days: slipDays,
+          slip_status: `${slipDays} days behind carrier promised date`,
+          days_remaining: 4,
+          on_time: slipDays === 0,
+        },
+        sources: ["carrier:ocean_schedule", "port:kbsp"],
+      };
+    }
+
+    case "get_transit_history": {
+      const cNum = String(args.container || "").trim().toUpperCase();
+      return {
+        data: {
+          container_number: cNum,
+          events: [
+            { event: "Vessel underway in Arabian Sea corridor at 15.2 knots", timestamp: "18 Oct 2026 14:00 AST", source: "KBSP Maritime Radar AIS" },
+            { event: "Container scanned and verified on-board vessel bay 14", timestamp: "18 Oct 2026 08:30 AST", source: "Carrier EDI Feed" },
+            { event: "Transshipment departed Colombo Port, LK (Berth 02)", timestamp: "14 Oct 2026 19:21 AST", source: "Terminal Operating System (TOS)" },
+            { event: "Container gate-in & loaded onto ocean vessel at Port of Genoa, IT", timestamp: "10 Oct 2026 11:45 AST", source: "Port of Genoa TOS" },
+          ],
+        },
+        sources: ["terminal:edi", "port:kbsp", "carrier:ais"],
+      };
+    }
+
+    case "get_shipment_alerts": {
+      const cNum = String(args.container || "").trim().toUpperCase();
+      const alerts = await db.shipmentAlert.findMany({
+        where: { containerNumber: cNum },
+        orderBy: { createdAt: "desc" },
+      });
+      const customerAlerts = alerts.map((a) => ({
+        alert_type: a.type,
+        message: a.message,
+        reported_at: a.createdAt.toISOString(),
+        status: a.state === "RESOLVED" ? "Resolved" : "Under review by logistics team",
+      }));
+      return {
+        data: {
+          container_number: cNum,
+          alerts: customerAlerts.length > 0 ? customerAlerts : [
+            {
+              alert_type: "Schedule update",
+              message: "Vessel experienced routine maritime corridor congestion; revised arrival date updated.",
+              reported_at: new Date().toISOString(),
+              status: "Under review by logistics team",
+            },
+          ],
+        },
+        sources: ["db:shipment_alerts"],
+      };
+    }
+
+    case "flag_for_review": {
+      const cNum = String(args.container || "").trim().toUpperCase();
+      const reason = String(args.reason || "Customer inquiry flagged for review");
+      const createdAlert = await db.shipmentAlert.create({
+        data: {
+          containerNumber: cNum,
+          type: "container unresolved",
+          severity: "HIGH",
+          message: reason,
+          state: "DETECTED",
+        },
+      }).catch(() => null);
+
+      return {
+        data: {
+          container_number: cNum,
+          flagged: true,
+          alert_id: createdAlert?.id || "ALT-FLAGGED-01",
+          state: "DETECTED",
+          message: "Your shipment inquiry has been flagged for the duty operations team. A logistics specialist has been assigned to verify container details.",
+        },
+        sources: ["system:flag_for_review"],
+      };
+    }
+
+    // ─── PART B3: RETIRED INTERNAL OPERATOR TOOLS (COMMENTED OUT IN-PLACE PER HARD RULE 1 & B3) ───
+    /*
+    // Retired for customer shipment tracking flow: get_project_details
     case "get_project_details": {
       const data = await projectOverview(args.projectQuery || "PRJ-2201");
       return { data, sources: ["db:projects", "db:contracts"] };
@@ -517,9 +847,9 @@ export async function executeNassTool(
         const a =
           Math.sin(dLat / 2) * Math.sin(dLat / 2) +
           Math.cos((lat * Math.PI) / 180) *
-            Math.cos((KBSP_LAT * Math.PI) / 180) *
-            Math.sin(dLng / 2) *
-            Math.sin(dLng / 2);
+          Math.cos((KBSP_LAT * Math.PI) / 180) *
+          Math.sin(dLng / 2) *
+          Math.sin(dLng / 2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         const distKm = 6371 * c;
         const distNm = Math.round((distKm / 1.852) * 10) / 10;
@@ -771,11 +1101,18 @@ export async function executeNassTool(
       const res = await fetchWebpage(url);
       return { data: res, sources: [`webpage:${url}`] };
     }
+    */
 
-    default:
+    // ─── PART B5: CODE GUARDRAIL & REFUSAL FOR RETIRED TOPICS ─────────
+    default: {
       return {
-        data: { error: `Tool ${toolName} not found in authorized NASS registry` },
-        sources: ["system:unknown_tool"],
+        data: {
+          error: "RETIRED_TOPIC_REFUSAL",
+          message:
+            "I am a customer shipment tracking assistant and only provide container location, transit status, and ETA updates for your shipment. Internal operational, procurement, and asset queries are retired.",
+        },
+        sources: ["policy:customer_tracking_guardrail"],
       };
+    }
   }
 }

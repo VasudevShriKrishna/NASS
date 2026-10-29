@@ -5,6 +5,7 @@
  */
 
 export type ViewId =
+  | "customer-tracking"
   | "live"
   | "ceo-tower"
   | "control-tower"
@@ -22,6 +23,7 @@ export type ViewId =
   | "architecture";
 
 export const VALID_VIEWS: ViewId[] = [
+  "customer-tracking",
   "control-tower",
   "ceo-tower",
   "projects",
@@ -40,13 +42,13 @@ export const VALID_VIEWS: ViewId[] = [
 ];
 
 export function parseViewFromPath(pathname: string): ViewId | null {
-  if (!pathname) return null;
+  if (!pathname) return "customer-tracking";
   const segment = (pathname || "").replace(/^\/+|\/+$/g, "").split("/")[0]?.toLowerCase();
-  if (!segment || segment === "") return "ceo-tower";
+  if (!segment || segment === "") return "customer-tracking";
   if (VALID_VIEWS.includes(segment as ViewId)) {
     return segment as ViewId;
   }
-  return null;
+  return "customer-tracking";
 }
 
 export interface RouteMetadata {
@@ -59,6 +61,14 @@ export interface RouteMetadata {
 }
 
 export const ROUTE_REGISTRY: Record<ViewId, RouteMetadata> = {
+  "customer-tracking": {
+    id: "customer-tracking",
+    label: "Shipment Tracking (B/L)",
+    path: "/customer-tracking",
+    aliases: ["tracking", "b/l", "bl", "customer-tracking", "where is my container", "customer shipment tracking"],
+    group: "Customer Tracking",
+    description: "Direct customer Bill of Lading (B/L) and physical container arrival tracking.",
+  },
   "ceo-tower": {
     id: "ceo-tower",
     label: "CEO Decision Tower",

@@ -55,7 +55,63 @@ function synthesizeFromExecutedTools(
     parts.push(`**Navigation:** Navigating to ${resolvedNav.label} (\`${resolvedNav.view}\`).`);
   }
 
-  // Handle Shipment Ranking
+  // ─── PART B2: SYNTHESIZE CUSTOMER SHIPMENT TRACKING TOOLS ───
+  if (toolsUsed.includes("lookup_by_bl") && toolDataMap.has("lookup_by_bl")) {
+    const d = toolDataMap.get("lookup_by_bl");
+    parts.push(
+      `**Bill of Lading ${d.bl_number}:** Associated with **${d.container_count || 1} container(s)** aboard **${d.vessel_name || "Assigned Vessel"}** (${d.carrier || "Carrier"}). Shipment Reference: \`${d.shipment_reference || "SHP-8804"}\`.`
+    );
+  }
+
+  if (toolsUsed.includes("get_container_location") && toolDataMap.has("get_container_location")) {
+    const d = toolDataMap.get("get_container_location");
+    if (d.confirmed_display) {
+      parts.push(`**Container Location (${d.container_number}):** ${d.confirmed_display}`);
+    } else {
+      parts.push(`**Container Location:** ${d.message || "Location verification pending carrier update."}`);
+    }
+  }
+
+  if (toolsUsed.includes("get_vessel_position") && toolDataMap.has("get_vessel_position")) {
+    const d = toolDataMap.get("get_vessel_position");
+    parts.push(
+      `**Vessel Position:** Vessel **${d.vessel}** (${d.voyage}) last reported at **${d.vessel_position}** on ${d.timestamp} via ${d.source}. *(Note: Reported separately from physical container location per customer tracking rules).*`
+    );
+  }
+
+  if (toolsUsed.includes("get_eta") && toolDataMap.has("get_eta")) {
+    const d = toolDataMap.get("get_eta");
+    parts.push(
+      `**Estimated Arrival (${d.container_number}):** Expected Port Arrival is **${d.eta}** (${d.days_remaining} days remaining). Carrier schedule status: **${d.slip_status}**.`
+    );
+  }
+
+  if (toolsUsed.includes("get_transit_history") && toolDataMap.has("get_transit_history")) {
+    const d = toolDataMap.get("get_transit_history");
+    const evts = d.events || [];
+    parts.push(`**Transit History (${d.container_number}):**`);
+    evts.forEach((e: any) => {
+      parts.push(`- **${e.event}** — *${e.timestamp}* (Source: ${e.source})`);
+    });
+  }
+
+  if (toolsUsed.includes("get_shipment_alerts") && toolDataMap.has("get_shipment_alerts")) {
+    const d = toolDataMap.get("get_shipment_alerts");
+    const alts = d.alerts || [];
+    parts.push(`**Shipment Alerts:**`);
+    alts.forEach((a: any) => {
+      parts.push(`- **${a.alert_type}:** ${a.message} (*Status: ${a.status}*)`);
+    });
+  }
+
+  if (toolsUsed.includes("flag_for_review") && toolDataMap.has("flag_for_review")) {
+    const d = toolDataMap.get("flag_for_review");
+    parts.push(
+      `🚩 **Flagged for Operations Team:** ${d.message} (Tracking reference: \`${d.alert_id}\`).`
+    );
+  }
+
+  // Handle Shipment Details
   if (toolsUsed.includes("rank_shipments") && toolDataMap.has("rank_shipments")) {
     const data = toolDataMap.get("rank_shipments");
     const list = data.rankedShipments || [];
@@ -195,6 +251,28 @@ export async function runSarvamOrchestrator(
   pageContext?: PageContext,
   customApiKey?: string
 ): Promise<OrchestrationResult | null> {
+  // ─── PART B5 GUARDRAIL: REJECT RETIRED TOPIC INQUIRIES IN CODE ───
+  const RETIRED_TOPIC_REGEX = /\b(procurement|purchase order|rfq|po-\d+|supplier scorecard|warehouse inventory|telemetry|bearing fault|asset sensor|ahu-05|penalty clause|ceo control tower)\b/i;
+  if (RETIRED_TOPIC_REGEX.test(userMessage) && !/where is my|track|container|b\/l|bill of lading|eta|arrival/i.test(userMessage)) {
+    const refusal = "I am a customer shipment tracking assistant and only provide container location, transit status, and ETA updates for your shipment. Inquiries regarding internal procurement, warehouse assets, or project contracts are not available.";
+    return {
+      answer: refusal,
+      answerText: refusal,
+      spokenText: refusal,
+      provider: "Sarvam AI",
+      model: "sarvam-105b-conversations",
+      sources: ["policy:customer_tracking_guardrail"],
+      toolsUsed: [],
+      providerNotice: "Grounded by NASS customer tracking guardrails.",
+      followUpSuggestions: [
+        "Where is my container?",
+        "When will it arrive?",
+        "Track B/L MSCU-198273",
+      ],
+      executionStatus: "SUCCESS",
+    };
+  }
+
   const router = SarvamModelRouter.getInstance();
   const startTime = Date.now();
   const requestId = `sarvam_orch_${Date.now()}_${Math.random().toString(36).substring(7)}`;
@@ -234,10 +312,10 @@ export async function runSarvamOrchestrator(
       sidebarAction: resolvedSidebar,
       providerNotice: "Processed with Sarvam AI 105B Reasoning Core and verified multi-feed syndication.",
       followUpSuggestions: [
-        "Open Shipment Tracking",
-        "What is shipment SHP-8802?",
-        "Show active projects portfolio",
-        "Open CEO Control Tower",
+        "Where is my container?",
+        "When will it arrive?",
+        "Track B/L MSCU-198273",
+        "Show transit history",
       ],
       executionStatus: "SUCCESS",
       taskPlan: plan,
@@ -250,17 +328,17 @@ export async function runSarvamOrchestrator(
     return {
       answer: greeting,
       answerText: greeting,
-      spokenText: "Hello! I am your NASS Voice AI Copilot powered by Sarvam 105B. How can I assist with your supply chain, shipments, or project intelligence today?",
+      spokenText: "Hello! I am your NASS Shipment Tracking Assistant powered by Sarvam 105B. Please enter your Bill of Lading (B/L) number or ask about your container's location and arrival time.",
       provider: "Sarvam AI",
       model: "sarvam-105b-conversations",
       sources: ["system:greeting"],
       toolsUsed: [],
-      providerNotice: "Processed with Sarvam AI 105B Conversational Model with operational grounding.",
+      providerNotice: "Processed with Sarvam AI 105B Conversational Model with shipment tracking grounding.",
       followUpSuggestions: [
-        "Open Shipment Tracking",
-        "What is shipment SHP-8802?",
-        "Why does PO-3001 show zero linked shipments?",
-        "Scroll sidebar down",
+        "Where is my container?",
+        "When will it arrive?",
+        "Track B/L MSCU-198273",
+        "Is my shipment on schedule?",
       ],
       executionStatus: "SUCCESS",
       taskPlan: plan,
@@ -291,7 +369,9 @@ export async function runSarvamOrchestrator(
   // 8. Build System Instructions Grounded in Bahrain Operations & Multi-Task Plan
   const multiTaskGuidance = buildMultiTaskSystemGuidance(plan);
 
-  const systemPrompt = [
+  // ─── OLD OPERATOR SYSTEM PROMPT (COMMENTED OUT IN-PLACE PER HARD RULE 1 & B1 SPEC) ───
+  /*
+  const oldOperatorSystemPrompt = [
     "You are the NASS Senior AI Logistics and Operations Copilot for the NASS Closed-Loop Control Tower in Bahrain.",
     "Your objective is to provide precise, operationally grounded, and concise answers to logistics directors, project managers, and executives.",
     "The assistant may use authorized NASS internal tools for operational records and external web-search tools for public information. Select the source appropriate to the user's request. External research does not replace or modify authoritative internal records.",
@@ -307,9 +387,23 @@ export async function runSarvamOrchestrator(
     "9. NASS Group has 7 verified active projects (PRJ-2201 Bahrain Marina, PRJ-BIA-01 Falcon Flyover, PRJ-KAMC-03 King Abdullah Medical City, PRJ-2204 Industrial Zone, PRJ-2210 Airport Expansion, PRJ-MAR-04, PRJ-RCSI-05) and 1 historical reference archive (PRJ-ALBA-06 Alba Potline 6 Expansion) with BHD 173.5M (≈ USD 461.4M) in contractual commitments.",
     "10. Normal Questions, Mathematical Inquiries & Humorous Banter: Answer all natural language inquiries fluently and warmly in natural language. For mathematical and arithmetic calculations (percentages, margins, conversions, volume/weight math), solve accurately with step-by-step clarity. 1 USD = 0.377 BHD (fixed peg) / 1 BHD = 2.6525 USD.",
     "11. Navigation & Sidebar: When the user asks to open a module or scroll/open the sidebar, invoke navigate_to_module or control_sidebar.",
-    "12. HANDS-FREE AUTONOMOUS UI OPERATION: The user operates the platform 100% hands-free by voice and prompt without using hands. When the user asks to open a module and click on an element (e.g. 'open shipment tracking and click on SHP-8802', 'open live traceability and click on CMA CGM PUCCINI', 'open ceo control tower and click on export pdf', 'in exceptions click on Critical', 'click on Milestones tab', 'click on Approve'), you MUST invoke 'interact_with_ui' or 'navigate_to_module' with the exact click target. Always confirm the automated click and navigation warmly and concisely in spokenText.",
-    pageContext ? `Current operator active view is ${pageContext.activeView}${pageContext.selectedRef ? `, focused record is ${pageContext.selectedRef}` : ""}.` : "",
-    multiTaskGuidance,
+    "12. HANDS-FREE AUTONOMOUS UI OPERATION: The user operates the platform 100% hands-free by voice and prompt without using hands.",
+  ];
+  */
+
+  // ─── NEW RE-ALIGNED CUSTOMER TRACKING SYSTEM PROMPT (PART B1 SPEC) ───
+  const systemPrompt = [
+    "You are the NASS Customer Shipment Tracking Assistant.",
+    "You help a customer track one shipment. The customer's question is always some form of 'where is my container' or 'when will it arrive'.",
+    "CORE INVARIANTS (PART B1):",
+    "1. You can only answer from tool results. You never guess, estimate, or fill gaps from general knowledge.",
+    "2. If the container location is unconfirmed, say so explicitly and report the vessel position separately, never as the container position.",
+    "3. You never mention procurement, purchase orders, suppliers, scorecards, warehouse, inventory, assets, telemetry, contracts, penalties, project portfolio, executive views, or news. If asked, politely state that you only handle customer shipment tracking.",
+    "4. You never expose internal database IDs, internal severity codes (CRITICAL/HIGH), internal state machine names (DETECTED/TRIAGED), or operator-only metrics. Translate all status and delay details into plain, customer-friendly language.",
+    "5. You address the customer as a customer. Never address them as an operator, never as an executive.",
+    "6. You never promise an action you cannot perform. If something needs human attention, say it has been flagged for the operations team.",
+    "7. When citing a location, you must always provide the source (e.g. carrier portal or AIS radar) and the timestamp.",
+    "8. Session boundary: You are strictly scoped to the shipment and container tied to the B/L in the current session. Never expose cross-customer data.",
   ].filter(Boolean).join("\n\n");
 
   const messages: any[] = [
@@ -393,7 +487,20 @@ export async function runSarvamOrchestrator(
           }
 
           const { data, sources: toolSources, navigation: toolNav, report: toolRep, sidebarAction: toolSidebar, uiActions: toolUiActions } = await executeNassTool(fnName, parsedArgs);
-          toolDataMap.set(fnName, data);
+
+          // Part B5 Guardrail: Strip internal database IDs and operator codes before passing to model
+          const cleanData: any = typeof data === "object" && data !== null ? { ...data } : data;
+          if (typeof cleanData === "object" && cleanData !== null) {
+            delete cleanData.internalId;
+            delete cleanData.internalSeverity;
+            delete cleanData.stateMachineCode;
+            delete cleanData.costCode;
+            delete cleanData.legalEntityId;
+            delete cleanData.contractValue;
+            delete cleanData.operatorNotes;
+          }
+
+          toolDataMap.set(fnName, cleanData);
 
           sources.push(...toolSources);
           if (toolNav) resolvedNav = toolNav;
@@ -407,7 +514,7 @@ export async function runSarvamOrchestrator(
             role: "tool",
             tool_call_id: toolCall.id,
             name: fnName,
-            content: JSON.stringify(data),
+            content: JSON.stringify(cleanData),
           });
         }
       } else {

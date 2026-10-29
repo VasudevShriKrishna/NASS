@@ -161,15 +161,14 @@ export function executeAutomatedUiActions(actions: any[], targetView?: string) {
   }, initialDelay);
 }
 
+// Part B4: Customer-facing suggested prompts
 const INITIAL_SUGGESTIONS = [
-  "Which vessels are currently delayed inbound to Bahrain and what is the nearest shipment?",
-  "Open Exceptions and click on EX-9011",
-  "Open shipment tracking and show me SHP-8804",
-  "Open procurement and filter by Pending Requisitions",
-  "Open CEO control tower and drill to Falcon Tower",
-  "Open live traceability and click on CMA CGM PUCCINI",
-  "Open projects and click on Bahrain Marina",
-  "Why does PO-3001 show 0 linked shipments while 120t is in transit?",
+  "Where is my container?",
+  "When will it arrive?",
+  "Track B/L MSCU-198273",
+  "Is my shipment on schedule or delayed?",
+  "What is the physical location of container ONEY-8841029?",
+  "Show transit history for BHR-88219",
 ];
 
 // Rainbow color spectrum (strictly Red, Orange, Yellow, Green, Blue - EXCLUDES Indigo & Violet)
@@ -314,7 +313,7 @@ export function VoiceCopilot() {
       id: "welcome-msg",
       role: "assistant",
       content:
-        "Welcome to the NASS Voice AI Copilot. I can navigate directly to any operational module or record, answer complex supply-chain questions, and generate on-demand downloadable PDF reports.\n\nTry asking: *'Open shipment SHP-8803'*, *'Take me to Project A materials'*, or *'Generate a CEO executive summary PDF'*.",
+        "Welcome to the NASS Shipment Tracking Assistant. Enter your Bill of Lading (B/L) number or container identifier to track real-time physical location, carrier updates, and expected port arrival.\n\nTry asking: *'Where is my container?'*, *'When will it arrive?'*, or *'Track B/L MSCU-198273'*.",
       timestamp: fmtBahrainTime(new Date()),
       sources: ["nass_operational_backbone"],
     },
@@ -2076,7 +2075,7 @@ export function VoiceCopilot() {
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-xs font-bold tracking-wide text-zinc-100">
-                    NASS Closed-Loop Copilot
+                    NASS Customer Shipment Copilot
                   </h3>
                   <span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-mono text-emerald-400 flex items-center gap-1">
                     <ShieldCheck className="h-2.5 w-2.5" /> Read-Only
@@ -2568,6 +2567,13 @@ export function VoiceCopilot() {
                   </div>
                 )}
 
+                {/* Visible Flagged for the Team Marker (Part B4) */}
+                {(msg.toolsUsed?.includes("flag_for_review") || msg.content?.toLowerCase().includes("flagged for the operations team") || msg.content?.toLowerCase().includes("flagged for the team")) && (
+                  <div className="mt-2 flex items-center gap-1.5 rounded-md border border-amber-500/50 bg-amber-500/15 px-2.5 py-1 text-xs font-semibold text-amber-300">
+                    <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+                    <span>Flagged for the operations team · Human review initiated</span>
+                  </div>
+                )}
                 {/* Grounding Metadata: Tools & Sources */}
                 {msg.role === "assistant" && (msg.toolsUsed?.length || msg.sources?.length) ? (
                   <div className="mt-2.5 pt-2 border-t border-border/30 flex flex-wrap items-center gap-1.5 text-[10px]">
