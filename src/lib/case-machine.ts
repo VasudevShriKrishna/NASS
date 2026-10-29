@@ -22,7 +22,7 @@ export async function transitionCase(
   actorType: string,
   note: string | null
 ) {
-  const kase = await db.exceptionCase.findUnique({ where: { id: caseId } });
+  const kase = await db.exceptionCase.findFirst({ where: { OR: [{ id: caseId }, { ref: caseId }] } });
   if (!kase) return err("CASE_NOT_FOUND", "Case not found", 404);
   const from = kase.state as CaseState;
   if (from === toState) return err("INVALID_TRANSITION", `Case already in state ${toState}`, 409);
@@ -40,7 +40,7 @@ export async function transitionCase(
   }
   const corr = corrId();
   const updated = await db.exceptionCase.update({
-    where: { id: caseId },
+    where: { id: kase.id },
     data: {
       state: toState,
       reopenReason: isReopen ? note : kase.reopenReason,

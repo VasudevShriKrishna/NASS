@@ -6,8 +6,8 @@ export const dynamic = "force-dynamic";
 /** /exceptions/[id] — full case dossier: events, actions, evidence, linked entities (M22 export). */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const kase = await db.exceptionCase.findUnique({
-    where: { id },
+  const kase = await db.exceptionCase.findFirst({
+    where: { OR: [{ id }, { ref: id }] },
     include: {
       events: { orderBy: { at: "asc" } },
       actions: {

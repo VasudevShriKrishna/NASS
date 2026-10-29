@@ -217,7 +217,9 @@ function TransitionPanel({ kase, events, onSuccess }: { kase: CaseDetail; events
     return Array.from(set);
   }, [events, kase.state]);
 
-  async function submit() {
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  function handleTriggerSubmit() {
     if (!toState || busy) return;
     if (!actor.trim()) {
       toast({ title: "Actor required", description: "The audit trail (M22) must record who performed this transition.", variant: "destructive" });
@@ -231,6 +233,11 @@ function TransitionPanel({ kase, events, onSuccess }: { kase: CaseDetail; events
       });
       return;
     }
+    setShowConfirm(true);
+  }
+
+  async function executeConfirmedTransition() {
+    setShowConfirm(false);
     setBusy(true);
     const res = await postJson<{ case: CaseRow; transition: { from: string; to: string } }>(`/api/exceptions/${kase.id}/transition`, {
       toState,
@@ -305,7 +312,7 @@ function TransitionPanel({ kase, events, onSuccess }: { kase: CaseDetail; events
         <p className="text-xs text-muted-foreground">
           Every transition writes a CaseEvent and an append-only AuditEvent with a correlation id.
         </p>
-        <Button type="button" onClick={submit} disabled={busy || !toState} className="min-h-9 shrink-0">
+        <Button type="button" onClick={handleTriggerSubmit} disabled={busy || !toState} className="min-h-9 shrink-0">
           {busy ? <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden /> : <Send className="h-4 w-4" aria-hidden />}
           Submit transition
         </Button>

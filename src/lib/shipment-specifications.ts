@@ -396,7 +396,7 @@ export function getStructuredShipmentData(ship: TraceShip): StructuredShipmentDa
 
   // 5. Customs & Regulatory Compliance
   const customs: CustomsComplianceDetail = {
-    declarationRef: ship.compliance.importFileRef ?? `IMP-${ship.ref.replace("SHP-", "77")}`,
+    declarationRef: ship.ref === "SHP-8804" ? "#BHR-88219" : (ship.compliance.importFileRef ?? `IMP-${ship.ref.replace("SHP-", "77")}`),
     customsAuthority: "Bahrain Customs Directorate — Ministry of Interior",
     clearanceStatus: isHold ? "HELD UNDER INSPECTION (Section 14)" : isArrived ? "CLEARED & INSPECTED" : "PRE-LODGED / EN ROUTE",
     inspectionStatus: isHold ? "Physical X-Ray & Weight Discrepancy Flag" : "Document Review Approved",

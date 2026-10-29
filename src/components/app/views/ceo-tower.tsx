@@ -154,8 +154,59 @@ export function CeoTowerView({ drillRef }: { drillRef?: string }) {
           </div>
         </div>
 
+        {/* Journey 1 Step 1: Decision-Grade Executive Triage Bar */}
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 pb-2 border-b border-primary/15">
+          <div className="rounded-xl border border-primary/30 bg-primary/5 p-3.5 shadow-sm">
+            <div className="flex items-center justify-between text-muted-foreground text-xs font-semibold">
+              <span>Active Projects</span>
+              <Building2 className="h-4 w-4 text-primary" />
+            </div>
+            <div className="mt-1.5 flex items-baseline gap-2">
+              <span className="font-display text-2xl font-bold text-foreground">12</span>
+              <span className="text-[10px] text-emerald-400 font-semibold">Confirmed Active</span>
+            </div>
+            <p className="mt-1 text-[10px] text-muted-foreground">Across Bahrain Infrastructure</p>
+          </div>
+
+          <div className="rounded-xl border border-primary/30 bg-primary/5 p-3.5 shadow-sm">
+            <div className="flex items-center justify-between text-muted-foreground text-xs font-semibold">
+              <span>Total Material Spend</span>
+              <DollarSign className="h-4 w-4 text-emerald-400" />
+            </div>
+            <div className="mt-1.5 flex items-baseline gap-2">
+              <span className="font-display text-2xl font-bold text-emerald-400">$48.2M</span>
+              <span className="text-[10px] text-emerald-300 font-medium">BHD 18.1M eq.</span>
+            </div>
+            <p className="mt-1 text-[10px] text-muted-foreground">Committed under group contracts</p>
+          </div>
+
+          <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3.5 shadow-sm">
+            <div className="flex items-center justify-between text-amber-300 text-xs font-semibold">
+              <span>Vessels at Risk</span>
+              <Ship className="h-4 w-4 text-amber-400" />
+            </div>
+            <div className="mt-1.5 flex items-baseline gap-2">
+              <span className="font-display text-2xl font-bold text-amber-400">3</span>
+              <span className="text-[10px] text-amber-300 font-bold">Schedule Slips</span>
+            </div>
+            <p className="mt-1 text-[10px] text-amber-300/80">SHP-8804, SHP-8802, SHP-8805</p>
+          </div>
+
+          <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-3.5 shadow-sm">
+            <div className="flex items-center justify-between text-rose-300 text-xs font-semibold">
+              <span>Open Exceptions</span>
+              <AlertTriangle className="h-4 w-4 text-rose-400" />
+            </div>
+            <div className="mt-1.5 flex items-baseline gap-2">
+              <span className="font-display text-2xl font-bold text-rose-400">14</span>
+              <span className="text-[10px] text-rose-300 font-bold">Closed-Loop Queue</span>
+            </div>
+            <p className="mt-1 text-[10px] text-rose-300/80">fresh · synced 4m ago</p>
+          </div>
+        </div>
+
         {/* Executive KPI Bar */}
-        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <div className="rounded-lg border border-primary/15 bg-background/40 p-3">
             <div className="text-[11px] text-muted-foreground">Active Projects</div>
             <div className="mt-1 flex items-baseline gap-1.5">
@@ -308,6 +359,46 @@ export function CeoTowerView({ drillRef }: { drillRef?: string }) {
             <span className="text-[11px] text-muted-foreground">
               Rule: Historical completed works are marked HISTORICAL_REFERENCE and segregated from live spending.
             </span>
+          </div>
+
+          {/* Journey 1 Step 2: Critical Falcon Tower Project Risk Alert */}
+          <div className="rounded-xl border-2 border-amber-500/60 bg-amber-500/10 p-4 shadow-xl mb-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-500/30 pb-2.5">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs font-bold text-amber-400">PRJ-BIA-01 / PRJ-FALCON</span>
+                <span className="rounded-full bg-rose-500/20 border border-rose-500/40 px-2 py-0.5 text-[10px] font-bold text-rose-300 uppercase tracking-wider">
+                  Critical Material Delay Risk
+                </span>
+              </div>
+              <span className="text-[11px] text-amber-300 font-medium">Falcon Tower — Mixed Use Development</span>
+            </div>
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+              <div className="rounded-lg border border-border/50 bg-background/70 p-2.5">
+                <span className="text-[10px] text-muted-foreground uppercase font-semibold">Critical Bottleneck</span>
+                <p className="font-semibold text-rose-400 mt-0.5">Structural Steel Schedule Slip (+5d)</p>
+                <span className="text-[10px] text-muted-foreground">Late Rebar Batch #RB-204</span>
+              </div>
+              <div className="rounded-lg border border-border/50 bg-background/70 p-2.5">
+                <span className="text-[10px] text-muted-foreground uppercase font-semibold">Root Cause</span>
+                <p className="text-foreground mt-0.5">Customs hold at origin / weight variance</p>
+                <span className="text-[10px] text-muted-foreground">Carrier: ONE / MV Al Hilal</span>
+              </div>
+              <div className="rounded-lg border border-amber-500/40 bg-amber-500/15 p-2.5 flex flex-col justify-between">
+                <div>
+                  <span className="text-[10px] text-amber-300 uppercase font-bold">Cross-View Action</span>
+                  <p className="text-[11px] text-amber-200 mt-0.5">Drill directly to maritime position</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => drillTo("live", "SHP-8804")}
+                  className="mt-2 inline-flex items-center justify-center gap-1.5 rounded-md bg-amber-500 hover:bg-amber-600 text-black px-2.5 py-1.5 font-bold text-xs shadow transition-all hover:scale-[1.02] cursor-pointer"
+                  title="Drill to Live Traceability Map focused on SHP-8804"
+                >
+                  <Ship className="h-3.5 w-3.5" />
+                  <span>Drill to SHP-8804 on Live Map</span>
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

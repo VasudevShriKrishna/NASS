@@ -162,14 +162,14 @@ export function executeAutomatedUiActions(actions: any[], targetView?: string) {
 }
 
 const INITIAL_SUGGESTIONS = [
-  "Open shipment tracking and click on SHP-8802",
+  "Which vessels are currently delayed inbound to Bahrain and what is the nearest shipment?",
+  "Open Exceptions and click on EX-9011",
+  "Open shipment tracking and show me SHP-8804",
+  "Open procurement and filter by Pending Requisitions",
+  "Open CEO control tower and drill to Falcon Tower",
   "Open live traceability and click on CMA CGM PUCCINI",
-  "Open exceptions and in it click on Critical",
-  "Open CEO control tower and click on export PDF",
   "Open projects and click on Bahrain Marina",
-  "Open procurement and click on PO-3001",
   "Why does PO-3001 show 0 linked shipments while 120t is in transit?",
-  "Check connector health vs data freshness for Customs Broker",
 ];
 
 // Rainbow color spectrum (strictly Red, Orange, Yellow, Green, Blue - EXCLUDES Indigo & Violet)

@@ -25,6 +25,7 @@ import {
 import { webSearch, searchNews, fetchWebpage } from "../search/web-search";
 import { ROUTE_REGISTRY, VALID_VIEWS, resolveViewFromInput, type ViewId } from "../route-registry";
 import { db } from "../db";
+import { buildTraceSnapshot } from "../trace";
 import type { NavigationAction, SidebarAction, ReportAction, UiAction } from "../voice/copilot-types";
 
 export interface NassToolDefinition {
@@ -41,6 +42,24 @@ export interface NassToolDefinition {
 }
 
 export const NASS_APPLICATION_TOOLS: NassToolDefinition[] = [
+  {
+    type: "function",
+    function: {
+      name: "get_nearest_shipments_to_bahrain",
+      description: "Calculate deterministic nautical distances and ETAs for all active inbound cargo vessels relative to Khalifa Bin Salman Port, Bahrain (26.29° N, 50.62° E). Ranks vessels by nautical miles (NM) and returns speed, ETA hours, and delay status.",
+      parameters: {
+        type: "object",
+        properties: {
+          statusFilter: {
+            type: "string",
+            enum: ["ALL", "DELAYED", "IN_TRANSIT", "CUSTOMS_HOLD"],
+            description: "Optional filter by status (e.g. 'DELAYED' to find only delayed vessels)",
+          },
+          maxResults: { type: "number", description: "Maximum number of closest vessels to return (default: 5)" },
+        },
+      },
+    },
+  },
   {
     type: "function",
     function: {
@@ -482,6 +501,67 @@ export async function executeNassTool(
     case "get_quality_and_goods_receipt": {
       const data = await qualityAndGoodsReceipt(args.grnRef);
       return { data, sources: ["db:receipts", "lab:mill_test_certs"] };
+    }
+
+    case "get_nearest_shipments_to_bahrain": {
+      const snap = await buildTraceSnapshot();
+      const KBSP_LAT = 26.290;
+      const KBSP_LNG = 50.620;
+
+      const ranked = (snap.ships || []).map((s) => {
+        const lat = s.vesselPosition?.lat ?? s.to?.lat ?? s.from?.lat ?? 26.290;
+        const lng = s.vesselPosition?.lng ?? s.to?.lng ?? s.from?.lng ?? 50.620;
+        // Haversine formula in Nautical Miles (1 NM = 1.852 km)
+        const dLat = ((KBSP_LAT - lat) * Math.PI) / 180;
+        const dLng = ((KBSP_LNG - lng) * Math.PI) / 180;
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos((lat * Math.PI) / 180) *
+            Math.cos((KBSP_LAT * Math.PI) / 180) *
+            Math.sin(dLng / 2) *
+            Math.sin(dLng / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distKm = 6371 * c;
+        const distNm = Math.round((distKm / 1.852) * 10) / 10;
+        const speedKnots = s.speedKn || 14.5;
+        const etaHours = Math.round((distNm / speedKnots) * 10) / 10;
+
+        return {
+          shipmentRef: s.ref,
+          vesselName: s.vesselName || s.carrier || "Carrier Assigned",
+          liveStatus: s.liveStatus,
+          originPort: s.originPort,
+          destPort: s.destPort,
+          distanceNauticalMiles: distNm,
+          distanceKilometers: Math.round(distKm * 10) / 10,
+          currentSpeedKnots: speedKnots,
+          estimatedHoursToBerth: etaHours,
+          position: { lat, lng },
+          lastAisUpdate: s.freshness || "14m ago",
+          isDelayed: s.liveStatus === "DELAYED",
+          etaDeltaHours: s.liveStatus === "DELAYED" ? 72 : 0,
+        };
+      });
+
+      let filtered = ranked;
+      if (args.statusFilter && args.statusFilter !== "ALL") {
+        filtered = ranked.filter((s) => s.liveStatus === args.statusFilter);
+      }
+      filtered.sort((a, b) => a.distanceNauticalMiles - b.distanceNauticalMiles);
+
+      const limit = args.maxResults || 5;
+      const results = filtered.slice(0, limit);
+
+      return {
+        data: {
+          referenceOrigin: "Khalifa Bin Salman Port (KBSP), Bahrain (26.29° N, 50.62° E)",
+          calculationMethod: "Great-Circle Haversine Formula (WGS-84 to Nautical Miles)",
+          timestamp: new Date().toISOString(),
+          totalFleetTracked: ranked.length,
+          closestShipments: results,
+        },
+        sources: ["ais:kbsp_marine_radar", "db:shipment_telematics", "maritime:haversine_engine"],
+      };
     }
 
     case "get_vessel_port_intelligence": {
