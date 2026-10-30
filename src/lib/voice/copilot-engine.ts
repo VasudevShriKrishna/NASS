@@ -186,12 +186,12 @@ export function resolveNavigationIntent(
     return undefined;
   }
 
-  // 2. Explicit negative check: "Open Shipment Tracking. Not Shipment."
-  if (q.includes("shipment tracking") || q.includes("import tracking") || (hasExplicitNavVerb && q.includes("shipement tracking"))) {
+  // 2. Explicit voice navigation check: "Open Shipment Tracking" -> Customer Shipment Tracking (B/L)
+  if (q.includes("shipment tracking") || q.includes("import tracking") || q.includes("customer tracking") || (hasExplicitNavVerb && q.includes("shipement tracking"))) {
     return {
-      view: "import-tracking",
-      label: ROUTE_REGISTRY["import-tracking"].label,
-      reason: "Opening Shipment Tracking module",
+      view: "customer-tracking",
+      label: ROUTE_REGISTRY["customer-tracking"].label,
+      reason: "Opening Customer Shipment Tracking (B/L) module",
     };
   }
 

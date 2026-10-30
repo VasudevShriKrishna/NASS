@@ -53,7 +53,8 @@ import { ExceptionsView } from "@/components/app/views/exceptions";
 import { ActionsView } from "@/components/app/views/actions";
 // import { AssistantView } from "@/components/app/views/assistant";
 import { GovernanceView } from "@/components/app/views/governance";
-import { ArchitectureView } from "@/components/app/views/architecture";
+// Retired ArchitectureView import per user requirement to hide Architecture Reference completely
+// import { ArchitectureView } from "@/components/app/views/architecture";
 import { CeoTowerView } from "@/components/app/views/ceo-tower";
 import { CustomerShipmentTrackingView } from "@/components/app/views/customer-tracking";
 import { VoiceCopilot } from "@/components/app/voice-copilot";
@@ -84,7 +85,8 @@ const NAV: { group: string; items: { id: ViewId; label: string; icon: React.Reac
   {
     group: "Import (M08–M11)",
     items: [
-      { id: "import-tracking", label: "Shipment Tracking", icon: <Container className="h-4 w-4" /> },
+      // Retired duplicate second Shipment Tracking per user requirement: only first Shipment Tracking (B/L) is active
+      // { id: "import-tracking", label: "Shipment Tracking", icon: <Container className="h-4 w-4" /> },
       { id: "bol-intelligence", label: "BOL Intelligence", icon: <Anchor className="h-4 w-4" /> },
     ],
   },
@@ -108,12 +110,13 @@ const NAV: { group: string; items: { id: ViewId; label: string; icon: React.Reac
     group: "Govern (M22–M23)",
     items: [{ id: "governance", label: "Audit · Evidence · Health", icon: <ShieldCheck className="h-4 w-4" /> }],
   },
-  {
-    group: "Reference",
-    items: [
-      { id: "architecture", label: "Architecture & Spec", icon: <FileCheck2 className="h-4 w-4" /> },
-    ],
-  },
+  // Retired Reference & Architecture group completely per user requirement
+  // {
+  //   group: "Reference",
+  //   items: [
+  //     { id: "architecture", label: "Architecture & Spec", icon: <FileCheck2 className="h-4 w-4" /> },
+  //   ],
+  // },
 ];
 
 function NavItems({
@@ -650,7 +653,9 @@ export default function Home() {
             {view === "control-tower" && <ControlTowerView drillRef={drillRef} />}
             {view === "procurement" && <ProcurementView />}
             {view === "suppliers" && <SuppliersView />}
-            {view === "import-tracking" && <ImportTrackingView drillRef={drillRef} />}
+            {/* Retired duplicate import-tracking view per user requirement; route fallback renders CustomerShipmentTrackingView */}
+            {/* {view === "import-tracking" && <ImportTrackingView drillRef={drillRef} />} */}
+            {view === "import-tracking" && <CustomerShipmentTrackingView />}
             {view === "bol-intelligence" && <BolIntelligenceView drillRef={drillRef} />}
             {view === "inventory" && <InventoryView />}
             {view === "receiving" && <ReceivingView />}
@@ -660,7 +665,8 @@ export default function Home() {
             {view === "actions" && <ActionsView drillRef={drillRef} />}
             {/* {view === "assistant" && <AssistantView />} */}
             {view === "governance" && <GovernanceView />}
-            {view === "architecture" && <ArchitectureView />}
+            {/* Retired Architecture & Spec view per user requirement to hide completely from system UI */}
+            {/* {view === "architecture" && <ArchitectureView />} */}
           </PageFade>
         </main>
       </div>

@@ -236,9 +236,13 @@ export function resolveViewFromInput(input: string): { view: ViewId; label: stri
     return { view: v, label: meta.label, path: meta.path };
   }
 
-  // Explicit negative check & direct mapping: "Shipment Tracking", "Shipment Ranking"
+  // Explicit routing: Map "Shipment Tracking" directly to Customer Shipment Tracking (B/L)
   if (
     clean.includes("shipment tracking") ||
+    clean.includes("shipment-tracking") ||
+    clean.includes("customer tracking") ||
+    clean.includes("track shipment") ||
+    clean.includes("track my shipment") ||
     clean.includes("import tracking") ||
     clean.includes("shipment ranking") ||
     clean.includes("shipments ranking") ||
@@ -246,7 +250,12 @@ export function resolveViewFromInput(input: string): { view: ViewId; label: stri
     clean.includes("cargo ranking") ||
     clean.includes("rank shipments")
   ) {
-    return { view: "import-tracking", label: ROUTE_REGISTRY["import-tracking"].label, path: ROUTE_REGISTRY["import-tracking"].path };
+    return { view: "customer-tracking", label: ROUTE_REGISTRY["customer-tracking"].label, path: ROUTE_REGISTRY["customer-tracking"].path };
+  }
+
+  // Retired Architecture & Reference routing: redirects to primary customer tracking
+  if (clean.includes("architecture") || clean.includes("spec") || clean.includes("reference")) {
+    return { view: "customer-tracking", label: ROUTE_REGISTRY["customer-tracking"].label, path: ROUTE_REGISTRY["customer-tracking"].path };
   }
 
   // Check aliases across all registered routes

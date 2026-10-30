@@ -30,110 +30,113 @@ export const NON_NEGOTIABLE_RULES: string[] = [
   "No false precision. A predicted arrival is a forecast with a model/source and confidence, not a guaranteed arrival. Display a point estimate only when justified; otherwise display a range or 'not enough data.'",
 ];
 
-export const REFERENCE_ARCHITECTURE_MERMAID = `flowchart TB
-  subgraph SRC[Systems of record and evidence sources]
-    ERP[ERP / PR / PO / Finance]
-    SUP[Supplier portals / email / RFQ]
-    DOC[Contracts / BOL / invoices / packing lists]
-    LOG[Carrier / forwarder / port / AIS APIs]
-    WMS[WMS / warehouse / site stock]
-    EAM[CMMS / EAM / asset register]
-    IOT[IoT sensors / SCADA / telematics]
-    PROJ[Project controls / material schedules]
-  end
+// Retired Reference Architecture Mermaid diagram and interpretation notes per user requirement to hide architecture reference
+// export const REFERENCE_ARCHITECTURE_MERMAID = `flowchart TB
+//   subgraph SRC[Systems of record and evidence sources]
+//     ERP[ERP / PR / PO / Finance]
+//     SUP[Supplier portals / email / RFQ]
+//     DOC[Contracts / BOL / invoices / packing lists]
+//     LOG[Carrier / forwarder / port / AIS APIs]
+//     WMS[WMS / warehouse / site stock]
+//     EAM[CMMS / EAM / asset register]
+//     IOT[IoT sensors / SCADA / telematics]
+//     PROJ[Project controls / material schedules]
+//   end
+// 
+//   subgraph EDGE[Integration boundary]
+//     CON[API adapters, webhooks, polling, file and email ingestion]
+//     SEC[Auth, secrets, rate limits, source allow-lists]
+//     RAW[Immutable raw payload and document store]
+//     VAL[Schema validation, quarantine, dedupe, idempotency]
+//   end
+// 
+//   subgraph DATA[Canonical operational data layer]
+//     MDM[Master data and identity resolution]
+//     BUS[Event bus / durable queue / replay]
+//     ODS[Operational relational store]
+//     GRAPH[Relationship graph / cross-record links]
+//     SEARCH[Full-text and semantic index]
+//     TIME[Time-series store for telemetry and location observations]
+//     EVID[Evidence registry, provenance and version history]
+//   end
+// 
+//   subgraph DOM[Domain services]
+//     PROCUREMENT[PR, RFQ, supplier, PO and contract]
+//     DOCAI[Document intelligence and BOL reconciliation]
+//     IMPORT[Import file, shipment, container and milestone tracking]
+//     INV[Warehouse inventory, receipt and material allocation]
+//     ASSET[Asset, inspection, condition and maintenance]
+//     RISK[Rules, risk, ETA and stockout calculations]
+//     CASE[Exception, task, escalation and approval workflow]
+//   end
+// 
+//   subgraph APP[User and decision layer]
+//     API[Permission-aware API layer]
+//     DASH[Control tower / dashboards / reports]
+//     CHAT[Grounded conversational assistant]
+//     NOTIFY[Email / messaging / in-app notifications]
+//     ACTION[Approved action gateway / write-back adapters]
+//   end
+// 
+//   subgraph GOV[Cross-cutting controls]
+//     IAM[RBAC/ABAC, SSO, MFA and segregation of duties]
+//     OBS[Logs, metrics, traces, connector health and alerts]
+//     AUDIT[Append-only audit trail and evidence links]
+//     OPS[Backups, DR, retention, privacy and policy]
+//   end
+// 
+//   SRC --> CON --> SEC --> RAW --> VAL
+//   VAL --> BUS
+//   VAL --> MDM
+//   BUS --> ODS
+//   BUS --> GRAPH
+//   BUS --> TIME
+//   RAW --> DOCAI
+//   DOCAI --> EVID
+//   MDM --> ODS
+//   MDM --> GRAPH
+//   ODS --> PROCUREMENT
+//   GRAPH --> PROCUREMENT
+//   DOCAI --> IMPORT
+//   BUS --> IMPORT
+//   TIME --> IMPORT
+//   ODS --> INV
+//   TIME --> ASSET
+//   ODS --> ASSET
+//   PROCUREMENT --> RISK
+//   IMPORT --> RISK
+//   INV --> RISK
+//   ASSET --> RISK
+//   RISK --> CASE
+//   CASE --> ACTION
+//   ACTION --> SRC
+//   PROCUREMENT --> API
+//   DOCAI --> API
+//   IMPORT --> API
+//   INV --> API
+//   ASSET --> API
+//   RISK --> API
+//   CASE --> API
+//   API --> DASH
+//   API --> CHAT
+//   CASE --> NOTIFY
+//   GOV -. applies across .-> EDGE
+//   GOV -. applies across .-> DATA
+//   GOV -. applies across .-> DOM
+//   GOV -. applies across .-> APP`;
 
-  subgraph EDGE[Integration boundary]
-    CON[API adapters, webhooks, polling, file and email ingestion]
-    SEC[Auth, secrets, rate limits, source allow-lists]
-    RAW[Immutable raw payload and document store]
-    VAL[Schema validation, quarantine, dedupe, idempotency]
-  end
-
-  subgraph DATA[Canonical operational data layer]
-    MDM[Master data and identity resolution]
-    BUS[Event bus / durable queue / replay]
-    ODS[Operational relational store]
-    GRAPH[Relationship graph / cross-record links]
-    SEARCH[Full-text and semantic index]
-    TIME[Time-series store for telemetry and location observations]
-    EVID[Evidence registry, provenance and version history]
-  end
-
-  subgraph DOM[Domain services]
-    PROCUREMENT[PR, RFQ, supplier, PO and contract]
-    DOCAI[Document intelligence and BOL reconciliation]
-    IMPORT[Import file, shipment, container and milestone tracking]
-    INV[Warehouse inventory, receipt and material allocation]
-    ASSET[Asset, inspection, condition and maintenance]
-    RISK[Rules, risk, ETA and stockout calculations]
-    CASE[Exception, task, escalation and approval workflow]
-  end
-
-  subgraph APP[User and decision layer]
-    API[Permission-aware API layer]
-    DASH[Control tower / dashboards / reports]
-    CHAT[Grounded conversational assistant]
-    NOTIFY[Email / messaging / in-app notifications]
-    ACTION[Approved action gateway / write-back adapters]
-  end
-
-  subgraph GOV[Cross-cutting controls]
-    IAM[RBAC/ABAC, SSO, MFA and segregation of duties]
-    OBS[Logs, metrics, traces, connector health and alerts]
-    AUDIT[Append-only audit trail and evidence links]
-    OPS[Backups, DR, retention, privacy and policy]
-  end
-
-  SRC --> CON --> SEC --> RAW --> VAL
-  VAL --> BUS
-  VAL --> MDM
-  BUS --> ODS
-  BUS --> GRAPH
-  BUS --> TIME
-  RAW --> DOCAI
-  DOCAI --> EVID
-  MDM --> ODS
-  MDM --> GRAPH
-  ODS --> PROCUREMENT
-  GRAPH --> PROCUREMENT
-  DOCAI --> IMPORT
-  BUS --> IMPORT
-  TIME --> IMPORT
-  ODS --> INV
-  TIME --> ASSET
-  ODS --> ASSET
-  PROCUREMENT --> RISK
-  IMPORT --> RISK
-  INV --> RISK
-  ASSET --> RISK
-  RISK --> CASE
-  CASE --> ACTION
-  ACTION --> SRC
-  PROCUREMENT --> API
-  DOCAI --> API
-  IMPORT --> API
-  INV --> API
-  ASSET --> API
-  RISK --> API
-  CASE --> API
-  API --> DASH
-  API --> CHAT
-  CASE --> NOTIFY
-  GOV -. applies across .-> EDGE
-  GOV -. applies across .-> DATA
-  GOV -. applies across .-> DOM
-  GOV -. applies across .-> APP`;
-
-export const ARCHITECTURE_INTERPRETATION: string[] = [
-  "The integration boundary receives and validates data; it must not perform undocumented business decisions.",
-  "Raw source payloads and original documents are preserved for traceability, subject to retention policy.",
-  "Canonical domain services own validated domain state; event consumers can be replayed safely.",
-  "The graph links records across systems, while the relational store remains appropriate for transactions. Do not force every workload into a graph database.",
-  "Time-series storage is for telemetry and location observations; it is not the only source of shipment state.",
-  "AI provides extraction assistance, natural-language access, explanation, and prioritization. Deterministic rules validate critical state transitions.",
-  "The action gateway is the only path for external write-backs and consequential notifications.",
-  "Security, observability, audit, retention, backup and disaster recovery apply across all layers.",
-];
+// export const ARCHITECTURE_INTERPRETATION: string[] = [
+//   "The integration boundary receives and validates data; it must not perform undocumented business decisions.",
+//   "Raw source payloads and original documents are preserved for traceability, subject to retention policy.",
+//   "Canonical domain services own validated domain state; event consumers can be replayed safely.",
+//   "The graph links records across systems, while the relational store remains appropriate for transactions. Do not force every workload into a graph database.",
+//   "Time-series storage is for telemetry and location observations; it is not the only source of shipment state.",
+//   "AI provides extraction assistance, natural-language access, explanation, and prioritization. Deterministic rules validate critical state transitions.",
+//   "The action gateway is the only path for external write-backs and consequential notifications.",
+//   "Security, observability, audit, retention, backup and disaster recovery apply across all layers.",
+// ];
+export const REFERENCE_ARCHITECTURE_MERMAID = "";
+export const ARCHITECTURE_INTERPRETATION: string[] = [];
 
 export interface SpecModule {
   id: string;
