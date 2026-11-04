@@ -13,15 +13,13 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { text, speaker = "arvind" } = body;
 
-    const cookieKey = req.cookies.get("sarvam_api_key")?.value;
-    const headerKey = req.headers.get("x-sarvam-key");
-    const customKey = body.sarvamApiKey || headerKey || cookieKey || undefined;
+    // Strictly server-side authentication via process.env.SARVAM_API_KEY
 
     if (!text || typeof text !== "string" || !text.trim()) {
       return NextResponse.json({ error: "Missing or empty text parameter" }, { status: 400 });
     }
 
-    const result = await synthesizeSpeech(text, speaker, customKey);
+    const result = await synthesizeSpeech(text, speaker);
     return NextResponse.json(result);
   } catch (err: any) {
     console.error("[Voice TTS Route Error]", err);

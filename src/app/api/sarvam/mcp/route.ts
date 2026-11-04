@@ -29,10 +29,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { toolName, parameters = {} } = body;
 
-    const apiKey =
-      process.env.SARVAM_API_KEY?.trim() ||
-      req.cookies.get("sarvam_key")?.value?.trim() ||
-      req.headers.get("x-sarvam-key")?.trim();
+    const apiKey = process.env.SARVAM_API_KEY?.trim();
 
     if (!apiKey) {
       return NextResponse.json(

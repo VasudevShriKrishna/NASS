@@ -48,21 +48,18 @@ export async function POST(req: NextRequest) {
     let attachedMediaNote = "";
     let extractedDocumentContext = "";
 
-    // Extract custom Sarvam key from cookie or header
-    const cookieKey = req.cookies.get("sarvam_api_key")?.value;
-    const headerKey = req.headers.get("x-sarvam-key");
-    let customKey = headerKey || cookieKey || undefined;
+    // Strictly server-side authentication via process.env.SARVAM_API_KEY
 
     if (contentType.includes("multipart/form-data")) {
       const formData = await req.formData();
       const file = formData.get("file") as File | null;
       const historyRaw = formData.get("history") as string | null;
       const contextRaw = formData.get("pageContext") as string | null;
-      const formKey = formData.get("sarvamApiKey") as string | null;
+      
       const mediaName = formData.get("mediaName") as string | null;
       const mediaType = formData.get("mediaType") as string | null;
 
-      if (formKey) customKey = formKey;
+      
 
       if (historyRaw) {
         try {
@@ -83,7 +80,7 @@ export async function POST(req: NextRequest) {
         // Pipeline classification by input type
         if (mime.startsWith("audio/") || fileName.endsWith(".webm") || fileName.endsWith(".wav") || fileName.endsWith(".mp3") || fileName.endsWith(".m4a")) {
           // Audio Pipeline -> Saaras v4 STT
-          sttResult = await transcribeAudio(buffer, file.type || "audio/webm", customKey);
+          sttResult = await transcribeAudio(buffer, file.type || "audio/webm");
           userMessage = sttResult.transcript;
         } else if (fileName.endsWith(".xlsx") || fileName.endsWith(".xls") || mime.includes("spreadsheet") || mime.includes("excel")) {
           // Excel Workbook Pipeline -> Python openpyxl Native
@@ -117,7 +114,7 @@ export async function POST(req: NextRequest) {
           // PDF / Scanned Document Pipeline -> Sarvam Vision Document AI
           const base64 = buffer.toString("base64");
           const docType = fileName.includes("po") ? "PURCHASE_ORDER" : fileName.includes("bol") ? "BILL_OF_LADING" : "COMMERCIAL_INVOICE";
-          const visionResult = await processTradeDocument(base64, file.name, docType, customKey);
+          const visionResult = await processTradeDocument(base64, file.name, docType);
           extractedDocumentContext = `\n[SARVAM VISION EXTRACTED PDF: "${file.name}"]\nDoc Type: ${visionResult.documentType}\nArithmetic Valid: ${visionResult.arithmeticValid}\nExtracted Fields: ${JSON.stringify(visionResult.fields, null, 2)}\nDigitized Excerpt:\n${visionResult.digitizedText.slice(0, 500)}`;
           userMessage = (formData.get("userMessage") as string) || `Inspect uploaded PDF: ${file.name}`;
         } else if (fileName.endsWith(".csv") || fileName.endsWith(".tsv") || mime.includes("csv")) {
@@ -130,7 +127,7 @@ export async function POST(req: NextRequest) {
         } else if (mime.startsWith("image/")) {
           // Document Image Pipeline -> Sarvam Vision
           const base64 = buffer.toString("base64");
-          const visionResult = await processTradeDocument(base64, file.name, "COMMERCIAL_INVOICE", customKey);
+          const visionResult = await processTradeDocument(base64, file.name, "COMMERCIAL_INVOICE");
           extractedDocumentContext = `\n[SARVAM VISION DOCUMENT IMAGE: "${file.name}"]\nExtracted Fields: ${JSON.stringify(visionResult.fields)}\nDigitized OCR:\n${visionResult.digitizedText.slice(0, 400)}`;
           userMessage = (formData.get("userMessage") as string) || `Inspect uploaded document image: ${file.name}`;
         } else {
@@ -146,7 +143,7 @@ export async function POST(req: NextRequest) {
       history = body.history || [];
       pageContext = body.pageContext;
       voiceOutputWanted = body.voiceOutputWanted ?? true;
-      if (body.sarvamApiKey) customKey = body.sarvamApiKey;
+      
 
       if (body.media) {
         attachedMediaNote = `\n[Operator attached ${body.media.type || "media"}: "${body.media.name}" (${Math.round((body.media.size || 0) / 1024)} KB)]`;
@@ -179,7 +176,7 @@ export async function POST(req: NextRequest) {
           }
         } else if (fileName.endsWith(".pdf")) {
           const docType = fileName.includes("po") ? "PURCHASE_ORDER" : fileName.includes("bol") ? "BILL_OF_LADING" : "COMMERCIAL_INVOICE";
-          const visionResult = await processTradeDocument(body.fileBase64, body.media.name, docType, customKey);
+          const visionResult = await processTradeDocument(body.fileBase64, body.media.name, docType);
           extractedDocumentContext = `\n[SARVAM VISION EXTRACTED PDF: "${body.media.name}"]\nDoc Type: ${visionResult.documentType}\nArithmetic Valid: ${visionResult.arithmeticValid}\nExtracted Fields: ${JSON.stringify(visionResult.fields, null, 2)}`;
         }
       }
@@ -187,7 +184,7 @@ export async function POST(req: NextRequest) {
       // Base64 audio support
       if (!userMessage && body.audioBase64) {
         const buffer = Buffer.from(body.audioBase64, "base64");
-        sttResult = await transcribeAudio(buffer, body.mimeType || "audio/webm", customKey);
+        sttResult = await transcribeAudio(buffer, body.mimeType || "audio/webm");
         userMessage = sttResult.transcript;
       }
     }
@@ -213,7 +210,7 @@ export async function POST(req: NextRequest) {
 
     // Diagnostic logging for prompt intake
     const runtimeInfo = getServerRuntimeInfo();
-    const keyDiag = inspectSarvamKey(customKey);
+    const keyDiag = inspectSarvamKey();
     logDiagnostic({
       requestId,
       timestamp: new Date().toISOString(),
@@ -254,14 +251,14 @@ export async function POST(req: NextRequest) {
       userMessage: fullPrompt,
       history,
       pageContext,
-      sarvamApiKey: customKey,
+      
     });
 
     // ─── SARVAM BULBUL TTS FOR SPOKEN OUTPUT ───
     let ttsResult: TtsResult | null = null;
     if (voiceOutputWanted && (reasoning.spokenText || reasoning.answerText)) {
       const textToSpeak = reasoning.spokenText || reasoning.answerText;
-      ttsResult = await synthesizeSpeech(textToSpeak, "arvind", customKey);
+      ttsResult = await synthesizeSpeech(textToSpeak, "arvind");
     }
 
     const totalLatencyMs = Date.now() - startTime;

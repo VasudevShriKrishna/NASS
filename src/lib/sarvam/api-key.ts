@@ -23,39 +23,25 @@ export interface SarvamKeyDiagnostics {
 /**
  * Resolves the active Sarvam API key with zero leakage.
  */
-export function resolveSarvamApiKey(customOverride?: string | null): string {
-  const trimmedOverride = typeof customOverride === "string" ? customOverride.trim() : "";
-  if (trimmedOverride.length > 0) {
-    return trimmedOverride;
-  }
-
-  const envKey = (process.env.SARVAM_API_KEY || "").trim();
-  return envKey;
+export function resolveSarvamApiKey(_customOverride?: string | null): string {
+  // Strictly resolve from server environment variable process.env.SARVAM_API_KEY
+  return (process.env.SARVAM_API_KEY || "").trim();
 }
 
 /**
  * Returns safe, non-sensitive diagnostics about the Sarvam key configuration.
  */
-export function inspectSarvamKey(customOverride?: string | null): SarvamKeyDiagnostics {
-  const effectiveKey = resolveSarvamApiKey(customOverride);
+export function inspectSarvamKey(_customOverride?: string | null): SarvamKeyDiagnostics {
+  const effectiveKey = resolveSarvamApiKey();
   const runtime = getServerRuntimeInfo();
-
-  let source: SarvamKeyDiagnostics["source"] = "none";
-  if (customOverride && customOverride.trim().length > 0) {
-    source = "request_override";
-  } else if ((process.env.SARVAM_API_KEY || "").trim().length > 0) {
-    source = "process_env";
-  }
-
-  const isValidFormat = effectiveKey.startsWith("sk_") && effectiveKey.length >= 24;
 
   return {
     isConfigured: effectiveKey.length > 0,
-    source,
+    source: effectiveKey.length > 0 ? "process_env" : "none",
     redactedPreview: redactSecret(effectiveKey),
     keyLength: effectiveKey.length,
     environment: runtime.environment,
     isVercel: runtime.isVercel,
-    isValidFormat,
+    isValidFormat: effectiveKey.startsWith("sk_") && effectiveKey.length >= 24,
   };
 }

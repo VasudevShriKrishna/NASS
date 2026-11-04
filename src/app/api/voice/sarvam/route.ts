@@ -7,19 +7,13 @@ export const dynamic = "force-dynamic";
  * GET /api/voice/sarvam — Check if Sarvam API key is configured
  * Checks process.env.SARVAM_API_KEY, cookies, and headers.
  */
-export async function GET(req: NextRequest) {
+export async function GET() {
   const envKey = process.env.SARVAM_API_KEY?.trim();
-  const cookieKey = req.cookies.get("sarvam_key")?.value?.trim();
-  const headerKey = req.headers.get("x-sarvam-key")?.trim();
-
-  const key = headerKey || cookieKey || envKey;
-  const source = headerKey ? "header" : cookieKey ? "cookie" : envKey ? "env" : "none";
+  const isConfigured = Boolean(envKey);
 
   return ok({
-    configured: Boolean(key),
-    source,
-    // SECURITY FIX: Never leak partial API key fragments to unauthenticated callers
-    // maskedKey: key ? `${key.slice(0, 4)}...${key.slice(-4)}` : null,
+    configured: isConfigured,
+    source: isConfigured ? "server_env" : "none",
     provider: "Sarvam AI (saaras:v2)",
   });
 }
@@ -29,11 +23,7 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
-    const envKey = process.env.SARVAM_API_KEY?.trim();
-    const cookieKey = req.cookies.get("sarvam_key")?.value?.trim();
-    const headerKey = req.headers.get("x-sarvam-key")?.trim();
-
-    const apiKey = headerKey || cookieKey || envKey;
+    const apiKey = process.env.SARVAM_API_KEY?.trim();
 
     if (!apiKey) {
       return err(

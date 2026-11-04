@@ -45,10 +45,8 @@ export async function GET() {
  */
 export async function POST(req: NextRequest) {
   try {
-    // 1. Resolve Credentials (from cookies, headers, or body)
-    const cookieKey = req.cookies.get("sarvam_api_key")?.value;
-    const headerKey = req.headers.get("x-sarvam-key");
-    let customApiKey = headerKey || cookieKey || undefined;
+    // 1. Resolve Credentials (strictly from server environment)
+    const customApiKey = undefined;
 
     const contentType = req.headers.get("content-type") || "";
     let buffer: Buffer | null = null;
@@ -62,7 +60,7 @@ export async function POST(req: NextRequest) {
       const formSchema = formData.get("schemaType") as DocumentSchemaType | null;
       const formKey = formData.get("apiKey") as string | null;
 
-      if (formKey) customApiKey = formKey;
+      // formKey ignored - server-side authentication
       if (formSchema) schemaType = formSchema;
 
       if (!file) {
@@ -77,7 +75,7 @@ export async function POST(req: NextRequest) {
       buffer = Buffer.from(await file.arrayBuffer());
     } else {
       const body = await req.json();
-      if (body.apiKey) customApiKey = body.apiKey;
+      // body.apiKey ignored - server-side authentication
       if (body.schemaType) schemaType = body.schemaType;
       if (body.fileName) fileName = body.fileName;
       if (body.mimeType) mimeType = body.mimeType;

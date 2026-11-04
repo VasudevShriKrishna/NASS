@@ -349,17 +349,13 @@ export function VoiceCopilot() {
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const [audioLatency, setAudioLatency] = useState<number | null>(null);
   const [providerNotice, setProviderNotice] = useState<string | null>(null);
-  const [showKeyModal, setShowKeyModal] = useState(false);
   const [showMicModal, setShowMicModal] = useState(false);
 
-  // Sarvam Key Configuration
-  const [sarvamKey, setSarvamKey] = useState("");
-  const [showKeyPassword, setShowKeyPassword] = useState(false);
+  // Server-Side Key Status (Never handled or stored on client)
   const [serverKeyStatus, setServerKeyStatus] = useState<{ configured: boolean; source: string }>({
     configured: false,
     source: "none",
   });
-  const [keySavedFeedback, setKeySavedFeedback] = useState(false);
 
   // Microphone Verification State
   const [micPermission, setMicPermission] = useState<"granted" | "prompt" | "denied" | "unsupported">("prompt");
@@ -667,26 +663,24 @@ export function VoiceCopilot() {
     }
   }, [messages, isOpen, voiceState]);
 
-  // Load Sarvam Key from Cookie / LocalStorage and check server status
+  // Verify backend AI status and clear any legacy keys from browser storage
   useEffect(() => {
     try {
-      const cookieKey = getCookie("sarvam_api_key");
-      const localKey = localStorage.getItem("nass_sarvam_api_key");
-      const effective = cookieKey || localKey || "";
-      if (effective) {
-        setSarvamKey(effective);
-      }
+      deleteCookie("sarvam_api_key");
+      deleteCookie("sarvam_key");
+      localStorage.removeItem("nass_sarvam_api_key");
+      localStorage.removeItem("sarvam_key");
     } catch {}
 
-    // Check backend status safely without raw res.json() crashes
-    fetch("/api/voice/stt", { credentials: "include" })
+    // Check backend status safely
+    fetch("/api/voice/stt")
       .then(async (res) => {
         const txt = await res.text().catch(() => "");
         return txt ? JSON.parse(txt) : {};
       })
       .then((data) => {
         if (data && typeof data.configured === "boolean") {
-          setServerKeyStatus({ configured: data.configured, source: data.source || "none" });
+          setServerKeyStatus({ configured: data.configured, source: data.source || "server_env" });
         }
       })
       .catch(() => {});
@@ -1251,12 +1245,8 @@ export function VoiceCopilot() {
               try {
                 const formData = new FormData();
                 formData.append("file", audioBlob, "dictation.webm");
-                if (sarvamKey) formData.append("sarvamApiKey", sarvamKey);
-
                 const sttRes = await fetch("/api/voice/stt", {
                   method: "POST",
-                  credentials: "include",
-                  headers: sarvamKey ? { "x-sarvam-key": sarvamKey } : {},
                   body: formData,
                 });
 
@@ -1445,13 +1435,13 @@ export function VoiceCopilot() {
         credentials: "include", // Transmit cookies including sarvam_api_key
         headers: {
           "Content-Type": "application/json",
-          ...(sarvamKey ? { "x-sarvam-key": sarvamKey } : {}),
+          
         },
         body: JSON.stringify({
           userMessage: userQuery,
           pageContext,
           voiceOutputWanted: !isAudioMuted,
-          sarvamApiKey: sarvamKey || undefined,
+          
           fileBase64: mediaSnapshot?.base64,
           media: mediaSnapshot
             ? {
@@ -1606,29 +1596,6 @@ export function VoiceCopilot() {
         if (isHandsFreeRef.current) startVoiceOverDictationRef.current();
       }, 4000);
     }
-  };
-
-  // Save Sarvam Key to Cookie & LocalStorage
-  const handleSaveSarvamKey = () => {
-    const cleanKey = sarvamKey.trim();
-    if (cleanKey) {
-      setCookie("sarvam_api_key", cleanKey, 30);
-      try {
-        localStorage.setItem("nass_sarvam_api_key", cleanKey);
-      } catch {}
-      setServerKeyStatus({ configured: true, source: "cookie" });
-    } else {
-      deleteCookie("sarvam_api_key");
-      try {
-        localStorage.removeItem("nass_sarvam_api_key");
-      } catch {}
-      setServerKeyStatus({ configured: false, source: "none" });
-    }
-    setKeySavedFeedback(true);
-    setTimeout(() => {
-      setKeySavedFeedback(false);
-      setShowKeyModal(false);
-    }, 1200);
   };
 
   const handleEntityClick = (entityRef: string) => {
@@ -2135,97 +2102,6 @@ export function VoiceCopilot() {
               </button>
             </div>
           </div>
-
-          {/* ─── POPUP: SARVAM API KEY CONFIGURATION ─── */}
-          {showKeyModal && (
-            <div className="border-b border-amber-500/20 bg-[#10131b] p-3 text-xs animate-in fade-in slide-in-from-top-2">
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-semibold text-amber-300 flex items-center gap-1.5">
-                  <Key className="h-3.5 w-3.5" /> Sarvam API Key Configuration
-                </span>
-                <button
-                  onClick={() => setShowKeyModal(false)}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                  <span>Current Source:</span>
-                  <span className="font-mono text-amber-400">
-                    {sarvamKey
-                      ? "Browser Cookie (sarvam_api_key)"
-                      : serverKeyStatus.configured
-                      ? `Server (${serverKeyStatus.source})`
-                      : "Not Configured"}
-                  </span>
-                </div>
-
-                <div className="relative flex items-center">
-                  <input
-                    type={showKeyPassword ? "text" : "password"}
-                    value={sarvamKey}
-                    onChange={(e) => setSarvamKey(e.target.value)}
-                    placeholder="Paste Sarvam api-subscription-key..."
-                    className="w-full rounded-md border border-border/70 bg-[#0b0c10] px-3 py-1.5 pr-8 text-xs font-mono text-foreground placeholder:text-muted-foreground/50 focus:border-amber-500/60 focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowKeyPassword(!showKeyPassword)}
-                    className="absolute right-2 text-muted-foreground hover:text-foreground"
-                    title={showKeyPassword ? "Hide key" : "Show key"}
-                  >
-                    {showKeyPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
-
-                <div className="flex items-center justify-between gap-2 pt-1">
-                  <span className="text-[10px] text-muted-foreground/80 leading-tight">
-                    Stored in cookie &amp; sent via <code className="font-mono text-[9px]">credentials: &apos;include&apos;</code>
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    {sarvamKey && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSarvamKey("");
-                          deleteCookie("sarvam_api_key");
-                          localStorage.removeItem("nass_sarvam_api_key");
-                          setServerKeyStatus({ configured: false, source: "none" });
-                        }}
-                        className="rounded border border-red-500/30 px-2 py-1 text-[10px] text-red-400 hover:bg-red-500/10"
-                      >
-                        Clear
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={handleSaveSarvamKey}
-                      className="inline-flex items-center gap-1 rounded bg-amber-500/20 border border-amber-500/40 px-2.5 py-1 text-[11px] font-semibold text-amber-300 hover:bg-amber-500/30 transition-colors"
-                    >
-                      {keySavedFeedback ? (
-                        <>
-                          <Check className="h-3 w-3 text-emerald-400" /> Saved!
-                        </>
-                      ) : (
-                        "Save to Cookie"
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-2 text-[10px] text-muted-foreground">
-                  <p className="font-semibold text-amber-300/90 mb-0.5">Manual Setup Options:</p>
-                  <ul className="list-disc pl-3.5 space-y-0.5">
-                    <li><strong>In Web App (Cookie):</strong> Paste key above &amp; click &ldquo;Save to Cookie&rdquo;.</li>
-                    <li><strong>In Server (.env):</strong> Add <code className="font-mono text-[9px] text-amber-300">SARVAM_API_KEY=&quot;your_key&quot;</code> to your <code className="font-mono text-[9px]">.env</code> or Vercel Environment Variables.</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* ─── POPUP: MICROPHONE VERIFICATION & TEST ─── */}
           {showMicModal && (
